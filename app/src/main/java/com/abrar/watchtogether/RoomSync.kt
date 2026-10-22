@@ -39,6 +39,10 @@ class RoomSync(
     private val room: DatabaseReference = db.getReference("rooms").child(code)
 
     private var serverOffsetMs = 0L
+
+    // One presence entry per open room screen, so two screens never erase each other
+    private val presenceKey = userId + "_" + (1000..9999).random()
+    private val me = room.child("members").child(presenceKey)
     private val listeners = mutableListOf<Pair<com.google.firebase.database.Query, Any>>()
 
     fun serverNow(): Long = System.currentTimeMillis() + serverOffsetMs
@@ -59,10 +63,20 @@ class RoomSync(
         offsetRef.addValueEventListener(offsetListener)
         listeners += offsetRef to offsetListener
 
-        // Presence: add me, and remove me automatically if I disconnect
-        val me = room.child("members").child(userId)
-        me.onDisconnect().removeValue()
-        me.setValue(userName)
+        // Presence: (re)add me every time the connection comes up,
+        // and let the server remove me if the connection drops
+        val connectedRef = db.getReference(".info/connected")
+        val connectedListener = object : ValueEventListener {
+            override fun onDataChange(s: DataSnapshot) {
+                if (s.getValue(Boolean::class.java) == true) {
+                    me.onDisconnect().removeValue()
+                    me.setValue(userName)
+                }
+            }
+            override fun onCancelled(e: DatabaseError) {}
+        }
+        connectedRef.addValueEventListener(connectedListener)
+        listeners += connectedRef to connectedListener
 
         val stateRef = room.child("state")
         val stateListener = object : ValueEventListener {
@@ -146,7 +160,8 @@ class RoomSync(
             }
         }
         listeners.clear()
-        room.child("members").child(userId).removeValue()
+        me.onDisconnect().cancel()
+        me.removeValue()
     }
 
     companion object {

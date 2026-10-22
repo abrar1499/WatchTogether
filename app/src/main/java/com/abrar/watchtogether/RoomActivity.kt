@@ -1,11 +1,13 @@
 package com.abrar.watchtogether
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.abrar.watchtogether.databinding.ActivityRoomBinding
@@ -21,6 +23,13 @@ class RoomActivity : AppCompatActivity() {
     private lateinit var sync: RoomSync
     private lateinit var userId: String
     private val chat = ChatAdapter()
+
+    private val pickVideo = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val id = result.data?.getStringExtra(YouTubeBrowseActivity.EXTRA_VIDEO_ID)
+        if (result.resultCode == Activity.RESULT_OK && id != null) playForEveryone(id)
+    }
 
     private var player: YouTubePlayer? = null
     private var currentVideoId: String? = null
@@ -62,6 +71,9 @@ class RoomActivity : AppCompatActivity() {
             ))
         }
 
+        b.youtubeButton.setOnClickListener {
+            pickVideo.launch(Intent(this, YouTubeBrowseActivity::class.java))
+        }
         b.loadButton.setOnClickListener { loadFromInput() }
         b.urlInput.setOnEditorActionListener { _, id, _ ->
             if (id == EditorInfo.IME_ACTION_GO) { loadFromInput(); true } else false
@@ -98,7 +110,13 @@ class RoomActivity : AppCompatActivity() {
 
     private fun setupPlayer() {
         lifecycle.addObserver(b.player)
-        val options = IFramePlayerOptions.Builder().controls(1).build()
+        // YouTube blocks embeds that claim to be youtube.com (error 152),
+        // so identify the player with the app's own package name.
+        val options = IFramePlayerOptions.Builder()
+            .controls(1)
+            .rel(0)
+            .origin("https://" + packageName)
+            .build()
         b.player.initialize(object : AbstractYouTubePlayerListener() {
             override fun onReady(youTubePlayer: YouTubePlayer) {
                 player = youTubePlayer
@@ -149,10 +167,18 @@ class RoomActivity : AppCompatActivity() {
         }
         b.urlInput.setText("")
         b.urlInput.clearFocus()
-        currentVideoId = id
-        lastSecond = 0f
-        ignoreLocalUntil = SystemClock.elapsedRealtime() + IGNORE_MS
-        player?.loadVideo(id, 0f)
+        playForEveryone(id)
+    }
+
+    private fun playForEveryone(id: String) {
+        val p = player
+        if (p != null) {
+            currentVideoId = id
+            lastSecond = 0f
+            ignoreLocalUntil = SystemClock.elapsedRealtime() + IGNORE_MS
+            p.loadVideo(id, 0f)
+        }
+        // If the player isn't ready yet, the room update will load it once it is
         sync.pushState(id, true, 0.0)
     }
 
