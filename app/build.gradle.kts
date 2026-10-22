@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -10,7 +12,7 @@ fun cfg(name: String): String {
     if (!fromEnv.isNullOrBlank()) return fromEnv
     val lp = rootProject.file("local.properties")
     if (lp.exists()) {
-        val p = java.util.Properties()
+        val p = Properties()
         lp.inputStream().use { p.load(it) }
         return p.getProperty(name, "")
     }
