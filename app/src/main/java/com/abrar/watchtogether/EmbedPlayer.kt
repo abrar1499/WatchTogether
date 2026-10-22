@@ -26,6 +26,8 @@ class EmbedPlayer(
         fun onTime(second: Float)
         fun onDuration(duration: Float)
         fun onError(message: String)
+        /** Fraction of the screen height the video takes (from the top). */
+        fun onVideoArea(fraction: Float)
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -103,7 +105,8 @@ class EmbedPlayer(
 
     private fun applyLayout() = js(
         "var c=document.documentElement.classList;" +
-            "c.toggle('wt-fit',$fit);c.toggle('wt-full',$full);"
+            "c.toggle('wt-fit',$fit);c.toggle('wt-full',$full);" +
+            "if(window.__wtRelayout)window.__wtRelayout();"
     )
 
     fun onPause() = web.onPause()
@@ -143,6 +146,9 @@ class EmbedPlayer(
 
         @JavascriptInterface
         fun error(message: String) = main.post { listener.onError(message) }
+
+        @JavascriptInterface
+        fun area(fraction: Double) = main.post { listener.onVideoArea(fraction.toFloat()) }
     }
 
     companion object {
@@ -160,31 +166,33 @@ class EmbedPlayer(
                 "{display:none!important;opacity:0!important;pointer-events:none!important}" +
                 // Catch-all: inside the player, show only the video (YouTube's new UI uses new names)
                 "#movie_player>*:not(.html5-video-container):not(.ytp-error),.html5-video-container>*:not(video){display:none!important;opacity:0!important;pointer-events:none!important}" +
-                "html,body,#player{background:#000!important}" +
+                "html{background:#000!important}body,#player,#movie_player,.html5-video-player,.html5-video-container{background:transparent!important}" +
                 // Video on the top half, a mirrored reflection on the bottom half
                 "html,body,#player,#movie_player,.html5-video-player,.html5-video-container" +
                 "{overflow:visible!important;transform:none!important;contain:none!important}" +
                 "video{position:fixed!important;top:0!important;left:0!important;" +
-                "width:100vw!important;height:50vh!important;object-fit:cover!important;z-index:1!important;" +
+                "width:100vw!important;height:var(--wt-h,50vh)!important;object-fit:cover!important;z-index:1!important;" +
                 // Reflection is strongest right at the seam and fades downwards
                 "-webkit-box-reflect:below 0px linear-gradient(rgba(255,255,255,.25),rgba(255,255,255,.6) 45%,#fff)}" +
                 "html.wt-fit video{object-fit:contain!important}" +
                 "html.wt-full video{height:100vh!important;-webkit-box-reflect:none}" +
                 // Progressive blur: starts gently inside the video's lower part, so there is no hard line
                 ".wtfrost{position:fixed;left:0;width:100vw;pointer-events:none}" +
-                "#wtfrost1{top:38vh;height:62vh;z-index:2;" +
+                "#wtfrost1{top:calc(var(--wt-h,50vh)*0.76);bottom:0;z-index:2;" +
                 "-webkit-backdrop-filter:blur(5px) saturate(1.3);backdrop-filter:blur(5px) saturate(1.3);" +
                 "-webkit-mask-image:linear-gradient(transparent,#000 20%);mask-image:linear-gradient(transparent,#000 20%)}" +
-                "#wtfrost2{top:44vh;height:56vh;z-index:3;" +
+                "#wtfrost2{top:calc(var(--wt-h,50vh)*0.88);bottom:0;z-index:3;" +
                 "-webkit-backdrop-filter:blur(12px) saturate(1.6);backdrop-filter:blur(12px) saturate(1.6);" +
                 "-webkit-mask-image:linear-gradient(transparent,#000 22%);mask-image:linear-gradient(transparent,#000 22%)}" +
-                "#wtfrost3{top:50vh;height:50vh;z-index:4;" +
+                "#wtfrost3{top:calc(var(--wt-h,50vh)*1);bottom:0;z-index:4;" +
                 "-webkit-backdrop-filter:blur(22px) saturate(1.9) brightness(1.1);backdrop-filter:blur(22px) saturate(1.9) brightness(1.1);" +
                 "-webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%);" +
                 "background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.1) 50%,rgba(0,0,0,.45))}" +
                 "html.wt-full .wtfrost{display:none}" +
+                // Soft colour glow behind everything, so the space below a short video isn't empty
+                "#wtglow{position:fixed;left:-10vw;top:-10vh;width:120vw;height:120vh;z-index:-1;pointer-events:none;filter:blur(40px) saturate(1.6);opacity:.85}html.wt-full #wtglow{display:none}" +
                 // Bulletproof: hide everything YouTube draws, whatever it's called; show only the video
-                "body *{visibility:hidden!important}video,.wtfrost,#wtshade,#wtfrost1,#wtfrost2,#wtfrost3{visibility:visible!important}"
+                "body *{visibility:hidden!important}video,.wtfrost,#wtshade,#wtglow,#wtfrost1,#wtfrost2,#wtfrost3{visibility:visible!important}"
 
         /** Hook script with the current look (from [RemoteConfig] if available). */
         private fun hookJs(): String =
@@ -200,7 +208,25 @@ class EmbedPlayer(
                 var fr = document.createElement('div'); fr.id = id; fr.className = 'wtfrost';
                 (document.body || document.documentElement).appendChild(fr);
               });
+              var glow = document.createElement('canvas'); glow.id = 'wtglow';
+              glow.width = 24; glow.height = 48;
+              (document.body || document.documentElement).appendChild(glow);
+              var gctx = glow.getContext('2d'), firstFrame = true;
               var hooked = null, errSent = false;
+              // Fit: full width at the video's own shape (never cropped), at most half the screen.
+              // Fill: always half the screen (cropped). Full screen: whole screen.
+              function relayout(){
+                var de = document.documentElement, W = innerWidth, H = innerHeight;
+                var v = hooked || document.querySelector('video');
+                var h = H * 0.5;
+                if (de.classList.contains('wt-full')) h = H;
+                else if (de.classList.contains('wt-fit') && v && v.videoWidth > 0)
+                  h = Math.min(W * v.videoHeight / v.videoWidth, H * 0.5);
+                de.style.setProperty('--wt-h', h + 'px');
+                WT.area(h / H);
+              }
+              window.__wtRelayout = relayout;
+              addEventListener('resize', relayout);
               function hook(v){
                 hooked = v;
                 v.addEventListener('playing', function(){ WT.state('playing'); });
@@ -208,11 +234,14 @@ class EmbedPlayer(
                 v.addEventListener('waiting', function(){ WT.state('buffering'); });
                 v.addEventListener('ended', function(){ window.__wtWantPlay = false; WT.state('ended'); });
                 v.addEventListener('timeupdate', function(){ WT.time(v.currentTime); });
+                v.addEventListener('loadedmetadata', relayout);
+                v.addEventListener('resize', relayout);
                 v.addEventListener('durationchange', function(){
                   if (isFinite(v.duration) && v.duration > 0) WT.duration(v.duration);
                 });
                 if (isFinite(v.duration) && v.duration > 0) WT.duration(v.duration);
                 if (!v.paused) WT.state('playing');
+                relayout();
               }
               setInterval(function(){
                 var v = document.querySelector('video');
@@ -227,6 +256,16 @@ class EmbedPlayer(
                   if (!v) { var b = document.querySelector('.ytp-large-play-button'); if (b) b.click(); }
                 }
               }, 300);
+              // Glow: a tiny copy of the current frame, blended with the last one so colours flow
+              setInterval(function(){
+                if (!hooked || hooked.readyState < 2) return;
+                if (document.documentElement.classList.contains('wt-full')) return;
+                try {
+                  gctx.globalAlpha = firstFrame ? 1 : 0.3;
+                  gctx.drawImage(hooked, 0, 0, glow.width, glow.height);
+                  firstFrame = false;
+                } catch (e) {}
+              }, 80);
             })();
         """.trimIndent()
     }

@@ -59,7 +59,7 @@ class RoomActivity : AppCompatActivity() {
     // Controls & layout
     private var duration = 0f
     private var userSeeking = false
-    private var fillMode = true
+    private var fillMode = false   // Fit by default: never crop the video
     private var fullscreen = false
     private var topInset = 0
     private val hideControls = Runnable { setControlsVisible(false) }
@@ -218,6 +218,11 @@ class RoomActivity : AppCompatActivity() {
                 updateTimeText(lastSecond)
             }
 
+            override fun onVideoArea(fraction: Float) {
+                videoFraction = fraction.coerceIn(0.15f, 0.6f)
+                if (!fullscreen) setVideoArea(videoFraction)
+            }
+
             override fun onError(message: String) {
                 hideLoading(delayMs = 0)
                 toast(tr(R.string.error_video))
@@ -326,7 +331,17 @@ class RoomActivity : AppCompatActivity() {
         if (localPlaying && !userSeeking) b.controls.postDelayed(hideControls, CONTROLS_HIDE_MS)
     }
 
-    private fun videoBottom(): Float = b.root.height * 0.5f
+    // Where the video ends (as a fraction of screen height); controls and tap zones follow it
+    private var videoFraction = 0.5f
+
+    private fun setVideoArea(fraction: Float) {
+        val lp = b.mid.layoutParams as ConstraintLayout.LayoutParams
+        if (lp.guidePercent == fraction) return
+        lp.guidePercent = fraction
+        b.mid.layoutParams = lp
+    }
+
+    private fun videoBottom(): Float = b.root.height * videoFraction
 
     // Consecutive double taps on the same side add up: +10s, +20s, +30s…
     private var seekTotal = 0
@@ -389,7 +404,7 @@ class RoomActivity : AppCompatActivity() {
 
         // The video half grows to the whole screen; chat hides
         val mid = b.mid.layoutParams as ConstraintLayout.LayoutParams
-        mid.guidePercent = if (on) 1f else 0.5f
+        mid.guidePercent = if (on) 1f else videoFraction
         b.mid.layoutParams = mid
         b.chatList.visibility = if (on) View.GONE else View.VISIBLE
         b.inputBar.visibility = if (on) View.GONE else View.VISIBLE
