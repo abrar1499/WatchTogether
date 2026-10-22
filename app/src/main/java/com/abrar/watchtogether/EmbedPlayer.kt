@@ -157,13 +157,23 @@ class EmbedPlayer(
                 "{overflow:visible!important;transform:none!important;contain:none!important}" +
                 "video{position:fixed!important;top:0!important;left:0!important;" +
                 "width:100vw!important;height:50vh!important;object-fit:cover!important;z-index:1!important;" +
-                "-webkit-box-reflect:below 0px linear-gradient(transparent 10%,rgba(255,255,255,.65))}" +
+                // Reflection is strongest right at the seam and fades downwards
+                "-webkit-box-reflect:below 0px linear-gradient(transparent 5%,rgba(255,255,255,.35) 45%,rgba(255,255,255,.95))}" +
                 "html.wt-fit video{object-fit:contain!important}" +
                 "html.wt-full video{height:100vh!important;-webkit-box-reflect:none}" +
-                "#wtfrost{position:fixed;left:0;top:50vh;width:100vw;height:50vh;z-index:2;pointer-events:none;" +
-                "-webkit-backdrop-filter:blur(28px) saturate(1.5);backdrop-filter:blur(28px) saturate(1.5);" +
-                "background:linear-gradient(rgba(0,0,0,.05),rgba(0,0,0,.45) 55%,rgba(0,0,0,.85))}" +
-                "html.wt-full #wtfrost{display:none}"
+                // Progressive blur: starts gently inside the video's lower part, so there is no hard line
+                ".wtfrost{position:fixed;left:0;width:100vw;pointer-events:none}" +
+                "#wtfrost1{top:38vh;height:62vh;z-index:2;" +
+                "-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);" +
+                "-webkit-mask-image:linear-gradient(transparent,#000 20%);mask-image:linear-gradient(transparent,#000 20%)}" +
+                "#wtfrost2{top:44vh;height:56vh;z-index:3;" +
+                "-webkit-backdrop-filter:blur(16px) saturate(1.3);backdrop-filter:blur(16px) saturate(1.3);" +
+                "-webkit-mask-image:linear-gradient(transparent,#000 22%);mask-image:linear-gradient(transparent,#000 22%)}" +
+                "#wtfrost3{top:50vh;height:50vh;z-index:4;" +
+                "-webkit-backdrop-filter:blur(30px) saturate(1.5);backdrop-filter:blur(30px) saturate(1.5);" +
+                "-webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%);" +
+                "background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.35) 45%,rgba(0,0,0,.82))}" +
+                "html.wt-full .wtfrost{display:none}"
 
         private val HOOK_JS = """
             (function(){
@@ -171,8 +181,10 @@ class EmbedPlayer(
               var st = document.createElement('style');
               st.textContent = '$HIDE_CSS';
               (document.head || document.documentElement).appendChild(st);
-              var fr = document.createElement('div'); fr.id = 'wtfrost';
-              (document.body || document.documentElement).appendChild(fr);
+              ['wtfrost1','wtfrost2','wtfrost3'].forEach(function(id){
+                var fr = document.createElement('div'); fr.id = id; fr.className = 'wtfrost';
+                (document.body || document.documentElement).appendChild(fr);
+              });
               var hooked = null, errSent = false;
               function hook(v){
                 hooked = v;
