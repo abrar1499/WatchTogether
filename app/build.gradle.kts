@@ -7,17 +7,19 @@ plugins {
 
 // Firebase settings come from environment variables (GitHub Secrets on CI)
 // or from local.properties when building on your own computer.
-fun cfg(name: String): String {
+fun cfg(name: String, default: String = ""): String {
     val fromEnv = System.getenv(name)
     if (!fromEnv.isNullOrBlank()) return fromEnv
     val lp = rootProject.file("local.properties")
     if (lp.exists()) {
         val p = Properties()
         lp.inputStream().use { p.load(it) }
-        return p.getProperty(name, "")
+        val v = p.getProperty(name, "")
+        if (v.isNotBlank()) return v
     }
-    return ""
+    return default
 }
+
 
 android {
     namespace = "com.abrar.watchtogether"

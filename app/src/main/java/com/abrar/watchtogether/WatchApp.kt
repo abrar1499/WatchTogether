@@ -11,12 +11,15 @@ class WatchApp : Application() {
         super.onCreate()
         if (isFirebaseConfigured() && FirebaseApp.getApps(this).isEmpty()) {
             try {
-                val options = FirebaseOptions.Builder()
-                    .setApiKey(BuildConfig.FIREBASE_API_KEY)
+                val builder = FirebaseOptions.Builder()
                     .setApplicationId(BuildConfig.FIREBASE_APP_ID)
                     .setProjectId(BuildConfig.FIREBASE_PROJECT_ID)
                     .setDatabaseUrl(BuildConfig.FIREBASE_DB_URL)
-                    .build()
+                // API key is optional for Realtime Database with open rules
+                if (BuildConfig.FIREBASE_API_KEY.isNotBlank()) {
+                    builder.setApiKey(BuildConfig.FIREBASE_API_KEY)
+                }
+                val options = builder.build()
                 FirebaseApp.initializeApp(this, options)
             } catch (e: Exception) {
                 Log.e("WatchApp", "Firebase init failed", e)
@@ -26,8 +29,7 @@ class WatchApp : Application() {
 
     companion object {
         fun isFirebaseConfigured(): Boolean =
-            BuildConfig.FIREBASE_API_KEY.isNotBlank() &&
-                BuildConfig.FIREBASE_APP_ID.isNotBlank() &&
+            BuildConfig.FIREBASE_APP_ID.isNotBlank() &&
                 BuildConfig.FIREBASE_DB_URL.isNotBlank()
     }
 }
