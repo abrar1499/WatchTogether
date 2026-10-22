@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.text.InputType
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
@@ -160,6 +161,9 @@ class RoomActivity : AppCompatActivity() {
             b.topBar.updatePadding(top = if (fullscreen) dp(6) else bars.top + dp(6))
             b.inputBar.updatePadding(bottom = max(bars.bottom, ime) + dp(12))
             b.chatToast.translationY = bars.top.toFloat()
+            // Chat may rise over the video, but stays below the top buttons
+            (b.chatList.layoutParams as ViewGroup.MarginLayoutParams).topMargin = bars.top + dp(58)
+            b.chatList.requestLayout()
             insets
         }
     }

@@ -34,6 +34,24 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <!-- Chat floats over video and reflection, fading out as it scrolls up -->
+    <com.abrar.watchtogether.FadingRecyclerView
+        android:id="@+id/chatList"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="64dp"
+        android:clipToPadding="false"
+        android:fadingEdgeLength="220dp"
+        android:overScrollMode="never"
+        android:paddingHorizontal="14dp"
+        android:paddingBottom="6dp"
+        android:requiresFadingEdge="vertical"
+        android:scrollbars="none"
+        app:layout_constraintBottom_toTopOf="@id/inputBar"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <!-- Our own controls, only over the video half -->
     <FrameLayout
         android:id="@+id/controls"
@@ -243,24 +261,6 @@
         android:visibility="gone"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
-
-    <!-- Chat floats over the reflection and fades out as it scrolls up -->
-    <com.abrar.watchtogether.FadingRecyclerView
-        android:id="@+id/chatList"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_marginTop="12dp"
-        android:clipToPadding="false"
-        android:fadingEdgeLength="140dp"
-        android:overScrollMode="never"
-        android:paddingHorizontal="14dp"
-        android:paddingBottom="6dp"
-        android:requiresFadingEdge="vertical"
-        android:scrollbars="none"
-        app:layout_constraintBottom_toTopOf="@id/inputBar"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/mid" />
 
     <LinearLayout
         android:id="@+id/inputBar"
