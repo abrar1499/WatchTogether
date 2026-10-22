@@ -28,6 +28,18 @@
     <string name="error_link">Sahi YouTube link nahi hai</string>
     <string name="error_video">Video nahi chal saki (%1$s). Kuch videos embed allow nahi karti.</string>
 
+    <string name="update_title">Naya version aa gaya (v%1$d)</string>
+    <string name="update_message">App ka naya version download kar ke install karein? Aap ka data mehfooz rahega.</string>
+    <string name="update_now">Update karein</string>
+    <string name="update_later">Baad mein</string>
+    <string name="update_downloading">Update download ho raha hai…</string>
+    <string name="update_download_failed">Update download nahi ho saka. Internet check kar ke dobara koshish karein.</string>
+    <string name="update_allow_install">Is app ko "Install unknown apps" ki ijazat dein, phir wapas aayein</string>
+    <string name="update_check_failed">Update check nahi ho saka</string>
+    <string name="update_none">Aap ke paas latest version hai</string>
+    <string name="check_update">Update check karein</string>
+    <string name="version_label">Version %1$s</string>
+
     <plurals name="watching_count">
         <item quantity="one">%d banda dekh raha hai</item>
         <item quantity="other">%d log dekh rahe hain</item>

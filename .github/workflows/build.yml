@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -39,3 +42,15 @@ jobs:
         with:
           name: WatchTogether-${{ github.run_number }}
           path: app/build/outputs/apk/debug/*.apk
+
+      - name: Publish release for in-app updates
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk WatchTogether.apk
+          gh release create "v${{ github.run_number }}" WatchTogether.apk \
+            --title "Watch Together v${{ github.run_number }}" \
+            --notes "$NOTES" \
+            --latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ github.event.head_commit.message || 'Manual build' }}

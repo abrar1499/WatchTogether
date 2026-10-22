@@ -19,6 +19,9 @@ class MainActivity : AppCompatActivity() {
         prefs = Prefs(this)
 
         b.nameInput.setText(prefs.name)
+        b.versionText.text = getString(R.string.version_label, BuildConfig.VERSION_NAME)
+        b.versionText.setOnClickListener { Updater.check(this, silent = false) }
+        Updater.checkOnStart(this)
         b.setupWarning.visibility =
             if (WatchApp.isFirebaseConfigured()) View.GONE else View.VISIBLE
 
@@ -49,6 +52,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Updater.resumePendingInstall(this)
     }
 
     private fun readName(): String? {
