@@ -1,68 +1,62 @@
 <resources>
     <string name="app_name">Watch Together</string>
-    <string name="tagline">Door bethay doston ke saath ek hi waqt par video dekhein</string>
-    <string name="your_name">Aap ka naam</string>
-    <string name="create_room">New Room Banayein</string>
-    <string name="or_join">ya room code se join karein</string>
-    <string name="room_code">Room code (6 harf)</string>
-    <string name="join_room">Join Room</string>
-    <string name="room_code_label">Room: %1$s</string>
+    <string name="your_name">Name</string>
+    <string name="create_room">Create Room</string>
+    <string name="or_join">or</string>
+    <string name="room_code">Room Code</string>
+    <string name="join_room">Join</string>
+    <string name="room_code_label">%1$s</string>
     <string name="invite">Invite</string>
     <string name="share">Share</string>
-    <string name="share_text">Mere saath video dekho! Watch Together app kholo aur room code daalo: %1$s</string>
+    <string name="share_text">Join my room on Watch Together: %1$s</string>
     <string name="resync">Sync</string>
-    <string name="paste_link">Ya link paste karein</string>
-    <string name="open_youtube">YouTube par dhoondein</string>
-    <string name="pick_video">Video par tap karein</string>
-    <string name="close">Band karein</string>
-    <string name="play">Chalao</string>
-    <string name="message_hint">Message likhein…</string>
+    <string name="paste_link">Paste link</string>
+    <string name="open_youtube">Search</string>
+    <string name="close">Close</string>
+    <string name="play">Play</string>
+    <string name="message_hint">Message</string>
     <string name="send">Send</string>
-    <string name="you">Aap</string>
+    <string name="you">You</string>
 
-    <string name="setup_needed">Firebase abhi set nahi hai. README ke steps follow karke GitHub Secrets add karein, phir dobara build karein.</string>
-    <string name="error_name">Pehle apna naam likhein</string>
-    <string name="error_code_length">Code 6 harf ka hota hai</string>
-    <string name="error_room_not_found">Yeh room nahi mila</string>
-    <string name="error_network">Internet ya Firebase se connect nahi ho saka</string>
-    <string name="error_link">Sahi YouTube link nahi hai</string>
-    <string name="error_video">Video nahi chal saki (%1$s). Kuch videos embed allow nahi karti.</string>
+    <string name="setup_needed">Server not configured</string>
+    <string name="error_name">Enter your name</string>
+    <string name="error_code_length">6 characters</string>
+    <string name="error_room_not_found">Room not found</string>
+    <string name="error_network">Connection failed</string>
+    <string name="error_link">Invalid link</string>
+    <string name="error_video">Video unavailable</string>
 
-    <string name="update_title">Naya version aa gaya (v%1$d)</string>
-    <string name="update_message">App ka naya version download kar ke install karein? Aap ka data mehfooz rahega.</string>
-    <string name="update_now">Update karein</string>
-    <string name="update_later">Baad mein</string>
-    <string name="update_downloading">Update download ho raha hai…</string>
-    <string name="update_download_failed">Update download nahi ho saka. Internet check kar ke dobara koshish karein.</string>
-    <string name="update_allow_install">Is app ko "Install unknown apps" ki ijazat dein, phir wapas aayein</string>
-    <string name="update_check_failed">Update check nahi ho saka</string>
-    <string name="update_none">Aap ke paas latest version hai</string>
-    <string name="check_update">Update check karein</string>
-    <string name="version_label">Version %1$s</string>
+    <string name="update_title">Update available (v%1$d)</string>
+    <string name="update_message">Install the latest version?</string>
+    <string name="update_now">Update</string>
+    <string name="update_later">Later</string>
+    <string name="update_downloading">Downloading update…</string>
+    <string name="update_download_failed">Download failed</string>
+    <string name="update_allow_install">Allow installs from this app</string>
+    <string name="update_check_failed">Couldn\'t check for updates</string>
+    <string name="update_none">Up to date</string>
+    <string name="check_update">Check for updates</string>
+    <string name="version_label">v%1$s</string>
 
-    <string name="play_pause">Play ya pause</string>
-    <string name="crop">Screen bharein ya poori video</string>
-    <string name="fullscreen">Full screen</string>
-    <string name="crop_fill">Crop: screen bhari hui</string>
-    <string name="crop_fit">Poori video</string>
+    <string name="play_pause">Play/Pause</string>
+    <string name="crop">Fit/Fill</string>
+    <string name="fullscreen">Fullscreen</string>
+    <string name="crop_fill">Fill</string>
+    <string name="crop_fit">Fit</string>
 
-    <string name="empty_title">Kya dekhna hai?</string>
-    <string name="empty_subtitle">Video chunein, sab ke paas ek saath chalegi</string>
-    <string name="back">Wapas</string>
+    <string name="back">Back</string>
     <string name="link_dialog_title">YouTube link</string>
 
-    <string name="search_hint">YouTube par search karein</string>
+    <string name="search_hint">Search YouTube</string>
     <string name="search">Search</string>
 
-    <string name="loading_video">Video aa rahi hai…</string>
-
-    <string name="update_installing">Naya version install ho raha hai… app 2-3 second ke liye band hogi, phir dobara kholein</string>
-    <string name="update_permission_title">Updates khud ho jayein</string>
-    <string name="update_permission_message">Ek baar is app ko "Install unknown apps" ki ijazat de dein. Us ke baad naye versions khud download aur install honge.</string>
-    <string name="update_permission_ok">Ijazat dein</string>
+    <string name="update_installing">Updating…</string>
+    <string name="update_permission_title">Automatic updates</string>
+    <string name="update_permission_message">Allow installs from this app once to enable automatic updates.</string>
+    <string name="update_permission_ok">Allow</string>
 
     <plurals name="watching_count">
-        <item quantity="one">%d banda dekh raha hai</item>
-        <item quantity="other">%d log dekh rahe hain</item>
+        <item quantity="one">%d watching</item>
+        <item quantity="other">%d watching</item>
     </plurals>
 </resources>

@@ -216,7 +216,7 @@ class RoomActivity : AppCompatActivity() {
 
             override fun onError(message: String) {
                 hideLoading(delayMs = 0)
-                toast(getString(R.string.error_video, message.ifBlank { "?" }))
+                toast(getString(R.string.error_video))
             }
         })
         player?.setLayout(fit = !fillMode, full = false)
@@ -266,7 +266,6 @@ class RoomActivity : AppCompatActivity() {
         b.cropButton.setOnClickListener {
             fillMode = !fillMode
             player?.setLayout(fit = !fillMode, full = fullscreen)
-            toast(getString(if (fillMode) R.string.crop_fill else R.string.crop_fit))
             scheduleHide()
         }
 
