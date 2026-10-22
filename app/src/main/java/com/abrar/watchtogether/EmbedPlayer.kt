@@ -30,6 +30,8 @@ class EmbedPlayer(
     private val main = Handler(Looper.getMainLooper())
     private var wantPlay = false
     private var startPaused = false
+    private var fit = false
+    private var full = false
 
     init {
         setup()
@@ -49,6 +51,7 @@ class EmbedPlayer(
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 view.evaluateJavascript("window.__wtWantPlay=$wantPlay;$HOOK_JS", null)
+                applyLayout()
             }
 
             // Never leave the embed page (e.g. a tap on the title would open youtube.com)
@@ -81,6 +84,21 @@ class EmbedPlayer(
     fun seekTo(second: Float) {
         js("var v=document.querySelector('video');if(v){v.currentTime=$second;}")
     }
+
+    /**
+     * [fit] = show the whole video (letterboxed) instead of cropping to fill.
+     * [full] = video fills the whole screen (landscape), no reflection.
+     */
+    fun setLayout(fit: Boolean, full: Boolean) {
+        this.fit = fit
+        this.full = full
+        applyLayout()
+    }
+
+    private fun applyLayout() = js(
+        "var c=document.documentElement.classList;" +
+            "c.toggle('wt-fit',$fit);c.toggle('wt-full',$full);"
+    )
 
     fun onPause() = web.onPause()
     fun onResume() = web.onResume()
@@ -133,7 +151,19 @@ class EmbedPlayer(
                 ".ytp-contextmenu,.ytp-popup,.ytp-tooltip,.branding-img,.iv-branding,.annotation," +
                 ".ytp-chapter-container,.ytp-player-content.ytp-iv-player-content" +
                 "{display:none!important;opacity:0!important;pointer-events:none!important}" +
-                "html,body,#player{background:#000!important}"
+                "html,body,#player{background:#000!important}" +
+                // Video on the top half, a mirrored reflection on the bottom half
+                "html,body,#player,#movie_player,.html5-video-player,.html5-video-container" +
+                "{overflow:visible!important;transform:none!important;contain:none!important}" +
+                "video{position:fixed!important;top:0!important;left:0!important;" +
+                "width:100vw!important;height:50vh!important;object-fit:cover!important;z-index:1!important;" +
+                "-webkit-box-reflect:below 0px linear-gradient(transparent 10%,rgba(255,255,255,.65))}" +
+                "html.wt-fit video{object-fit:contain!important}" +
+                "html.wt-full video{height:100vh!important;-webkit-box-reflect:none}" +
+                "#wtfrost{position:fixed;left:0;top:50vh;width:100vw;height:50vh;z-index:2;pointer-events:none;" +
+                "-webkit-backdrop-filter:blur(28px) saturate(1.5);backdrop-filter:blur(28px) saturate(1.5);" +
+                "background:linear-gradient(rgba(0,0,0,.05),rgba(0,0,0,.45) 55%,rgba(0,0,0,.85))}" +
+                "html.wt-full #wtfrost{display:none}"
 
         private val HOOK_JS = """
             (function(){
@@ -141,6 +171,8 @@ class EmbedPlayer(
               var st = document.createElement('style');
               st.textContent = '$HIDE_CSS';
               (document.head || document.documentElement).appendChild(st);
+              var fr = document.createElement('div'); fr.id = 'wtfrost';
+              (document.body || document.documentElement).appendChild(fr);
               var hooked = null, errSent = false;
               function hook(v){
                 hooked = v;

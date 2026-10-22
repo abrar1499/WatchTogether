@@ -2,244 +2,304 @@
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#000000">
 
-    <FrameLayout
-        android:id="@+id/playerBox"
+    <!-- The whole screen is the player page: video on top, its reflection below -->
+    <WebView
+        android:id="@+id/player"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:background="#000000"
-        android:clipChildren="true"
-        app:layout_constraintDimensionRatio="H,16:9"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/mid"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.5" />
+
+    <!-- Catches every tap so YouTube's page never reacts; tapping shows our controls -->
+    <View
+        android:id="@+id/touchShield"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clickable="true"
+        android:focusable="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Our own controls, only over the video half -->
+    <FrameLayout
+        android:id="@+id/controls"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/top_scrim"
+        android:clickable="true"
+        android:focusable="true"
+        app:layout_constraintBottom_toTopOf="@id/mid"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <WebView
-            android:id="@+id/player"
+        <LinearLayout
+            android:id="@+id/topBar"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-
-        <!-- Catches every tap so YouTube's own overlay never appears -->
-        <View
-            android:id="@+id/touchShield"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clickable="true"
-            android:focusable="true" />
-
-        <TextView
-            android:id="@+id/chatToast"
-            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="top|start"
-            android:layout_margin="12dp"
-            android:background="@drawable/chat_toast_bg"
-            android:maxWidth="320dp"
+            android:layout_gravity="top"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
             android:paddingHorizontal="10dp"
-            android:paddingVertical="6dp"
-            android:textColor="#E6FFFFFF"
-            android:textSize="13sp"
-            android:visibility="gone" />
-
-        <FrameLayout
-            android:id="@+id/controls"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@drawable/controls_scrim"
-            android:clickable="true"
-            android:focusable="true">
+            android:paddingVertical="6dp">
 
             <ImageButton
-                android:id="@+id/playPause"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
-                android:layout_gravity="center"
-                android:alpha="0.85"
-                android:background="@drawable/round_button_bg"
-                android:contentDescription="@string/play_pause"
-                android:padding="14dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_play" />
+                android:id="@+id/backButton"
+                style="@style/GlassIcon"
+                android:contentDescription="@string/back"
+                android:src="@drawable/ic_back" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
+            <TextView
+                android:id="@+id/roomCode"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/glass_pill"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:letterSpacing="0.12"
+                android:paddingHorizontal="14dp"
+                android:textColor="#FFFFFF"
+                android:textIsSelectable="false"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/memberCount"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/glass_pill"
+                android:drawablePadding="6dp"
+                android:gravity="center"
+                android:paddingHorizontal="12dp"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                app:drawableStartCompat="@drawable/ic_people_small" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <ImageButton
+                android:id="@+id/youtubeButton"
+                style="@style/GlassIcon"
+                android:contentDescription="@string/open_youtube"
+                android:src="@drawable/ic_search" />
+
+            <ImageButton
+                android:id="@+id/linkButton"
+                style="@style/GlassIcon"
+                android:layout_marginStart="6dp"
+                android:contentDescription="@string/paste_link"
+                android:src="@drawable/ic_link" />
+
+            <ImageButton
+                android:id="@+id/shareButton"
+                style="@style/GlassIcon"
+                android:layout_marginStart="6dp"
+                android:contentDescription="@string/invite"
+                android:src="@drawable/ic_person_add" />
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/playPause"
+            android:layout_width="68dp"
+            android:layout_height="68dp"
+            android:layout_gravity="center"
+            android:alpha="0.9"
+            android:background="@drawable/glass_circle"
+            android:contentDescription="@string/play_pause"
+            android:padding="18dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_play" />
+
+        <LinearLayout
+            android:id="@+id/bottomBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:alpha="0.9"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="6dp">
+
+            <TextView
+                android:id="@+id/timeText"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="bottom"
-                android:alpha="0.85"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="12dp"
-                android:paddingEnd="4dp">
+                android:fontFamily="sans-serif-medium"
+                android:text="0:00 / 0:00"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
 
-                <TextView
-                    android:id="@+id/timeText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="0:00 / 0:00"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp" />
+            <SeekBar
+                android:id="@+id/seekBar"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:progressBackgroundTint="#66FFFFFF"
+                android:progressTint="#FFFFFF"
+                android:thumbTint="#FFFFFF" />
 
-                <SeekBar
-                    android:id="@+id/seekBar"
-                    android:layout_width="0dp"
-                    android:layout_height="40dp"
-                    android:layout_weight="1"
-                    android:progressBackgroundTint="#80FFFFFF"
-                    android:progressTint="@color/accent"
-                    android:thumbTint="@color/accent" />
+            <ImageButton
+                android:id="@+id/resyncButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/resync"
+                android:padding="9dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_sync" />
 
-                <ImageButton
-                    android:id="@+id/cropButton"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/crop"
-                    android:padding="10dp"
-                    android:scaleType="fitCenter"
-                    android:src="@drawable/ic_crop" />
+            <ImageButton
+                android:id="@+id/cropButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/crop"
+                android:padding="9dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_crop" />
 
-                <ImageButton
-                    android:id="@+id/fullscreenButton"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/fullscreen"
-                    android:padding="8dp"
-                    android:scaleType="fitCenter"
-                    android:src="@drawable/ic_fullscreen" />
-            </LinearLayout>
-        </FrameLayout>
+            <ImageButton
+                android:id="@+id/fullscreenButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/fullscreen"
+                android:padding="8dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_fullscreen" />
+        </LinearLayout>
     </FrameLayout>
 
+    <!-- Shown before any video is picked -->
     <LinearLayout
-        android:id="@+id/content"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
+        android:id="@+id/emptyState"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
         android:orientation="vertical"
-        android:paddingHorizontal="12dp"
-        android:paddingBottom="8dp"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/mid"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/playerBox">
+        app:layout_constraintTop_toTopOf="parent">
 
-        <LinearLayout
-            android:layout_width="match_parent"
+        <TextView
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:fontFamily="sans-serif-medium"
+            android:text="@string/empty_title"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp" />
 
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:id="@+id/roomCode"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textAppearance="?attr/textAppearanceTitleMedium"
-                    android:textIsSelectable="true"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/memberCount"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textAppearance="?attr/textAppearanceBodySmall" />
-            </LinearLayout>
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/resyncButton"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/resync" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/shareButton"
-                style="@style/Widget.Material3.Button.TonalButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/invite" />
-        </LinearLayout>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/empty_subtitle"
+            android:textColor="#99FFFFFF"
+            android:textSize="13sp" />
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/youtubeButton"
-            android:layout_width="match_parent"
+            android:id="@+id/emptyPickButton"
+            android:layout_width="wrap_content"
             android:layout_height="52dp"
-            android:layout_marginTop="8dp"
-            android:text="@string/open_youtube" />
+            android:layout_marginTop="18dp"
+            android:paddingHorizontal="24dp"
+            android:text="@string/open_youtube"
+            app:cornerRadius="26dp"
+            app:icon="@drawable/ic_search"
+            app:iconTint="#FFFFFF" />
+    </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+    <TextView
+        android:id="@+id/chatToast"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:background="@drawable/chat_toast_bg"
+        android:maxWidth="320dp"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="7dp"
+        android:textColor="#E6FFFFFF"
+        android:textSize="13sp"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
-            <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox.Dense"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="@string/paste_link">
+    <!-- Chat floats over the reflection and fades out as it scrolls up -->
+    <com.abrar.watchtogether.FadingRecyclerView
+        android:id="@+id/chatList"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:clipToPadding="false"
+        android:fadingEdgeLength="140dp"
+        android:overScrollMode="never"
+        android:paddingHorizontal="14dp"
+        android:paddingBottom="6dp"
+        android:requiresFadingEdge="vertical"
+        android:scrollbars="none"
+        app:layout_constraintBottom_toTopOf="@id/inputBar"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/mid" />
 
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/urlInput"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:imeOptions="actionGo"
-                    android:inputType="textUri"
-                    android:maxLines="1" />
-            </com.google.android.material.textfield.TextInputLayout>
+    <LinearLayout
+        android:id="@+id/inputBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="14dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="12dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/loadButton"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="@string/play" />
-        </LinearLayout>
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/chatList"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_marginTop="8dp"
+        <EditText
+            android:id="@+id/messageInput"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
             android:layout_weight="1"
-            android:clipToPadding="false"
-            android:paddingVertical="4dp" />
+            android:background="@drawable/glass_input"
+            android:hint="@string/message_hint"
+            android:imeOptions="actionSend"
+            android:importantForAutofill="no"
+            android:inputType="textShortMessage|textCapSentences"
+            android:maxLines="1"
+            android:paddingHorizontal="20dp"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#80FFFFFF"
+            android:textSize="15sp" />
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/messageInput"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:background="@drawable/input_bg"
-                android:hint="@string/message_hint"
-                android:imeOptions="actionSend"
-                android:importantForAutofill="no"
-                android:inputType="textShortMessage|textCapSentences"
-                android:maxLines="1"
-                android:paddingHorizontal="16dp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/sendButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="@string/send" />
-        </LinearLayout>
+        <ImageButton
+            android:id="@+id/sendButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/send_circle"
+            android:contentDescription="@string/send"
+            android:padding="13dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_send" />
     </LinearLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

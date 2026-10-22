@@ -27,7 +27,9 @@ class ChatAdapter : RecyclerView.Adapter<ChatAdapter.Holder>() {
     override fun onBindViewHolder(h: Holder, position: Int) {
         val m = items[position]
         val mine = m.uid == myUid
-        h.b.sender.text = if (mine) h.itemView.context.getString(R.string.you) else m.name
+        // Own messages don't need a name; others show who wrote them
+        h.b.sender.visibility = if (mine) android.view.View.GONE else android.view.View.VISIBLE
+        h.b.sender.text = m.name
         h.b.text.text = m.text
         h.b.bubble.setBackgroundResource(if (mine) R.drawable.bubble_mine else R.drawable.bubble_other)
         (h.b.bubble.layoutParams as LinearLayout.LayoutParams).gravity =

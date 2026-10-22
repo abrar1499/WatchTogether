@@ -4,22 +4,30 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.text.InputType
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.SeekBar
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.updatePadding
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.abrar.watchtogether.databinding.ActivityRoomBinding
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -40,7 +48,6 @@ class RoomActivity : AppCompatActivity() {
     private var player: EmbedPlayer? = null
     private var currentVideoId: String? = null
     private var remote: PlaybackState? = null
-    private var pendingRemote: PlaybackState? = null
 
     // What the local player is doing
     private var localPlaying = false
@@ -51,11 +58,12 @@ class RoomActivity : AppCompatActivity() {
     // so we don't echo the same change back to everyone.
     private var ignoreLocalUntil = 0L
 
-    // Custom controls
+    // Controls & layout
     private var duration = 0f
     private var userSeeking = false
     private var fillMode = true
     private var fullscreen = false
+    private var topInset = 0
     private val hideControls = Runnable { setControlsVisible(false) }
     private val hideChatToast = Runnable { b.chatToast.visibility = View.GONE }
     private val exitFullscreenOnBack = object : OnBackPressedCallback(false) {
@@ -67,21 +75,25 @@ class RoomActivity : AppCompatActivity() {
         b = ActivityRoomBinding.inflate(layoutInflater)
         setContentView(b.root)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        setupEdgeToEdge()
 
         val code = intent.getStringExtra(EXTRA_CODE) ?: return finish()
         val name = intent.getStringExtra(EXTRA_NAME) ?: "Guest"
         userId = Prefs(this).userId
         sync = RoomSync(code, userId, name)
 
-        b.roomCode.text = getString(R.string.room_code_label, code)
+        b.roomCode.text = code
+        b.memberCount.text = "1"
         b.chatList.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
         b.chatList.adapter = chat
         chat.myUid = userId
 
         setupPlayer()
         setupControls()
+        updateEmptyState()
         onBackPressedDispatcher.addCallback(this, exitFullscreenOnBack)
 
+        b.backButton.setOnClickListener { finish() }
         b.shareButton.setOnClickListener {
             val text = getString(R.string.share_text, code)
             startActivity(Intent.createChooser(
@@ -90,16 +102,16 @@ class RoomActivity : AppCompatActivity() {
             ))
         }
 
-        b.youtubeButton.setOnClickListener {
+        val openPicker = View.OnClickListener {
             pickVideo.launch(Intent(this, YouTubeBrowseActivity::class.java))
         }
-        b.loadButton.setOnClickListener { loadFromInput() }
-        b.urlInput.setOnEditorActionListener { _, id, _ ->
-            if (id == EditorInfo.IME_ACTION_GO) { loadFromInput(); true } else false
-        }
+        b.youtubeButton.setOnClickListener(openPicker)
+        b.emptyPickButton.setOnClickListener(openPicker)
+        b.linkButton.setOnClickListener { askForLink() }
 
         b.resyncButton.setOnClickListener {
             remote?.let { applyRemote(it, force = true) }
+            scheduleHide()
         }
 
         b.sendButton.setOnClickListener { sendChat() }
@@ -115,9 +127,7 @@ class RoomActivity : AppCompatActivity() {
                 applyRemote(state, force = false)
             },
             onMembers = { members ->
-                b.memberCount.text = resources.getQuantityString(
-                    R.plurals.watching_count, members.size, members.size
-                )
+                b.memberCount.text = max(members.size, 1).toString()
                 b.memberCount.contentDescription = members.joinToString(", ")
             },
             onMessage = { msg ->
@@ -126,6 +136,32 @@ class RoomActivity : AppCompatActivity() {
                 if (fullscreen && msg.uid != userId) showChatToast("${msg.name}: ${msg.text}")
             }
         )
+    }
+
+    /** Draw behind the status and navigation bars so the video fills the whole phone. */
+    private fun setupEdgeToEdge() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
+
+        ViewCompat.setOnApplyWindowInsetsListener(b.root) { _, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            topInset = bars.top
+            // On Android 11+ we move the chat up ourselves when the keyboard opens
+            val ime = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                insets.getInsets(WindowInsetsCompat.Type.ime()).bottom else 0
+            b.topBar.updatePadding(top = if (fullscreen) dp(6) else bars.top + dp(6))
+            b.inputBar.updatePadding(bottom = max(bars.bottom, ime) + dp(12))
+            b.chatToast.translationY = bars.top.toFloat()
+            insets
+        }
     }
 
     private fun setupPlayer() {
@@ -177,6 +213,7 @@ class RoomActivity : AppCompatActivity() {
                 toast(getString(R.string.error_video, message.ifBlank { "?" }))
             }
         })
+        player?.setLayout(fit = !fillMode, full = false)
     }
 
     override fun onPause() {
@@ -189,10 +226,13 @@ class RoomActivity : AppCompatActivity() {
         player?.onResume()
     }
 
-    // ---------- Custom player controls ----------
+    // ---------- Controls ----------
 
     private fun setupControls() {
-        b.touchShield.setOnClickListener { setControlsVisible(true) }
+        b.touchShield.setOnClickListener {
+            if (b.controls.visibility == View.VISIBLE) setControlsVisible(false)
+            else setControlsVisible(true)
+        }
         b.controls.setOnClickListener { setControlsVisible(false) }
 
         b.playPause.setOnClickListener {
@@ -211,7 +251,7 @@ class RoomActivity : AppCompatActivity() {
             }
             override fun onStopTrackingTouch(bar: SeekBar) {
                 userSeeking = false
-                // The jump is picked up in onCurrentSecond and shared with the room
+                // The jump is picked up in onTime and shared with the room
                 player?.seekTo(bar.progress.toFloat())
                 scheduleHide()
             }
@@ -219,29 +259,20 @@ class RoomActivity : AppCompatActivity() {
 
         b.cropButton.setOnClickListener {
             fillMode = !fillMode
-            applyVideoScale()
+            player?.setLayout(fit = !fillMode, full = fullscreen)
             toast(getString(if (fillMode) R.string.crop_fill else R.string.crop_fit))
             scheduleHide()
         }
 
         b.fullscreenButton.setOnClickListener { setFullscreen(!fullscreen) }
-
-        b.playerBox.addOnLayoutChangeListener { _, l, t, r, bottom, ol, ot, or, ob ->
-            if (r - l != or - ol || bottom - t != ob - ot) applyVideoScale()
-        }
     }
 
-    /** Zooms the player so the video covers the whole box (cropping the edges). */
-    private fun applyVideoScale() {
-        val w = b.playerBox.width.toFloat()
-        val h = b.playerBox.height.toFloat()
-        if (w <= 0f || h <= 0f) return
-        val video = 16f / 9f
-        val box = w / h
-        val cover = max(box / video, video / box)
-        val scale = if (fillMode) max(cover, MIN_FILL_ZOOM) else 1f
-        b.player.scaleX = scale
-        b.player.scaleY = scale
+    private fun updateEmptyState() {
+        val empty = currentVideoId == null
+        b.emptyState.visibility = if (empty) View.VISIBLE else View.GONE
+        b.playPause.visibility = if (empty) View.GONE else View.VISIBLE
+        b.bottomBar.visibility = if (empty) View.INVISIBLE else View.VISIBLE
+        if (empty) setControlsVisible(true, autoHide = false)
     }
 
     private fun setControlsVisible(visible: Boolean, autoHide: Boolean = true) {
@@ -250,12 +281,13 @@ class RoomActivity : AppCompatActivity() {
             if (b.controls.visibility != View.VISIBLE) {
                 b.controls.alpha = 0f
                 b.controls.visibility = View.VISIBLE
-                b.controls.animate().alpha(1f).setDuration(150).start()
+                b.controls.animate().alpha(1f).setDuration(180).start()
             }
             if (autoHide) scheduleHide()
         } else {
-            if (!localPlaying) return   // keep controls up while paused
-            b.controls.animate().alpha(0f).setDuration(200)
+            // Keep controls up while paused or before a video is chosen
+            if (!localPlaying || currentVideoId == null) return
+            b.controls.animate().alpha(0f).setDuration(250)
                 .withEndAction { b.controls.visibility = View.GONE }.start()
         }
     }
@@ -286,31 +318,33 @@ class RoomActivity : AppCompatActivity() {
         fullscreen = on
         exitFullscreenOnBack.isEnabled = on
 
-        val lp = b.playerBox.layoutParams as ConstraintLayout.LayoutParams
+        // The video half grows to the whole screen; chat hides
+        val mid = b.mid.layoutParams as ConstraintLayout.LayoutParams
+        mid.guidePercent = if (on) 1f else 0.5f
+        b.mid.layoutParams = mid
+        b.chatList.visibility = if (on) View.GONE else View.VISIBLE
+        b.inputBar.visibility = if (on) View.GONE else View.VISIBLE
+        player?.setLayout(fit = !fillMode, full = on)
+
         val insets = WindowCompat.getInsetsController(window, window.decorView)
         if (on) {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            b.content.visibility = View.GONE
-            lp.dimensionRatio = null
-            lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
             insets.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             insets.hide(WindowInsetsCompat.Type.systemBars())
             b.fullscreenButton.setImageResource(R.drawable.ic_fullscreen_exit)
+            b.topBar.updatePadding(top = dp(6))
         } else {
             // Snap back to portrait, then allow rotation again a moment later
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-            b.playerBox.postDelayed({
+            b.root.postDelayed({
                 if (!fullscreen) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             }, 2500)
-            b.content.visibility = View.VISIBLE
-            lp.dimensionRatio = "H,16:9"
-            lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET
             insets.show(WindowInsetsCompat.Type.systemBars())
             b.fullscreenButton.setImageResource(R.drawable.ic_fullscreen)
             b.chatToast.visibility = View.GONE
+            b.topBar.updatePadding(top = topInset + dp(6))
         }
-        b.playerBox.layoutParams = lp
         scheduleHide()
     }
 
@@ -329,15 +363,25 @@ class RoomActivity : AppCompatActivity() {
 
     // ---------- Room actions ----------
 
-    private fun loadFromInput() {
-        val id = YouTubeLink.extractId(b.urlInput.text.toString())
-        if (id == null) {
-            b.urlInput.error = getString(R.string.error_link)
-            return
+    private fun askForLink() {
+        val input = EditText(this).apply {
+            hint = getString(R.string.paste_link)
+            inputType = InputType.TYPE_TEXT_VARIATION_URI
+            isSingleLine = true
         }
-        b.urlInput.setText("")
-        b.urlInput.clearFocus()
-        playForEveryone(id)
+        val box = FrameLayout(this).apply {
+            setPadding(dp(22), dp(8), dp(22), 0)
+            addView(input)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.link_dialog_title)
+            .setView(box)
+            .setPositiveButton(R.string.play) { _, _ ->
+                val id = YouTubeLink.extractId(input.text.toString())
+                if (id == null) toast(getString(R.string.error_link)) else playForEveryone(id)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun playForEveryone(id: String) {
@@ -347,8 +391,8 @@ class RoomActivity : AppCompatActivity() {
             lastSecond = 0f
             ignoreLocalUntil = SystemClock.elapsedRealtime() + IGNORE_MS
             p.load(id, 0f, autoplay = true)
+            updateEmptyState()
         }
-        // If the player isn't ready yet, the room update will load it once it is
         sync.pushState(id, true, 0.0)
     }
 
@@ -358,11 +402,7 @@ class RoomActivity : AppCompatActivity() {
     }
 
     private fun applyRemote(state: PlaybackState, force: Boolean) {
-        val p = player
-        if (p == null) {
-            pendingRemote = state
-            return
-        }
+        val p = player ?: return
         ignoreLocalUntil = SystemClock.elapsedRealtime() + IGNORE_MS
         val target = state.positionAt(sync.serverNow()).toFloat()
 
@@ -371,6 +411,7 @@ class RoomActivity : AppCompatActivity() {
             lastSecond = target
             lastSecondAt = SystemClock.elapsedRealtime()
             p.load(state.videoId, target, autoplay = state.playing)
+            updateEmptyState()
             return
         }
 
@@ -391,6 +432,8 @@ class RoomActivity : AppCompatActivity() {
         b.messageInput.setText("")
     }
 
+    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
     override fun onDestroy() {
@@ -406,7 +449,5 @@ class RoomActivity : AppCompatActivity() {
         private const val IGNORE_MS = 1500L
         private const val SEEK_THRESHOLD = 2.5f
         private const val DRIFT_THRESHOLD = 1.5f
-        // Slight zoom even in a 16:9 box so YouTube's edge branding is cropped away
-        private const val MIN_FILL_ZOOM = 1.12f
     }
 }

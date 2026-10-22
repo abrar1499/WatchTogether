@@ -12,7 +12,7 @@
     <string name="share_text">Mere saath video dekho! Watch Together app kholo aur room code daalo: %1$s</string>
     <string name="resync">Sync</string>
     <string name="paste_link">Ya link paste karein</string>
-    <string name="open_youtube">▶  YouTube kholein aur video chunein</string>
+    <string name="open_youtube">YouTube par dhoondein</string>
     <string name="pick_video">Video par tap karein</string>
     <string name="close">Band karein</string>
     <string name="play">Chalao</string>
@@ -45,6 +45,11 @@
     <string name="fullscreen">Full screen</string>
     <string name="crop_fill">Crop: screen bhari hui</string>
     <string name="crop_fit">Poori video</string>
+
+    <string name="empty_title">Kya dekhna hai?</string>
+    <string name="empty_subtitle">Video chunein, sab ke paas ek saath chalegi</string>
+    <string name="back">Wapas</string>
+    <string name="link_dialog_title">YouTube link</string>
 
     <plurals name="watching_count">
         <item quantity="one">%d banda dekh raha hai</item>
