@@ -84,5 +84,4 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
     implementation("com.google.firebase:firebase-database")
 
-    implementation("com.pierfrancescosoffritti.androidyoutubeplayer:core:12.1.0")
 }

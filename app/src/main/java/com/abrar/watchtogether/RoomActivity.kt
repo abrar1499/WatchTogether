@@ -20,10 +20,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.abrar.watchtogether.databinding.ActivityRoomBinding
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -41,7 +37,7 @@ class RoomActivity : AppCompatActivity() {
         if (result.resultCode == Activity.RESULT_OK && id != null) playForEveryone(id)
     }
 
-    private var player: YouTubePlayer? = null
+    private var player: EmbedPlayer? = null
     private var currentVideoId: String? = null
     private var remote: PlaybackState? = null
     private var pendingRemote: PlaybackState? = null
@@ -133,46 +129,31 @@ class RoomActivity : AppCompatActivity() {
     }
 
     private fun setupPlayer() {
-        lifecycle.addObserver(b.player)
-        // YouTube blocks embeds that claim to be youtube.com (error 152),
-        // so identify the player with the app's own package name.
-        val options = IFramePlayerOptions.Builder()
-            .controls(0)          // hide YouTube's own controls; we draw our own
-            .rel(0)
-            .ivLoadPolicy(3)      // no annotations
-            .origin("https://" + packageName)
-            .build()
-        b.player.initialize(object : AbstractYouTubePlayerListener() {
-            override fun onReady(youTubePlayer: YouTubePlayer) {
-                player = youTubePlayer
-                pendingRemote?.let { applyRemote(it, force = true) }
-                pendingRemote = null
-            }
-
-            override fun onStateChange(
-                youTubePlayer: YouTubePlayer,
-                state: PlayerConstants.PlayerState
-            ) {
-                updatePlayPauseIcon(state == PlayerConstants.PlayerState.PLAYING ||
-                    state == PlayerConstants.PlayerState.BUFFERING)
+        player = EmbedPlayer(b.player, packageName, object : EmbedPlayer.Listener {
+            override fun onState(state: EmbedPlayer.State) {
+                updatePlayPauseIcon(state == EmbedPlayer.State.PLAYING ||
+                    state == EmbedPlayer.State.BUFFERING)
                 when (state) {
-                    PlayerConstants.PlayerState.PLAYING -> {
+                    EmbedPlayer.State.PLAYING -> {
                         scheduleHide()
                         localPlaying = true
                         lastSecondAt = SystemClock.elapsedRealtime()
                         if (!ignoringLocal() && remote?.playing != true) publish(true, lastSecond)
                     }
-                    PlayerConstants.PlayerState.PAUSED -> {
+                    EmbedPlayer.State.PAUSED -> {
                         setControlsVisible(true, autoHide = false)
                         localPlaying = false
                         if (!ignoringLocal() && remote?.playing != false) publish(false, lastSecond)
                     }
-                    PlayerConstants.PlayerState.ENDED -> localPlaying = false
-                    else -> Unit
+                    EmbedPlayer.State.ENDED -> {
+                        localPlaying = false
+                        setControlsVisible(true, autoHide = false)
+                    }
+                    EmbedPlayer.State.BUFFERING -> Unit
                 }
             }
 
-            override fun onCurrentSecond(youTubePlayer: YouTubePlayer, second: Float) {
+            override fun onTime(second: Float) {
                 val now = SystemClock.elapsedRealtime()
                 // Detect a manual seek: the time jumped more than normal playback explains
                 val expected = if (localPlaying) lastSecond + (now - lastSecondAt) / 1000f else lastSecond
@@ -186,16 +167,26 @@ class RoomActivity : AppCompatActivity() {
                 }
             }
 
-            override fun onVideoDuration(youTubePlayer: YouTubePlayer, duration: Float) {
+            override fun onDuration(duration: Float) {
                 this@RoomActivity.duration = duration
                 b.seekBar.max = duration.toInt()
                 updateTimeText(lastSecond)
             }
 
-            override fun onError(youTubePlayer: YouTubePlayer, error: PlayerConstants.PlayerError) {
-                toast(getString(R.string.error_video, error.name))
+            override fun onError(message: String) {
+                toast(getString(R.string.error_video, message.ifBlank { "?" }))
             }
-        }, options)
+        })
+    }
+
+    override fun onPause() {
+        super.onPause()
+        player?.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        player?.onResume()
     }
 
     // ---------- Custom player controls ----------
@@ -355,7 +346,7 @@ class RoomActivity : AppCompatActivity() {
             currentVideoId = id
             lastSecond = 0f
             ignoreLocalUntil = SystemClock.elapsedRealtime() + IGNORE_MS
-            p.loadVideo(id, 0f)
+            p.load(id, 0f, autoplay = true)
         }
         // If the player isn't ready yet, the room update will load it once it is
         sync.pushState(id, true, 0.0)
@@ -379,7 +370,7 @@ class RoomActivity : AppCompatActivity() {
             currentVideoId = state.videoId
             lastSecond = target
             lastSecondAt = SystemClock.elapsedRealtime()
-            if (state.playing) p.loadVideo(state.videoId, target) else p.cueVideo(state.videoId, target)
+            p.load(state.videoId, target, autoplay = state.playing)
             return
         }
 
@@ -404,6 +395,8 @@ class RoomActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         if (::sync.isInitialized) sync.stop()
+        player?.release()
+        player = null
         super.onDestroy()
     }
 

@@ -15,11 +15,10 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
+        <WebView
             android:id="@+id/player"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            app:enableAutomaticInitialization="false" />
+            android:layout_height="match_parent" />
 
         <!-- Catches every tap so YouTube's own overlay never appears -->
         <View
