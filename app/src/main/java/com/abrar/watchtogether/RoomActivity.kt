@@ -10,6 +10,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.InputType
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
@@ -237,9 +239,29 @@ class RoomActivity : AppCompatActivity() {
     // ---------- Controls ----------
 
     private fun setupControls() {
-        b.touchShield.setOnClickListener {
-            if (b.controls.visibility == View.VISIBLE) setControlsVisible(false)
-            else setControlsVisible(true)
+        // Video area: a tap shows/hides controls.
+        // Below the video (or anywhere in full screen): double tap right = +10s, left = -10s.
+        val gestures = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent) = true
+
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (fullscreen || e.y < videoBottom()) {
+                    if (b.controls.visibility == View.VISIBLE) setControlsVisible(false)
+                    else setControlsVisible(true)
+                }
+                return true
+            }
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                if (!fullscreen && e.y < videoBottom()) return false
+                seekBy(if (e.x > b.root.width / 2f) SEEK_STEP else -SEEK_STEP, e.x, e.y)
+                return true
+            }
+        })
+        b.touchShield.setOnTouchListener { v, ev ->
+            gestures.onTouchEvent(ev)
+            if (ev.actionMasked == MotionEvent.ACTION_UP) v.performClick()
+            true
         }
         b.controls.setOnClickListener { setControlsVisible(false) }
 
@@ -301,7 +323,47 @@ class RoomActivity : AppCompatActivity() {
 
     private fun scheduleHide() {
         b.controls.removeCallbacks(hideControls)
-        if (localPlaying && !userSeeking) b.controls.postDelayed(hideControls, 3000)
+        if (localPlaying && !userSeeking) b.controls.postDelayed(hideControls, CONTROLS_HIDE_MS)
+    }
+
+    private fun videoBottom(): Float = b.root.height * 0.5f
+
+    // Consecutive double taps on the same side add up: +10s, +20s, +30s…
+    private var seekTotal = 0
+    private var seekSideRight = true
+    private var lastSeekAt = 0L
+    private val clearSeekHint = Runnable {
+        b.seekHint.animate().alpha(0f).setDuration(200).start()
+        seekTotal = 0
+    }
+
+    private fun seekBy(seconds: Int, x: Float, y: Float) {
+        val p = player ?: return
+        if (currentVideoId == null) return
+        val now = SystemClock.elapsedRealtime()
+        val right = seconds > 0
+        seekTotal = if (right == seekSideRight && now - lastSeekAt < 900) seekTotal + seconds else seconds
+        seekSideRight = right
+        lastSeekAt = now
+
+        val current = if (localPlaying) lastSecond + (now - lastSecondAt) / 1000f else lastSecond
+        val max = if (duration > 0f) duration - 1f else Float.MAX_VALUE
+        val target = (current + seconds).coerceIn(0f, max)
+        lastSecond = target
+        lastSecondAt = now
+        p.seekTo(target)
+        publish(localPlaying, target)   // everyone in the room jumps too
+
+        // Small "+10s" hint where the finger is; no controls
+        b.seekHint.text = (if (seekTotal > 0) "+" else "−") + abs(seekTotal) + "s"
+        b.seekHint.measure(0, 0)
+        b.seekHint.x = (x - b.seekHint.measuredWidth / 2f)
+            .coerceIn(dp(12).toFloat(), b.root.width - b.seekHint.measuredWidth - dp(12).toFloat())
+        b.seekHint.y = y - b.seekHint.measuredHeight * 2f
+        b.seekHint.animate().cancel()
+        b.seekHint.alpha = 1f
+        b.seekHint.removeCallbacks(clearSeekHint)
+        b.seekHint.postDelayed(clearSeekHint, 700)
     }
 
     private fun updatePlayPauseIcon(playing: Boolean) {
@@ -527,5 +589,7 @@ class RoomActivity : AppCompatActivity() {
         private const val IGNORE_MS = 1500L
         private const val SEEK_THRESHOLD = 2.5f
         private const val DRIFT_THRESHOLD = 1.5f
+        private const val CONTROLS_HIDE_MS = 1800L
+        private const val SEEK_STEP = 10
     }
 }

@@ -327,6 +327,21 @@
         </LinearLayout>
     </LinearLayout>
 
+    <!-- "+10s" hint for double-tap seeking -->
+    <TextView
+        android:id="@+id/seekHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:alpha="0"
+        android:background="@drawable/chat_toast_bg"
+        android:fontFamily="sans-serif-medium"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="6dp"
+        android:textColor="#FFFFFF"
+        android:textSize="15sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <TextView
         android:id="@+id/chatToast"
         android:layout_width="wrap_content"
