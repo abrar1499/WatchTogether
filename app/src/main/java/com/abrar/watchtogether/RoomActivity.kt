@@ -1,6 +1,5 @@
 package com.abrar.watchtogether
 
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -17,7 +16,6 @@ import android.widget.FrameLayout
 import android.widget.SeekBar
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.ViewCompat
@@ -37,13 +35,6 @@ class RoomActivity : AppCompatActivity() {
     private lateinit var sync: RoomSync
     private lateinit var userId: String
     private val chat = ChatAdapter()
-
-    private val pickVideo = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val id = result.data?.getStringExtra(YouTubeBrowseActivity.EXTRA_VIDEO_ID)
-        if (result.resultCode == Activity.RESULT_OK && id != null) playForEveryone(id)
-    }
 
     private var player: EmbedPlayer? = null
     private var currentVideoId: String? = null
@@ -102,11 +93,11 @@ class RoomActivity : AppCompatActivity() {
             ))
         }
 
-        val openPicker = View.OnClickListener {
-            pickVideo.launch(Intent(this, YouTubeBrowseActivity::class.java))
+        b.youtubeButton.setOnClickListener { openSearch(null) }
+        b.emptySearchButton.setOnClickListener { openSearch(b.emptySearchInput.text.toString()) }
+        b.emptySearchInput.setOnEditorActionListener { _, id, _ ->
+            if (id == EditorInfo.IME_ACTION_SEARCH) { openSearch(b.emptySearchInput.text.toString()); true } else false
         }
-        b.youtubeButton.setOnClickListener(openPicker)
-        b.emptyPickButton.setOnClickListener(openPicker)
         b.linkButton.setOnClickListener { askForLink() }
 
         b.resyncButton.setOnClickListener {
@@ -362,6 +353,14 @@ class RoomActivity : AppCompatActivity() {
     }
 
     // ---------- Room actions ----------
+
+    private fun openSearch(query: String?) {
+        b.emptySearchInput.clearFocus()
+        YouTubeSearchSheet(this, query?.trim()) { id ->
+            b.emptySearchInput.setText("")
+            playForEveryone(id)
+        }.show()
+    }
 
     private fun askForLink() {
         val input = EditText(this).apply {

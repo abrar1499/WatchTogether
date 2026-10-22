@@ -51,6 +51,9 @@
     <string name="back">Wapas</string>
     <string name="link_dialog_title">YouTube link</string>
 
+    <string name="search_hint">YouTube par search karein</string>
+    <string name="search">Search</string>
+
     <plurals name="watching_count">
         <item quantity="one">%d banda dekh raha hai</item>
         <item quantity="other">%d log dekh rahe hain</item>

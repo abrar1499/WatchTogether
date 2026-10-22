@@ -232,16 +232,42 @@
             android:textColor="#99FFFFFF"
             android:textSize="13sp" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/emptyPickButton"
-            android:layout_width="wrap_content"
-            android:layout_height="52dp"
-            android:layout_marginTop="18dp"
-            android:paddingHorizontal="24dp"
-            android:text="@string/open_youtube"
-            app:cornerRadius="26dp"
-            app:icon="@drawable/ic_search"
-            app:iconTint="#FFFFFF" />
+        <LinearLayout
+            android:layout_width="320dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/emptySearchInput"
+                android:layout_width="0dp"
+                android:layout_height="50dp"
+                android:layout_weight="1"
+                android:background="@drawable/glass_input"
+                android:drawableStart="@drawable/ic_search_small"
+                android:drawablePadding="10dp"
+                android:hint="@string/search_hint"
+                android:imeOptions="actionSearch"
+                android:importantForAutofill="no"
+                android:inputType="text"
+                android:maxLines="1"
+                android:paddingHorizontal="18dp"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#80FFFFFF"
+                android:textSize="15sp" />
+
+            <ImageButton
+                android:id="@+id/emptySearchButton"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/send_circle"
+                android:contentDescription="@string/search"
+                android:padding="13dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_search" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView
