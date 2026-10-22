@@ -12,6 +12,7 @@ import android.os.SystemClock
 import android.text.InputType
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
@@ -59,7 +60,8 @@ class RoomActivity : AppCompatActivity() {
     // Controls & layout
     private var duration = 0f
     private var userSeeking = false
-    private var fillMode = false   // Fit by default: never crop the video
+    private lateinit var prefs: Prefs
+    private var zoom = 0f   // 0 = whole video, 1 = fills half the screen; set by pinch
     private var fullscreen = false
     private var topInset = 0
     private val hideControls = Runnable { setControlsVisible(false) }
@@ -77,7 +79,9 @@ class RoomActivity : AppCompatActivity() {
 
         val code = intent.getStringExtra(EXTRA_CODE) ?: return finish()
         val name = intent.getStringExtra(EXTRA_NAME) ?: "Guest"
-        userId = Prefs(this).userId
+        prefs = Prefs(this)
+        userId = prefs.userId
+        zoom = prefs.zoom
         sync = RoomSync(code, userId, name)
 
         b.roomCode.text = code
@@ -228,7 +232,7 @@ class RoomActivity : AppCompatActivity() {
                 toast(tr(R.string.error_video))
             }
         })
-        player?.setLayout(fit = !fillMode, full = false)
+        player?.setLayout(zoom, full = false)
     }
 
     override fun onPause() {
@@ -263,8 +267,20 @@ class RoomActivity : AppCompatActivity() {
                 return true
             }
         })
+        // Pinch on the video: spread to fill (full-screen feel), squeeze to see the whole video
+        val pinch = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(d: ScaleGestureDetector): Boolean {
+                if (fullscreen || currentVideoId == null) return false
+                setZoom(zoom + (d.scaleFactor - 1f) * 1.6f, save = false)
+                return true
+            }
+            override fun onScaleEnd(d: ScaleGestureDetector) {
+                prefs.zoom = zoom
+            }
+        })
         b.touchShield.setOnTouchListener { v, ev ->
-            gestures.onTouchEvent(ev)
+            pinch.onTouchEvent(ev)
+            if (!pinch.isInProgress && ev.pointerCount == 1) gestures.onTouchEvent(ev)
             if (ev.actionMasked == MotionEvent.ACTION_UP) v.performClick()
             true
         }
@@ -292,9 +308,9 @@ class RoomActivity : AppCompatActivity() {
             }
         })
 
+        // One tap: whole video <-> filled
         b.cropButton.setOnClickListener {
-            fillMode = !fillMode
-            player?.setLayout(fit = !fillMode, full = fullscreen)
+            setZoom(if (zoom < 0.5f) 1f else 0f, save = true)
             scheduleHide()
         }
 
@@ -329,6 +345,14 @@ class RoomActivity : AppCompatActivity() {
     private fun scheduleHide() {
         b.controls.removeCallbacks(hideControls)
         if (localPlaying && !userSeeking) b.controls.postDelayed(hideControls, CONTROLS_HIDE_MS)
+    }
+
+    private fun setZoom(value: Float, save: Boolean) {
+        val z = value.coerceIn(0f, 1f)
+        if (z == zoom && !save) return
+        zoom = z
+        player?.setLayout(zoom, full = fullscreen)
+        if (save) prefs.zoom = zoom
     }
 
     // Where the video ends (as a fraction of screen height); controls and tap zones follow it
@@ -408,7 +432,7 @@ class RoomActivity : AppCompatActivity() {
         b.mid.layoutParams = mid
         b.chatList.visibility = if (on) View.GONE else View.VISIBLE
         b.inputBar.visibility = if (on) View.GONE else View.VISIBLE
-        player?.setLayout(fit = !fillMode, full = on)
+        player?.setLayout(zoom, full = on)
 
         val insets = WindowCompat.getInsetsController(window, window.decorView)
         if (on) {

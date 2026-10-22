@@ -11,6 +11,11 @@ class Prefs(context: Context) {
         get() = sp.getString("name", "") ?: ""
         set(value) = sp.edit().putString("name", value).apply()
 
+    /** Video zoom the person last picked with a pinch (0 = whole video, 1 = filled). */
+    var zoom: Float
+        get() = sp.getFloat("zoom", 0f)
+        set(value) = sp.edit().putFloat("zoom", value).apply()
+
     val userId: String
         get() {
             var id = sp.getString("uid", null)

@@ -33,7 +33,7 @@ class EmbedPlayer(
     private val main = Handler(Looper.getMainLooper())
     private var wantPlay = false
     private var startPaused = false
-    private var fit = false
+    private var zoom = 0f
     private var full = false
 
     init {
@@ -94,18 +94,18 @@ class EmbedPlayer(
     }
 
     /**
-     * [fit] = show the whole video (letterboxed) instead of cropping to fill.
+     * [zoom] 0 = whole video at its own shape (nothing cropped) … 1 = fills half the screen (cropped).
      * [full] = video fills the whole screen (landscape), no reflection.
      */
-    fun setLayout(fit: Boolean, full: Boolean) {
-        this.fit = fit
+    fun setLayout(zoom: Float, full: Boolean) {
+        this.zoom = zoom.coerceIn(0f, 1f)
         this.full = full
         applyLayout()
     }
 
     private fun applyLayout() = js(
-        "var c=document.documentElement.classList;" +
-            "c.toggle('wt-fit',$fit);c.toggle('wt-full',$full);" +
+        "window.__wtZoom=$zoom;" +
+            "document.documentElement.classList.toggle('wt-full',$full);" +
             "if(window.__wtRelayout)window.__wtRelayout();"
     )
 
@@ -172,6 +172,7 @@ class EmbedPlayer(
                 "{overflow:visible!important;transform:none!important;contain:none!important}" +
                 "video{position:fixed!important;top:0!important;left:0!important;" +
                 "width:100vw!important;height:var(--wt-h,50vh)!important;object-fit:cover!important;z-index:1!important;" +
+                "transition:height .12s linear;" +
                 // Reflection is strongest right at the seam and fades downwards
                 "-webkit-box-reflect:below 0px linear-gradient(rgba(255,255,255,.25),rgba(255,255,255,.6) 45%,#fff)}" +
                 "html.wt-fit video{object-fit:contain!important}" +
@@ -213,15 +214,20 @@ class EmbedPlayer(
               (document.body || document.documentElement).appendChild(glow);
               var gctx = glow.getContext('2d'), firstFrame = true;
               var hooked = null, errSent = false;
-              // Fit: full width at the video's own shape (never cropped), at most half the screen.
-              // Fill: always half the screen (cropped). Full screen: whole screen.
+              // Zoom 0: full width at the video's own shape (nothing cropped).
+              // Zoom 1: half the screen, filled (edges cropped). In between: anything the pinch picks.
               function relayout(){
                 var de = document.documentElement, W = innerWidth, H = innerHeight;
                 var v = hooked || document.querySelector('video');
-                var h = H * 0.5;
+                var z = Math.max(0, Math.min(1, window.__wtZoom || 0));
+                var half = H * 0.5, h = half, fit = false;
                 if (de.classList.contains('wt-full')) h = H;
-                else if (de.classList.contains('wt-fit') && v && v.videoWidth > 0)
-                  h = Math.min(W * v.videoHeight / v.videoWidth, H * 0.5);
+                else if (v && v.videoWidth > 0) {
+                  var nat = W * v.videoHeight / v.videoWidth;
+                  if (nat >= half) fit = z < 0.5;         // tall video: whole or filled
+                  else h = nat + (half - nat) * z;        // wide video: grows with zoom
+                }
+                de.classList.toggle('wt-fit', fit);
                 de.style.setProperty('--wt-h', h + 'px');
                 WT.area(h / H);
               }
