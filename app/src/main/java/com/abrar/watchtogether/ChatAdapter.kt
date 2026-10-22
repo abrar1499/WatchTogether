@@ -27,6 +27,7 @@ class ChatAdapter : RecyclerView.Adapter<ChatAdapter.Holder>() {
     override fun onBindViewHolder(h: Holder, position: Int) {
         val m = items[position]
         val mine = m.uid == myUid
+        h.itemView.setTag(R.id.chat_seen, null)   // let the list animate this message in
         // Own messages don't need a name; others show who wrote them
         h.b.sender.visibility = if (mine) android.view.View.GONE else android.view.View.VISIBLE
         h.b.sender.text = m.name
