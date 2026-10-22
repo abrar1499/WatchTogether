@@ -14,7 +14,7 @@ import android.view.animation.LinearInterpolator
 import kotlin.math.min
 
 /**
- * Loading animation: a glowing gradient ring spinning around a softly pulsing play button.
+ * Loading animation: a glowing gradient ring spinning.
  */
 class LoaderView @JvmOverloads constructor(
     context: Context,
@@ -84,7 +84,6 @@ class LoaderView @JvmOverloads constructor(
         val cy = height / 2f
         val r = oval.width() / 2f
 
-        canvas.drawCircle(cx, cy, r * 0.74f, disc)
         canvas.drawCircle(cx, cy, r, track)
 
         canvas.save()
@@ -93,15 +92,6 @@ class LoaderView @JvmOverloads constructor(
         canvas.drawArc(oval, 0f, 280f, false, ring)
         canvas.restore()
 
-        // Play triangle, slightly right of centre so it looks optically centred
-        val s = r * 0.34f * pulse
-        triangle.reset()
-        triangle.moveTo(cx - s * 0.75f, cy - s)
-        triangle.lineTo(cx + s, cy)
-        triangle.lineTo(cx - s * 0.75f, cy + s)
-        triangle.close()
-        play.alpha = (180 + 75 * (pulse - 0.82f) / 0.18f).toInt().coerceIn(0, 255)
-        canvas.drawPath(triangle, play)
     }
 
     private fun updateRunning() {
