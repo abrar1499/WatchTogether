@@ -79,6 +79,8 @@ class RoomActivity : AppCompatActivity() {
         sync = RoomSync(code, userId, name)
 
         b.roomCode.text = code
+        b.emptySearchInput.hintR(R.string.search_hint)
+        b.messageInput.hintR(R.string.message_hint)
         b.memberCount.text = "1"
         b.chatList.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
         b.chatList.adapter = chat
@@ -92,10 +94,10 @@ class RoomActivity : AppCompatActivity() {
 
         b.backButton.setOnClickListener { finish() }
         b.shareButton.setOnClickListener {
-            val text = getString(R.string.share_text, code)
+            val text = tr(R.string.share_text, code)
             startActivity(Intent.createChooser(
                 Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text),
-                getString(R.string.share)
+                tr(R.string.share)
             ))
         }
 
@@ -216,7 +218,7 @@ class RoomActivity : AppCompatActivity() {
 
             override fun onError(message: String) {
                 hideLoading(delayMs = 0)
-                toast(getString(R.string.error_video))
+                toast(tr(R.string.error_video))
             }
         })
         player?.setLayout(fit = !fillMode, full = false)
@@ -378,7 +380,7 @@ class RoomActivity : AppCompatActivity() {
 
     private fun askForLink() {
         val input = EditText(this).apply {
-            hint = getString(R.string.paste_link)
+            hint = tr(R.string.paste_link)
             inputType = InputType.TYPE_TEXT_VARIATION_URI
             isSingleLine = true
         }
@@ -387,11 +389,11 @@ class RoomActivity : AppCompatActivity() {
             addView(input)
         }
         MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.link_dialog_title)
+            .setTitle(tr(R.string.link_dialog_title))
             .setView(box)
-            .setPositiveButton(R.string.play) { _, _ ->
+            .setPositiveButton(tr(R.string.play)) { _, _ ->
                 val id = YouTubeLink.extractId(input.text.toString())
-                if (id == null) toast(getString(R.string.error_link)) else playForEveryone(id)
+                if (id == null) toast(tr(R.string.error_link)) else playForEveryone(id)
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()

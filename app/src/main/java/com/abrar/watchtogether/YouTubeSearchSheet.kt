@@ -29,6 +29,7 @@ class YouTubeSearchSheet(
         b = SheetYoutubeSearchBinding.inflate(layoutInflater)
         setContentView(b.root)
 
+        b.searchInput.hintR(R.string.search_hint)
         b.closeButton.setOnClickListener { dismiss() }
         b.searchInput.setOnEditorActionListener { _, id, _ ->
             if (id == EditorInfo.IME_ACTION_SEARCH) { search(b.searchInput.text.toString()); true } else false

@@ -103,9 +103,9 @@ object Updater {
             if (waitingForPermission) return
             waitingForPermission = true
             MaterialAlertDialogBuilder(activity)
-                .setTitle(R.string.update_permission_title)
-                .setMessage(R.string.update_permission_message)
-                .setPositiveButton(R.string.update_permission_ok) { _, _ ->
+                .setTitle(activity.tr(R.string.update_permission_title))
+                .setMessage(activity.tr(R.string.update_permission_message))
+                .setPositiveButton(activity.tr(R.string.update_permission_ok)) { _, _ ->
                     activity.startActivity(
                         Intent(
                             Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -113,7 +113,7 @@ object Updater {
                         )
                     )
                 }
-                .setNegativeButton(R.string.update_later) { _, _ -> waitingForPermission = false }
+                .setNegativeButton(activity.tr(R.string.update_later)) { _, _ -> waitingForPermission = false }
                 .show()
             return
         }
@@ -208,5 +208,5 @@ object Updater {
     }
 
     private fun toast(context: Context, res: Int) =
-        Toast.makeText(context, res, Toast.LENGTH_LONG).show()
+        Toast.makeText(context, context.tr(res), Toast.LENGTH_LONG).show()
 }

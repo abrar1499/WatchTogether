@@ -28,6 +28,10 @@ object RemoteConfig {
     @Volatile var searchCss: String? = null
         private set
 
+    /** Replacement app text, by string name (see Texts.kt). */
+    @Volatile var texts: Map<String, String> = emptyMap()
+        private set
+
     /** Opacity of chat messages, newest first. */
     @Volatile var chatLevels: FloatArray? = null
         private set
@@ -65,6 +69,9 @@ object RemoteConfig {
             chatLevels = json.optJSONArray("chatLevels")?.let { arr ->
                 FloatArray(arr.length()) { i -> arr.optDouble(i, 0.0).toFloat().coerceIn(0f, 1f) }
             }?.takeIf { it.isNotEmpty() }
+            texts = json.optJSONObject("texts")?.let { obj ->
+                obj.keys().asSequence().associateWith { obj.optString(it) }.filterValues { it.isNotEmpty() }
+            } ?: emptyMap()
             true
         }
     } catch (e: Exception) {

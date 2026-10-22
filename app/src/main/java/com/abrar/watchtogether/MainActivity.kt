@@ -18,8 +18,17 @@ class MainActivity : AppCompatActivity() {
         setContentView(b.root)
         prefs = Prefs(this)
 
+        // Labels can be changed from the remote settings file
+        b.titleText.textR(R.string.app_name)
+        b.setupWarning.textR(R.string.setup_needed)
+        b.nameLayout.hintR(R.string.your_name)
+        b.createButton.textR(R.string.create_room)
+        b.orText.textR(R.string.or_join)
+        b.codeLayout.hintR(R.string.room_code)
+        b.joinButton.textR(R.string.join_room)
+
         b.nameInput.setText(prefs.name)
-        b.versionText.text = getString(R.string.version_label, BuildConfig.VERSION_NAME)
+        b.versionText.text = tr(R.string.version_label, BuildConfig.VERSION_NAME)
         b.versionText.setOnClickListener { Updater.check(this, manual = true) }
         Updater.checkOnStart(this)
         b.setupWarning.visibility =
@@ -31,7 +40,7 @@ class MainActivity : AppCompatActivity() {
             val code = RoomSync.newCode()
             RoomSync.createRoom(code) { ok ->
                 setBusy(false)
-                if (ok) openRoom(code, name) else toast(getString(R.string.error_network))
+                if (ok) openRoom(code, name) else toast(tr(R.string.error_network))
             }
         }
 
@@ -39,7 +48,7 @@ class MainActivity : AppCompatActivity() {
             val name = readName() ?: return@setOnClickListener
             val code = b.codeInput.text.toString().trim().uppercase()
             if (code.length != 6) {
-                b.codeInput.error = getString(R.string.error_code_length)
+                b.codeInput.error = tr(R.string.error_code_length)
                 return@setOnClickListener
             }
             setBusy(true)
@@ -47,8 +56,8 @@ class MainActivity : AppCompatActivity() {
                 setBusy(false)
                 when (exists) {
                     true -> openRoom(code, name)
-                    false -> b.codeInput.error = getString(R.string.error_room_not_found)
-                    null -> toast(getString(R.string.error_network))
+                    false -> b.codeInput.error = tr(R.string.error_room_not_found)
+                    null -> toast(tr(R.string.error_network))
                 }
             }
         }
@@ -61,12 +70,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun readName(): String? {
         if (!WatchApp.isFirebaseConfigured()) {
-            toast(getString(R.string.setup_needed))
+            toast(tr(R.string.setup_needed))
             return null
         }
         val name = b.nameInput.text.toString().trim()
         if (name.isEmpty()) {
-            b.nameInput.error = getString(R.string.error_name)
+            b.nameInput.error = tr(R.string.error_name)
             return null
         }
         prefs.name = name

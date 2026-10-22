@@ -19,6 +19,7 @@
             android:src="@drawable/ic_launcher" />
 
         <TextView
+            android:id="@+id/titleText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
@@ -38,6 +39,7 @@
             android:visibility="gone" />
 
         <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/nameLayout"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -60,6 +62,7 @@
             android:text="@string/create_room" />
 
         <TextView
+            android:id="@+id/orText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
@@ -67,6 +70,7 @@
             android:textAppearance="?attr/textAppearanceLabelLarge" />
 
         <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/codeLayout"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
