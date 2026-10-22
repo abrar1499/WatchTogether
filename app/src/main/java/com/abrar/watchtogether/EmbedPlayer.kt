@@ -157,22 +157,25 @@ class EmbedPlayer(
                 "{overflow:visible!important;transform:none!important;contain:none!important}" +
                 "video{position:fixed!important;top:0!important;left:0!important;" +
                 "width:100vw!important;height:50vh!important;object-fit:cover!important;z-index:1!important;" +
-                // Reflection is strongest right at the seam and fades downwards
-                "-webkit-box-reflect:below 0px linear-gradient(transparent 5%,rgba(255,255,255,.35) 45%,rgba(255,255,255,.95))}" +
+                // Cinema-floor reflection: a clear mirror image at the seam that fades away downwards
+                "-webkit-box-reflect:below 0px linear-gradient(transparent,rgba(255,255,255,.12) 35%,rgba(255,255,255,.55) 80%,rgba(255,255,255,.8))}" +
                 "html.wt-fit video{object-fit:contain!important}" +
                 "html.wt-full video{height:100vh!important;-webkit-box-reflect:none}" +
-                // Progressive blur: starts gently inside the video's lower part, so there is no hard line
+                // Blur grows with distance from the screen, like a real glossy floor
                 ".wtfrost{position:fixed;left:0;width:100vw;pointer-events:none}" +
-                "#wtfrost1{top:38vh;height:62vh;z-index:2;" +
-                "-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);" +
-                "-webkit-mask-image:linear-gradient(transparent,#000 20%);mask-image:linear-gradient(transparent,#000 20%)}" +
-                "#wtfrost2{top:44vh;height:56vh;z-index:3;" +
-                "-webkit-backdrop-filter:blur(16px) saturate(1.3);backdrop-filter:blur(16px) saturate(1.3);" +
-                "-webkit-mask-image:linear-gradient(transparent,#000 22%);mask-image:linear-gradient(transparent,#000 22%)}" +
-                "#wtfrost3{top:50vh;height:50vh;z-index:4;" +
-                "-webkit-backdrop-filter:blur(30px) saturate(1.5);backdrop-filter:blur(30px) saturate(1.5);" +
-                "-webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%);" +
-                "background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.35) 45%,rgba(0,0,0,.82))}" +
+                "#wtfrost1{top:47vh;height:53vh;z-index:2;" +
+                "-webkit-backdrop-filter:blur(1.5px);backdrop-filter:blur(1.5px);" +
+                "-webkit-mask-image:linear-gradient(transparent,#000 8%);mask-image:linear-gradient(transparent,#000 8%)}" +
+                "#wtfrost2{top:58vh;height:42vh;z-index:3;" +
+                "-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);" +
+                "-webkit-mask-image:linear-gradient(transparent,#000 25%);mask-image:linear-gradient(transparent,#000 25%)}" +
+                "#wtfrost3{top:70vh;height:30vh;z-index:4;" +
+                "-webkit-backdrop-filter:blur(9px) saturate(1.2);backdrop-filter:blur(9px) saturate(1.2);" +
+                "-webkit-mask-image:linear-gradient(transparent,#000 35%);mask-image:linear-gradient(transparent,#000 35%)}" +
+                // Gentle floor shading: dark only towards the very bottom
+                "#wtshade{position:fixed;left:0;top:50vh;width:100vw;height:50vh;z-index:5;pointer-events:none;" +
+                "background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.18) 45%,rgba(0,0,0,.6))}" +
+                "html.wt-full #wtshade{display:none}" +
                 "html.wt-full .wtfrost{display:none}"
 
         private val HOOK_JS = """
@@ -181,8 +184,8 @@ class EmbedPlayer(
               var st = document.createElement('style');
               st.textContent = '$HIDE_CSS';
               (document.head || document.documentElement).appendChild(st);
-              ['wtfrost1','wtfrost2','wtfrost3'].forEach(function(id){
-                var fr = document.createElement('div'); fr.id = id; fr.className = 'wtfrost';
+              ['wtfrost1','wtfrost2','wtfrost3','wtshade'].forEach(function(id){
+                var fr = document.createElement('div'); fr.id = id; if (id !== 'wtshade') fr.className = 'wtfrost';
                 (document.body || document.documentElement).appendChild(fr);
               });
               var hooked = null, errSent = false;
