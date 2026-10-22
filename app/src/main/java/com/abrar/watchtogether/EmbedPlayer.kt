@@ -152,31 +152,21 @@ class EmbedPlayer(
                 ".ytp-chapter-container,.ytp-player-content.ytp-iv-player-content" +
                 "{display:none!important;opacity:0!important;pointer-events:none!important}" +
                 "html,body,#player{background:#000!important}" +
-                // Video on the top half, a mirrored reflection on the bottom half
+                // Video on the top half; its colours glow across the whole screen (ambient light)
                 "html,body,#player,#movie_player,.html5-video-player,.html5-video-container" +
                 "{overflow:visible!important;transform:none!important;contain:none!important}" +
+                "#player,#movie_player,.html5-video-player,.html5-video-container{background:transparent!important}" +
                 "video{position:fixed!important;top:0!important;left:0!important;" +
-                "width:100vw!important;height:50vh!important;object-fit:cover!important;z-index:1!important;" +
-                // Cinema-floor reflection: a clear mirror image at the seam that fades away downwards
-                "-webkit-box-reflect:below 0px linear-gradient(transparent,rgba(255,255,255,.12) 35%,rgba(255,255,255,.55) 80%,rgba(255,255,255,.8))}" +
+                "width:100vw!important;height:50vh!important;object-fit:cover!important;z-index:2!important;" +
+                // the video's lower edge melts into the glow, so it feels like one screen
+                "-webkit-mask-image:linear-gradient(#000 80%,transparent);mask-image:linear-gradient(#000 80%,transparent)}" +
                 "html.wt-fit video{object-fit:contain!important}" +
-                "html.wt-full video{height:100vh!important;-webkit-box-reflect:none}" +
-                // Blur grows with distance from the screen, like a real glossy floor
-                ".wtfrost{position:fixed;left:0;width:100vw;pointer-events:none}" +
-                "#wtfrost1{top:47vh;height:53vh;z-index:2;" +
-                "-webkit-backdrop-filter:blur(1.5px);backdrop-filter:blur(1.5px);" +
-                "-webkit-mask-image:linear-gradient(transparent,#000 8%);mask-image:linear-gradient(transparent,#000 8%)}" +
-                "#wtfrost2{top:58vh;height:42vh;z-index:3;" +
-                "-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);" +
-                "-webkit-mask-image:linear-gradient(transparent,#000 25%);mask-image:linear-gradient(transparent,#000 25%)}" +
-                "#wtfrost3{top:70vh;height:30vh;z-index:4;" +
-                "-webkit-backdrop-filter:blur(9px) saturate(1.2);backdrop-filter:blur(9px) saturate(1.2);" +
-                "-webkit-mask-image:linear-gradient(transparent,#000 35%);mask-image:linear-gradient(transparent,#000 35%)}" +
-                // Gentle floor shading: dark only towards the very bottom
-                "#wtshade{position:fixed;left:0;top:50vh;width:100vw;height:50vh;z-index:5;pointer-events:none;" +
-                "background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.18) 45%,rgba(0,0,0,.6))}" +
-                "html.wt-full #wtshade{display:none}" +
-                "html.wt-full .wtfrost{display:none}"
+                "html.wt-full video{height:100vh!important;-webkit-mask-image:none!important;mask-image:none!important}" +
+                "#wtglow{position:fixed;left:-15vw;top:-10vh;width:130vw;height:120vh;z-index:1;pointer-events:none;" +
+                "filter:blur(34px) saturate(1.8) brightness(1.05);opacity:.95}" +
+                "#wtshade{position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:3;pointer-events:none;" +
+                "background:linear-gradient(rgba(0,0,0,0) 48%,rgba(0,0,0,.12) 65%,rgba(0,0,0,.5))}" +
+                "html.wt-full #wtglow,html.wt-full #wtshade{display:none}"
 
         private val HOOK_JS = """
             (function(){
@@ -184,10 +174,12 @@ class EmbedPlayer(
               var st = document.createElement('style');
               st.textContent = '$HIDE_CSS';
               (document.head || document.documentElement).appendChild(st);
-              ['wtfrost1','wtfrost2','wtfrost3','wtshade'].forEach(function(id){
-                var fr = document.createElement('div'); fr.id = id; if (id !== 'wtshade') fr.className = 'wtfrost';
-                (document.body || document.documentElement).appendChild(fr);
-              });
+              var glow = document.createElement('canvas'); glow.id = 'wtglow';
+              glow.width = 24; glow.height = 48;
+              var shade = document.createElement('div'); shade.id = 'wtshade';
+              var root = document.body || document.documentElement;
+              root.appendChild(glow); root.appendChild(shade);
+              var gctx = glow.getContext('2d'), firstFrame = true;
               var hooked = null, errSent = false;
               function hook(v){
                 hooked = v;
@@ -215,6 +207,17 @@ class EmbedPlayer(
                   if (!v) { var b = document.querySelector('.ytp-large-play-button'); if (b) b.click(); }
                 }
               }, 300);
+              // Ambient glow: paint a tiny copy of the current frame ~15 times a second.
+              // Blending with the previous frame makes the colours flow smoothly.
+              setInterval(function(){
+                if (!hooked || document.documentElement.classList.contains('wt-full')) return;
+                if (hooked.readyState < 2) return;
+                try {
+                  gctx.globalAlpha = firstFrame ? 1 : 0.3;
+                  gctx.drawImage(hooked, 0, 0, glow.width, glow.height);
+                  firstFrame = false;
+                } catch (e) {}
+              }, 66);
             })();
         """.trimIndent()
     }
