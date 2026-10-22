@@ -37,14 +37,35 @@ class YouTubeSearchSheet(
         b.searchButton.setOnClickListener { search(b.searchInput.text.toString()) }
 
         val web = SearchWeb.obtain(activity)
-        // Start the search before the sheet has even finished sliding up
-        if (!initialQuery.isNullOrBlank()) SearchWeb.search(initialQuery)
-        b.webHost.addView(web, ViewGroup.LayoutParams(
+        // The page sits under a shimmering placeholder until real results are on it
+        b.webHost.addView(web, 0, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
         ))
-        SearchWeb.onProgress = { p ->
-            b.progress.visibility = if (p < 100) View.VISIBLE else View.INVISIBLE
-            b.progress.progress = p
+        b.progress.visibility = View.GONE
+        fun showSkeleton() {
+            web.animate().cancel()
+            web.alpha = 0f
+            b.skeleton.animate().cancel()
+            b.skeleton.alpha = 1f
+            b.skeleton.visibility = View.VISIBLE
+        }
+        fun showResults() {
+            web.animate().alpha(1f).setDuration(220).start()
+            b.skeleton.animate().alpha(0f).setDuration(220)
+                .withEndAction { b.skeleton.visibility = View.GONE }.start()
+        }
+        if (SearchWeb.contentReady && initialQuery.isNullOrBlank()) {
+            web.alpha = 1f
+            b.skeleton.visibility = View.GONE
+        } else {
+            showSkeleton()
+        }
+        SearchWeb.onLoadingStart = { showSkeleton() }
+        SearchWeb.onContentReady = { showResults() }
+        // Start the search right away, before the sheet has finished sliding up
+        if (!initialQuery.isNullOrBlank()) {
+            SearchWeb.search(initialQuery)
+            if (SearchWeb.contentReady) showResults()   // same search as last time: already there
         }
         SearchWeb.onPick = { id ->
             onPick(id)

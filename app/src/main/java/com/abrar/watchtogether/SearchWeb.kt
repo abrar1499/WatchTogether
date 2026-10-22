@@ -5,6 +5,9 @@ import android.app.Activity
 import android.content.Context
 import android.content.MutableContextWrapper
 import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -28,6 +31,38 @@ object SearchWeb {
 
     var onPick: ((String) -> Unit)? = null
     var onProgress: ((Int) -> Unit)? = null
+    var onLoadingStart: (() -> Unit)? = null
+    var onContentReady: (() -> Unit)? = null
+
+    /** True once real results (video cards) are on the page. */
+    var contentReady = false
+        private set
+
+    private val main = Handler(Looper.getMainLooper())
+    private var pollStarted = 0L
+    private val poll = object : Runnable {
+        override fun run() {
+            val v = web ?: return
+            v.evaluateJavascript(READY_CHECK) { result ->
+                if (result == "true" || SystemClock.elapsedRealtime() - pollStarted > 8_000) markReady()
+                else main.postDelayed(this, 120)
+            }
+        }
+    }
+
+    private fun startPolling() {
+        contentReady = false
+        pollStarted = SystemClock.elapsedRealtime()
+        main.removeCallbacks(poll)
+        main.postDelayed(poll, 120)
+    }
+
+    private fun markReady() {
+        main.removeCallbacks(poll)
+        if (contentReady) return
+        contentReady = true
+        onContentReady?.invoke()
+    }
 
     /** Start loading YouTube in the background (call when the room opens). */
     fun warmUp(context: Context) {
@@ -36,6 +71,7 @@ object SearchWeb {
         val w = MutableContextWrapper(app)
         wrapper = w
         web = create(w).also { it.loadUrl(HOME) }
+        startPolling()
     }
 
     /** Take the warm WebView to show it inside the search sheet. */
@@ -57,6 +93,8 @@ object SearchWeb {
         wrapper?.baseContext = v.context.applicationContext
         onPick = null
         onProgress = null
+        onLoadingStart = null
+        onContentReady = null
     }
 
     fun search(query: String) {
@@ -65,10 +103,14 @@ object SearchWeb {
         val v = web ?: return
         if (q == lastQuery && v.url?.contains("/results") == true) return   // already showing it
         lastQuery = q
+        onLoadingStart?.invoke()
         v.loadUrl(RESULTS + URLEncoder.encode(q, "UTF-8"))
+        startPolling()
     }
 
     fun destroy() {
+        main.removeCallbacks(poll)
+        contentReady = false
         web?.let {
             (it.parent as? ViewGroup)?.removeView(it)
             it.stopLoading()
@@ -148,7 +190,13 @@ object SearchWeb {
     private const val DEFAULT_CSS =
         "ytm-mobile-topbar-renderer,#header-bar,.mobile-topbar-header,ytm-pivot-bar-renderer," +
             "ytm-feed-filter-chip-bar-renderer{display:none!important}" +
-            "body,ytm-app{padding-top:0!important;background:#141416!important}"
+            "body,ytm-app{padding-top:0!important;background:#141416!important}" +
+            "ytm-spinner,ytm-spinner-renderer,.spinner-container{opacity:0!important}"
+
+    // Any real video card on the page means results are ready to show
+    private const val READY_CHECK =
+        "!!document.querySelector('ytm-video-with-context-renderer,ytm-compact-video-renderer," +
+            "ytm-reel-item-renderer,ytm-rich-item-renderer,ytm-media-item,ytm-video-card-renderer')"
 
     private const val HOME = "https://m.youtube.com/"
     private const val RESULTS = "https://m.youtube.com/results?search_query="
