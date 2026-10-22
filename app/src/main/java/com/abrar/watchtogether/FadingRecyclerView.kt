@@ -17,7 +17,8 @@ class FadingRecyclerView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : RecyclerView(context, attrs) {
 
-    private val levels = floatArrayOf(1f, 0.92f, 0.81f, 0.70f, 0.50f, 0.30f, 0.15f, 0.10f, 0.05f, 0.03f)
+    private val defaultLevels = floatArrayOf(1f, 0.92f, 0.81f, 0.70f, 0.50f, 0.30f, 0.15f, 0.10f, 0.05f, 0.03f)
+    private val levels: FloatArray get() = RemoteConfig.chatLevels ?: defaultLevels
     private val slideIn = 18 * resources.displayMetrics.density
 
     init {

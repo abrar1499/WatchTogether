@@ -11,6 +11,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import org.json.JSONObject
 import java.net.URLEncoder
 
 /**
@@ -135,16 +136,19 @@ object SearchWeb {
 
     // Hide YouTube's own top bar and bottom tabs; our search bar replaces them
     private fun injectCss(view: WebView) {
+        val css = JSONObject.quote(RemoteConfig.searchCss ?: DEFAULT_CSS)
         view.evaluateJavascript(
             "(function(){if(document.getElementById('wtcss'))return;" +
-                "var s=document.createElement('style');s.id='wtcss';s.textContent=" +
-                "'ytm-mobile-topbar-renderer,#header-bar,.mobile-topbar-header,ytm-pivot-bar-renderer," +
-                "ytm-feed-filter-chip-bar-renderer{display:none!important}" +
-                "body,ytm-app{padding-top:0!important;background:#141416!important}';" +
+                "var s=document.createElement('style');s.id='wtcss';s.textContent=" + css + ";" +
                 "(document.head||document.documentElement).appendChild(s);})();",
             null
         )
     }
+
+    private const val DEFAULT_CSS =
+        "ytm-mobile-topbar-renderer,#header-bar,.mobile-topbar-header,ytm-pivot-bar-renderer," +
+            "ytm-feed-filter-chip-bar-renderer{display:none!important}" +
+            "body,ytm-app{padding-top:0!important;background:#141416!important}"
 
     private const val HOME = "https://m.youtube.com/"
     private const val RESULTS = "https://m.youtube.com/results?search_query="

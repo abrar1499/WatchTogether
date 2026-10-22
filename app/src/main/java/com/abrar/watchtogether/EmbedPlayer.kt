@@ -7,6 +7,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import org.json.JSONObject
 
 /**
  * Plays YouTube by opening the embed page directly in our own WebView.
@@ -50,12 +51,12 @@ class EmbedPlayer(
         web.addJavascriptInterface(Bridge(), "WT")
         web.webViewClient = object : WebViewClient() {
             override fun onPageCommitVisible(view: WebView, url: String) {
-                view.evaluateJavascript("window.__wtWantPlay=$wantPlay;$HOOK_JS", null)
+                view.evaluateJavascript("window.__wtWantPlay=$wantPlay;" + hookJs(), null)
                 applyLayout()
             }
 
             override fun onPageFinished(view: WebView, url: String) {
-                view.evaluateJavascript("window.__wtWantPlay=$wantPlay;$HOOK_JS", null)
+                view.evaluateJavascript("window.__wtWantPlay=$wantPlay;" + hookJs(), null)
                 applyLayout()
             }
 
@@ -181,11 +182,15 @@ class EmbedPlayer(
                 "background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.1) 50%,rgba(0,0,0,.45))}" +
                 "html.wt-full .wtfrost{display:none}"
 
+        /** Hook script with the current look (from [RemoteConfig] if available). */
+        private fun hookJs(): String =
+            HOOK_JS.replace("__WT_CSS__", JSONObject.quote(RemoteConfig.playerCss ?: HIDE_CSS))
+
         private val HOOK_JS = """
             (function(){
               if (window.__wt) return; window.__wt = true;
               var st = document.createElement('style');
-              st.textContent = '$HIDE_CSS';
+              st.textContent = __WT_CSS__;
               (document.head || document.documentElement).appendChild(st);
               ['wtfrost1','wtfrost2','wtfrost3'].forEach(function(id){
                 var fr = document.createElement('div'); fr.id = id; fr.className = 'wtfrost';

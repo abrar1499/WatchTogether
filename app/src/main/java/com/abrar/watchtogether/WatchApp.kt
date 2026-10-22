@@ -9,6 +9,7 @@ class WatchApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        RemoteConfig.init(this)   // instant from the saved copy; refreshes quietly in the background
         if (isFirebaseConfigured() && FirebaseApp.getApps(this).isEmpty()) {
             try {
                 val builder = FirebaseOptions.Builder()

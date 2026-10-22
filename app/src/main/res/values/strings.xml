@@ -56,6 +56,11 @@
 
     <string name="loading_video">Video aa rahi hai…</string>
 
+    <string name="update_installing">Naya version install ho raha hai… app 2-3 second ke liye band hogi, phir dobara kholein</string>
+    <string name="update_permission_title">Updates khud ho jayein</string>
+    <string name="update_permission_message">Ek baar is app ko "Install unknown apps" ki ijazat de dein. Us ke baad naye versions khud download aur install honge.</string>
+    <string name="update_permission_ok">Ijazat dein</string>
+
     <plurals name="watching_count">
         <item quantity="one">%d banda dekh raha hai</item>
         <item quantity="other">%d log dekh rahe hain</item>
