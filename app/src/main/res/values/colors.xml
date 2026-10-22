@@ -1,0 +1,9 @@
+<resources>
+    <color name="accent">#E5484D</color>
+    <color name="accent_dark">#B8323A</color>
+    <color name="bubble_mine">#33E5484D</color>
+    <color name="bubble_other">#1F888888</color>
+    <color name="warning_bg">#FFF4D6</color>
+    <color name="warning_text">#6B4E00</color>
+    <color name="input_bg">#1F888888</color>
+</resources>

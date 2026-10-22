@@ -1,0 +1,32 @@
+<resources>
+    <string name="app_name">Watch Together</string>
+    <string name="tagline">Door bethay doston ke saath ek hi waqt par video dekhein</string>
+    <string name="your_name">Aap ka naam</string>
+    <string name="create_room">New Room Banayein</string>
+    <string name="or_join">ya room code se join karein</string>
+    <string name="room_code">Room code (6 harf)</string>
+    <string name="join_room">Join Room</string>
+    <string name="room_code_label">Room: %1$s</string>
+    <string name="invite">Invite</string>
+    <string name="share">Share</string>
+    <string name="share_text">Mere saath video dekho! Watch Together app kholo aur room code daalo: %1$s</string>
+    <string name="resync">Sync</string>
+    <string name="paste_link">YouTube link paste karein</string>
+    <string name="play">Chalao</string>
+    <string name="message_hint">Message likhein…</string>
+    <string name="send">Send</string>
+    <string name="you">Aap</string>
+
+    <string name="setup_needed">Firebase abhi set nahi hai. README ke steps follow karke GitHub Secrets add karein, phir dobara build karein.</string>
+    <string name="error_name">Pehle apna naam likhein</string>
+    <string name="error_code_length">Code 6 harf ka hota hai</string>
+    <string name="error_room_not_found">Yeh room nahi mila</string>
+    <string name="error_network">Internet ya Firebase se connect nahi ho saka</string>
+    <string name="error_link">Sahi YouTube link nahi hai</string>
+    <string name="error_video">Video nahi chal saki (%1$s). Kuch videos embed allow nahi karti.</string>
+
+    <plurals name="watching_count">
+        <item quantity="one">%d banda dekh raha hai</item>
+        <item quantity="other">%d log dekh rahe hain</item>
+    </plurals>
+</resources>

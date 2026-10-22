@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "rooms": {
+      "$code": {
+        ".read": true,
+        ".write": true,
+        ".validate": "$code.length === 6",
+        "messages": {
+          "$msg": {
+            ".validate": "newData.child('text').isString() && newData.child('text').val().length <= 500"
+          }
+        }
+      }
+    }
+  }
+}
