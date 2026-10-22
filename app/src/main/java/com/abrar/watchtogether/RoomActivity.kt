@@ -3,6 +3,8 @@ package com.abrar.watchtogether
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -26,6 +28,9 @@ import androidx.core.view.updatePadding
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.abrar.watchtogether.databinding.ActivityRoomBinding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlin.concurrent.thread
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -163,21 +168,29 @@ class RoomActivity : AppCompatActivity() {
                     state == EmbedPlayer.State.BUFFERING)
                 when (state) {
                     EmbedPlayer.State.PLAYING -> {
+                        b.bufferLoader.visibility = View.GONE
+                        hideLoading(delayMs = 300)
                         scheduleHide()
                         localPlaying = true
                         lastSecondAt = SystemClock.elapsedRealtime()
                         if (!ignoringLocal() && remote?.playing != true) publish(true, lastSecond)
                     }
                     EmbedPlayer.State.PAUSED -> {
+                        b.bufferLoader.visibility = View.GONE
+                        if (!loadingAutoplay) hideLoading(delayMs = 300)
                         setControlsVisible(true, autoHide = false)
                         localPlaying = false
                         if (!ignoringLocal() && remote?.playing != false) publish(false, lastSecond)
                     }
                     EmbedPlayer.State.ENDED -> {
+                        b.bufferLoader.visibility = View.GONE
+                        hideLoading(delayMs = 0)
                         localPlaying = false
                         setControlsVisible(true, autoHide = false)
                     }
-                    EmbedPlayer.State.BUFFERING -> Unit
+                    EmbedPlayer.State.BUFFERING -> {
+                        if (!loading) b.bufferLoader.visibility = View.VISIBLE
+                    }
                 }
             }
 
@@ -202,6 +215,7 @@ class RoomActivity : AppCompatActivity() {
             }
 
             override fun onError(message: String) {
+                hideLoading(delayMs = 0)
                 toast(getString(R.string.error_video, message.ifBlank { "?" }))
             }
         })
@@ -390,6 +404,7 @@ class RoomActivity : AppCompatActivity() {
             currentVideoId = id
             lastSecond = 0f
             ignoreLocalUntil = SystemClock.elapsedRealtime() + IGNORE_MS
+            showLoading(id, autoplay = true)
             p.load(id, 0f, autoplay = true)
             updateEmptyState()
         }
@@ -410,6 +425,7 @@ class RoomActivity : AppCompatActivity() {
             currentVideoId = state.videoId
             lastSecond = target
             lastSecondAt = SystemClock.elapsedRealtime()
+            showLoading(state.videoId, autoplay = state.playing)
             p.load(state.videoId, target, autoplay = state.playing)
             updateEmptyState()
             return
@@ -421,6 +437,66 @@ class RoomActivity : AppCompatActivity() {
         if (force || abs(localNow - target) > DRIFT_THRESHOLD) p.seekTo(target)
 
         if (state.playing) p.play() else p.pause()
+    }
+
+    // ---------- Loading screen ----------
+
+    private var loading = false
+    private var loadingAutoplay = true
+    private var loadingVideoId: String? = null
+    private val hideLoadingNow = Runnable { fadeOutLoading() }
+
+    /** Cover the player with our own loading screen until the new video is really playing. */
+    private fun showLoading(videoId: String, autoplay: Boolean) {
+        loading = true
+        loadingAutoplay = autoplay
+        loadingVideoId = videoId
+        b.bufferLoader.visibility = View.GONE
+        b.loadingOverlay.removeCallbacks(hideLoadingNow)
+        b.loadingOverlay.animate().cancel()
+        b.loadingOverlay.alpha = 1f
+        b.loadingOverlay.visibility = View.VISIBLE
+        b.loadingThumb.setImageDrawable(null)
+        b.loadingBlur.setImageDrawable(null)
+        loadThumbnail(videoId)
+        // Never get stuck: give up on the loading screen after 15 seconds
+        b.loadingOverlay.postDelayed(hideLoadingNow, 15_000)
+    }
+
+    private fun hideLoading(delayMs: Long) {
+        if (!loading) return
+        b.loadingOverlay.removeCallbacks(hideLoadingNow)
+        // A short delay lets the first frames paint before we reveal them
+        b.loadingOverlay.postDelayed(hideLoadingNow, delayMs)
+    }
+
+    private fun fadeOutLoading() {
+        loading = false
+        b.loadingOverlay.animate().alpha(0f).setDuration(350)
+            .withEndAction { b.loadingOverlay.visibility = View.GONE }.start()
+    }
+
+    /** Shows the video's thumbnail on the loading screen (sharp on top, blurred everywhere). */
+    private fun loadThumbnail(videoId: String) {
+        thread {
+            val bmp = listOf("hq720.jpg", "mqdefault.jpg").firstNotNullOfOrNull { name ->
+                try {
+                    val conn = URL("https://i.ytimg.com/vi/$videoId/$name").openConnection() as HttpURLConnection
+                    conn.connectTimeout = 5000
+                    conn.readTimeout = 5000
+                    if (conn.responseCode == 200) conn.inputStream.use { BitmapFactory.decodeStream(it) } else null
+                } catch (e: Exception) {
+                    null
+                }
+            } ?: return@thread
+            // A tiny copy stretched over the screen gives a soft, cheap blur on every phone
+            val tiny = Bitmap.createScaledBitmap(bmp, 24, 14, true)
+            runOnUiThread {
+                if (loadingVideoId != videoId || isDestroyed) return@runOnUiThread
+                b.loadingThumb.setImageBitmap(bmp)
+                b.loadingBlur.setImageBitmap(tiny)
+            }
+        }
     }
 
     private fun ignoringLocal() = SystemClock.elapsedRealtime() < ignoreLocalUntil

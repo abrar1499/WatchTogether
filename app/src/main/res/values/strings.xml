@@ -54,6 +54,8 @@
     <string name="search_hint">YouTube par search karein</string>
     <string name="search">Search</string>
 
+    <string name="loading_video">Video aa rahi hai…</string>
+
     <plurals name="watching_count">
         <item quantity="one">%d banda dekh raha hai</item>
         <item quantity="other">%d log dekh rahe hain</item>

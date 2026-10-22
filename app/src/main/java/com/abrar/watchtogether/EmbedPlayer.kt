@@ -49,6 +49,11 @@ class EmbedPlayer(
         web.isHorizontalScrollBarEnabled = false
         web.addJavascriptInterface(Bridge(), "WT")
         web.webViewClient = object : WebViewClient() {
+            override fun onPageCommitVisible(view: WebView, url: String) {
+                view.evaluateJavascript("window.__wtWantPlay=$wantPlay;$HOOK_JS", null)
+                applyLayout()
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
                 view.evaluateJavascript("window.__wtWantPlay=$wantPlay;$HOOK_JS", null)
                 applyLayout()
@@ -149,7 +154,8 @@ class EmbedPlayer(
                 ".ytp-endscreen-content,.ytp-endscreen-previous,.ytp-endscreen-next,.videowall-endscreen," +
                 ".ytp-cards-teaser,.ytp-cards-button,.ytp-paid-content-overlay,.ytp-suggested-action," +
                 ".ytp-contextmenu,.ytp-popup,.ytp-tooltip,.branding-img,.iv-branding,.annotation," +
-                ".ytp-chapter-container,.ytp-player-content.ytp-iv-player-content" +
+                ".ytp-chapter-container,.ytp-player-content.ytp-iv-player-content," +
+                ".ytp-spinner,.ytp-cued-thumbnail-overlay,.ytp-bezel,.ytp-bezel-text,.ytp-autonav-endscreen" +
                 "{display:none!important;opacity:0!important;pointer-events:none!important}" +
                 "html,body,#player{background:#000!important}" +
                 // Video on the top half, a mirrored reflection on the bottom half
