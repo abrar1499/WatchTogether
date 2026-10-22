@@ -40,6 +40,12 @@
     <string name="check_update">Update check karein</string>
     <string name="version_label">Version %1$s</string>
 
+    <string name="play_pause">Play ya pause</string>
+    <string name="crop">Screen bharein ya poori video</string>
+    <string name="fullscreen">Full screen</string>
+    <string name="crop_fill">Crop: screen bhari hui</string>
+    <string name="crop_fit">Poori video</string>
+
     <plurals name="watching_count">
         <item quantity="one">%d banda dekh raha hai</item>
         <item quantity="other">%d log dekh rahe hain</item>

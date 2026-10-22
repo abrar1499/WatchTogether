@@ -2,13 +2,22 @@ package com.abrar.watchtogether
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.os.Bundle
 import android.os.SystemClock
+import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.widget.SeekBar
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.abrar.watchtogether.databinding.ActivityRoomBinding
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants
@@ -16,6 +25,7 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions
 import kotlin.math.abs
+import kotlin.math.max
 
 class RoomActivity : AppCompatActivity() {
 
@@ -45,6 +55,17 @@ class RoomActivity : AppCompatActivity() {
     // so we don't echo the same change back to everyone.
     private var ignoreLocalUntil = 0L
 
+    // Custom controls
+    private var duration = 0f
+    private var userSeeking = false
+    private var fillMode = true
+    private var fullscreen = false
+    private val hideControls = Runnable { setControlsVisible(false) }
+    private val hideChatToast = Runnable { b.chatToast.visibility = View.GONE }
+    private val exitFullscreenOnBack = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() = setFullscreen(false)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivityRoomBinding.inflate(layoutInflater)
@@ -62,6 +83,8 @@ class RoomActivity : AppCompatActivity() {
         chat.myUid = userId
 
         setupPlayer()
+        setupControls()
+        onBackPressedDispatcher.addCallback(this, exitFullscreenOnBack)
 
         b.shareButton.setOnClickListener {
             val text = getString(R.string.share_text, code)
@@ -104,6 +127,7 @@ class RoomActivity : AppCompatActivity() {
             onMessage = { msg ->
                 chat.add(msg)
                 b.chatList.scrollToPosition(chat.itemCount - 1)
+                if (fullscreen && msg.uid != userId) showChatToast("${msg.name}: ${msg.text}")
             }
         )
     }
@@ -113,8 +137,9 @@ class RoomActivity : AppCompatActivity() {
         // YouTube blocks embeds that claim to be youtube.com (error 152),
         // so identify the player with the app's own package name.
         val options = IFramePlayerOptions.Builder()
-            .controls(1)
+            .controls(0)          // hide YouTube's own controls; we draw our own
             .rel(0)
+            .ivLoadPolicy(3)      // no annotations
             .origin("https://" + packageName)
             .build()
         b.player.initialize(object : AbstractYouTubePlayerListener() {
@@ -128,13 +153,17 @@ class RoomActivity : AppCompatActivity() {
                 youTubePlayer: YouTubePlayer,
                 state: PlayerConstants.PlayerState
             ) {
+                updatePlayPauseIcon(state == PlayerConstants.PlayerState.PLAYING ||
+                    state == PlayerConstants.PlayerState.BUFFERING)
                 when (state) {
                     PlayerConstants.PlayerState.PLAYING -> {
+                        scheduleHide()
                         localPlaying = true
                         lastSecondAt = SystemClock.elapsedRealtime()
                         if (!ignoringLocal() && remote?.playing != true) publish(true, lastSecond)
                     }
                     PlayerConstants.PlayerState.PAUSED -> {
+                        setControlsVisible(true, autoHide = false)
                         localPlaying = false
                         if (!ignoringLocal() && remote?.playing != false) publish(false, lastSecond)
                     }
@@ -151,6 +180,16 @@ class RoomActivity : AppCompatActivity() {
                 lastSecond = second
                 lastSecondAt = now
                 if (jumped && !ignoringLocal()) publish(localPlaying, second)
+                if (!userSeeking) {
+                    b.seekBar.progress = second.toInt()
+                    updateTimeText(second)
+                }
+            }
+
+            override fun onVideoDuration(youTubePlayer: YouTubePlayer, duration: Float) {
+                this@RoomActivity.duration = duration
+                b.seekBar.max = duration.toInt()
+                updateTimeText(lastSecond)
             }
 
             override fun onError(youTubePlayer: YouTubePlayer, error: PlayerConstants.PlayerError) {
@@ -158,6 +197,146 @@ class RoomActivity : AppCompatActivity() {
             }
         }, options)
     }
+
+    // ---------- Custom player controls ----------
+
+    private fun setupControls() {
+        b.touchShield.setOnClickListener { setControlsVisible(true) }
+        b.controls.setOnClickListener { setControlsVisible(false) }
+
+        b.playPause.setOnClickListener {
+            val p = player ?: return@setOnClickListener
+            if (localPlaying) p.pause() else p.play()
+            scheduleHide()
+        }
+
+        b.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+                if (fromUser) updateTimeText(progress.toFloat())
+            }
+            override fun onStartTrackingTouch(bar: SeekBar) {
+                userSeeking = true
+                b.controls.removeCallbacks(hideControls)
+            }
+            override fun onStopTrackingTouch(bar: SeekBar) {
+                userSeeking = false
+                // The jump is picked up in onCurrentSecond and shared with the room
+                player?.seekTo(bar.progress.toFloat())
+                scheduleHide()
+            }
+        })
+
+        b.cropButton.setOnClickListener {
+            fillMode = !fillMode
+            applyVideoScale()
+            toast(getString(if (fillMode) R.string.crop_fill else R.string.crop_fit))
+            scheduleHide()
+        }
+
+        b.fullscreenButton.setOnClickListener { setFullscreen(!fullscreen) }
+
+        b.playerBox.addOnLayoutChangeListener { _, l, t, r, bottom, ol, ot, or, ob ->
+            if (r - l != or - ol || bottom - t != ob - ot) applyVideoScale()
+        }
+    }
+
+    /** Zooms the player so the video covers the whole box (cropping the edges). */
+    private fun applyVideoScale() {
+        val w = b.playerBox.width.toFloat()
+        val h = b.playerBox.height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        val video = 16f / 9f
+        val box = w / h
+        val cover = max(box / video, video / box)
+        val scale = if (fillMode) max(cover, MIN_FILL_ZOOM) else 1f
+        b.player.scaleX = scale
+        b.player.scaleY = scale
+    }
+
+    private fun setControlsVisible(visible: Boolean, autoHide: Boolean = true) {
+        b.controls.removeCallbacks(hideControls)
+        if (visible) {
+            if (b.controls.visibility != View.VISIBLE) {
+                b.controls.alpha = 0f
+                b.controls.visibility = View.VISIBLE
+                b.controls.animate().alpha(1f).setDuration(150).start()
+            }
+            if (autoHide) scheduleHide()
+        } else {
+            if (!localPlaying) return   // keep controls up while paused
+            b.controls.animate().alpha(0f).setDuration(200)
+                .withEndAction { b.controls.visibility = View.GONE }.start()
+        }
+    }
+
+    private fun scheduleHide() {
+        b.controls.removeCallbacks(hideControls)
+        if (localPlaying && !userSeeking) b.controls.postDelayed(hideControls, 3000)
+    }
+
+    private fun updatePlayPauseIcon(playing: Boolean) {
+        b.playPause.setImageResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play)
+    }
+
+    private fun updateTimeText(second: Float) {
+        b.timeText.text = formatTime(second) + " / " + formatTime(duration)
+    }
+
+    private fun formatTime(sec: Float): String {
+        val t = sec.toInt().coerceAtLeast(0)
+        val h = t / 3600
+        val m = (t % 3600) / 60
+        val s = t % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+    }
+
+    private fun setFullscreen(on: Boolean) {
+        if (fullscreen == on) return
+        fullscreen = on
+        exitFullscreenOnBack.isEnabled = on
+
+        val lp = b.playerBox.layoutParams as ConstraintLayout.LayoutParams
+        val insets = WindowCompat.getInsetsController(window, window.decorView)
+        if (on) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            b.content.visibility = View.GONE
+            lp.dimensionRatio = null
+            lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+            insets.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            insets.hide(WindowInsetsCompat.Type.systemBars())
+            b.fullscreenButton.setImageResource(R.drawable.ic_fullscreen_exit)
+        } else {
+            // Snap back to portrait, then allow rotation again a moment later
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            b.playerBox.postDelayed({
+                if (!fullscreen) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }, 2500)
+            b.content.visibility = View.VISIBLE
+            lp.dimensionRatio = "H,16:9"
+            lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET
+            insets.show(WindowInsetsCompat.Type.systemBars())
+            b.fullscreenButton.setImageResource(R.drawable.ic_fullscreen)
+            b.chatToast.visibility = View.GONE
+        }
+        b.playerBox.layoutParams = lp
+        scheduleHide()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Turning the phone sideways goes full screen automatically
+        if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) setFullscreen(true)
+    }
+
+    private fun showChatToast(text: String) {
+        b.chatToast.text = text
+        b.chatToast.visibility = View.VISIBLE
+        b.chatToast.removeCallbacks(hideChatToast)
+        b.chatToast.postDelayed(hideChatToast, 4000)
+    }
+
+    // ---------- Room actions ----------
 
     private fun loadFromInput() {
         val id = YouTubeLink.extractId(b.urlInput.text.toString())
@@ -234,5 +413,7 @@ class RoomActivity : AppCompatActivity() {
         private const val IGNORE_MS = 1500L
         private const val SEEK_THRESHOLD = 2.5f
         private const val DRIFT_THRESHOLD = 1.5f
+        // Slight zoom even in a 16:9 box so YouTube's edge branding is cropped away
+        private const val MIN_FILL_ZOOM = 1.12f
     }
 }

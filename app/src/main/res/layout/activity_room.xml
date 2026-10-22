@@ -4,17 +4,117 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
-        android:id="@+id/player"
+    <FrameLayout
+        android:id="@+id/playerBox"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:enableAutomaticInitialization="false"
+        android:background="#000000"
+        android:clipChildren="true"
         app:layout_constraintDimensionRatio="H,16:9"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent">
+
+        <com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
+            android:id="@+id/player"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            app:enableAutomaticInitialization="false" />
+
+        <!-- Catches every tap so YouTube's own overlay never appears -->
+        <View
+            android:id="@+id/touchShield"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <TextView
+            android:id="@+id/chatToast"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:layout_margin="12dp"
+            android:background="@drawable/chat_toast_bg"
+            android:maxWidth="320dp"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="6dp"
+            android:textColor="#E6FFFFFF"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <FrameLayout
+            android:id="@+id/controls"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/controls_scrim"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageButton
+                android:id="@+id/playPause"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_gravity="center"
+                android:alpha="0.85"
+                android:background="@drawable/round_button_bg"
+                android:contentDescription="@string/play_pause"
+                android:padding="14dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_play" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom"
+                android:alpha="0.85"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingEnd="4dp">
+
+                <TextView
+                    android:id="@+id/timeText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0:00 / 0:00"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp" />
+
+                <SeekBar
+                    android:id="@+id/seekBar"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:progressBackgroundTint="#80FFFFFF"
+                    android:progressTint="@color/accent"
+                    android:thumbTint="@color/accent" />
+
+                <ImageButton
+                    android:id="@+id/cropButton"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/crop"
+                    android:padding="10dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_crop" />
+
+                <ImageButton
+                    android:id="@+id/fullscreenButton"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/fullscreen"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_fullscreen" />
+            </LinearLayout>
+        </FrameLayout>
+    </FrameLayout>
 
     <LinearLayout
+        android:id="@+id/content"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:orientation="vertical"
@@ -23,7 +123,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/player">
+        app:layout_constraintTop_toBottomOf="@id/playerBox">
 
         <LinearLayout
             android:layout_width="match_parent"
