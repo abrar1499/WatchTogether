@@ -174,8 +174,8 @@ class RoomActivity : AppCompatActivity() {
                     EmbedPlayer.State.PLAYING -> {
                         b.bufferLoader.visibility = View.GONE
                         hideLoading(delayMs = 300)
-                        scheduleHide()
                         localPlaying = true
+                        scheduleHide()   // after localPlaying is set, or the timer never starts
                         lastSecondAt = SystemClock.elapsedRealtime()
                         if (!ignoringLocal() && remote?.playing != true) publish(true, lastSecond)
                     }
@@ -589,7 +589,7 @@ class RoomActivity : AppCompatActivity() {
         private const val IGNORE_MS = 1500L
         private const val SEEK_THRESHOLD = 2.5f
         private const val DRIFT_THRESHOLD = 1.5f
-        private const val CONTROLS_HIDE_MS = 1800L
+        private const val CONTROLS_HIDE_MS = 1000L
         private const val SEEK_STEP = 10
     }
 }

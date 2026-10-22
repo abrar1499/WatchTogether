@@ -158,6 +158,8 @@ class EmbedPlayer(
                 ".ytp-chapter-container,.ytp-player-content.ytp-iv-player-content," +
                 ".ytp-spinner,.ytp-cued-thumbnail-overlay,.ytp-bezel,.ytp-bezel-text,.ytp-autonav-endscreen" +
                 "{display:none!important;opacity:0!important;pointer-events:none!important}" +
+                // Catch-all: inside the player, show only the video (YouTube's new UI uses new names)
+                "#movie_player>*:not(.html5-video-container):not(.ytp-error),.html5-video-container>*:not(video){display:none!important;opacity:0!important;pointer-events:none!important}" +
                 "html,body,#player{background:#000!important}" +
                 // Video on the top half, a mirrored reflection on the bottom half
                 "html,body,#player,#movie_player,.html5-video-player,.html5-video-container" +
