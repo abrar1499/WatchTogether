@@ -182,7 +182,9 @@ class EmbedPlayer(
                 "-webkit-backdrop-filter:blur(22px) saturate(1.9) brightness(1.1);backdrop-filter:blur(22px) saturate(1.9) brightness(1.1);" +
                 "-webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%);" +
                 "background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.1) 50%,rgba(0,0,0,.45))}" +
-                "html.wt-full .wtfrost{display:none}"
+                "html.wt-full .wtfrost{display:none}" +
+                // Bulletproof: hide everything YouTube draws, whatever it's called; show only the video
+                "body *{visibility:hidden!important}video,.wtfrost,#wtshade,#wtfrost1,#wtfrost2,#wtfrost3{visibility:visible!important}"
 
         /** Hook script with the current look (from [RemoteConfig] if available). */
         private fun hookJs(): String =
