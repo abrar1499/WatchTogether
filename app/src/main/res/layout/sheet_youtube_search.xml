@@ -72,9 +72,10 @@
         android:progressTint="@color/accent"
         android:visibility="invisible" />
 
-    <WebView
-        android:id="@+id/web"
+    <FrameLayout
+        android:id="@+id/webHost"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1"
+        android:background="#141416" />
 </LinearLayout>

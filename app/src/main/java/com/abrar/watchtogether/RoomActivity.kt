@@ -81,6 +81,7 @@ class RoomActivity : AppCompatActivity() {
 
         setupPlayer()
         setupControls()
+        SearchWeb.warmUp(this)   // YouTube search is ready before anyone taps it
         updateEmptyState()
         onBackPressedDispatcher.addCallback(this, exitFullscreenOnBack)
 
@@ -439,6 +440,7 @@ class RoomActivity : AppCompatActivity() {
         if (::sync.isInitialized) sync.stop()
         player?.release()
         player = null
+        SearchWeb.destroy()
         super.onDestroy()
     }
 

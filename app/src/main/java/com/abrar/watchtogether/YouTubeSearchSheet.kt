@@ -1,35 +1,29 @@
 package com.abrar.watchtogether
 
-import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import com.abrar.watchtogether.databinding.SheetYoutubeSearchBinding
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
-import java.net.URLEncoder
 
 /**
  * YouTube search right inside the room: a sheet slides up with results,
- * and tapping any video plays it for everyone.
+ * and tapping any video plays it for everyone. The page itself is kept warm by [SearchWeb].
  */
 class YouTubeSearchSheet(
-    context: Context,
+    private val activity: Activity,
     private val initialQuery: String?,
     private val onPick: (String) -> Unit
-) : BottomSheetDialog(context, R.style.Theme_WatchTogether_Sheet) {
+) : BottomSheetDialog(activity, R.style.Theme_WatchTogether_Sheet) {
 
     private lateinit var b: SheetYoutubeSearchBinding
-    private var picked = false
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = SheetYoutubeSearchBinding.inflate(layoutInflater)
@@ -41,56 +35,28 @@ class YouTubeSearchSheet(
         }
         b.searchButton.setOnClickListener { search(b.searchInput.text.toString()) }
 
-        with(b.web.settings) {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            mediaPlaybackRequiresUserGesture = true
+        val web = SearchWeb.obtain(activity)
+        // Start the search before the sheet has even finished sliding up
+        if (!initialQuery.isNullOrBlank()) SearchWeb.search(initialQuery)
+        b.webHost.addView(web, ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+        SearchWeb.onProgress = { p ->
+            b.progress.visibility = if (p < 100) View.VISIBLE else View.INVISIBLE
+            b.progress.progress = p
         }
-        b.web.setBackgroundColor(Color.parseColor("#141416"))
-        b.web.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView, newProgress: Int) {
-                b.progress.visibility = if (newProgress < 100) View.VISIBLE else View.INVISIBLE
-                b.progress.progress = newProgress
-            }
+        SearchWeb.onPick = { id ->
+            onPick(id)
+            dismiss()
         }
-        b.web.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                if (tryPick(request.url.toString())) return true
-                // Block "open in YouTube app" style links (intent://, vnd.youtube://)
-                val scheme = request.url.scheme ?: return true
-                return scheme != "http" && scheme != "https"
-            }
-
-            // YouTube's mobile site changes pages without reloading, so watch the history too
-            override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
-                tryPick(url)
-            }
-
-            override fun onPageFinished(view: WebView, url: String) {
-                // Hide YouTube's own top bar and bottom tabs; our search bar replaces them
-                view.evaluateJavascript(
-                    "(function(){var s=document.createElement('style');s.textContent=" +
-                        "'ytm-mobile-topbar-renderer,#header-bar,.mobile-topbar-header,ytm-pivot-bar-renderer," +
-                        "ytm-feed-filter-chip-bar-renderer{display:none!important}" +
-                        "body,ytm-app{padding-top:0!important}';document.head.appendChild(s);})();",
-                    null
-                )
-            }
-        }
-
-        setOnDismissListener {
-            b.web.stopLoading()
-            b.web.destroy()
-        }
+        setOnDismissListener { SearchWeb.release() }
 
         if (initialQuery.isNullOrBlank()) {
-            b.web.loadUrl("https://m.youtube.com/")
             b.searchInput.requestFocus()
-            b.searchInput.postDelayed({ showKeyboard() }, 250)
+            b.searchInput.postDelayed({ showKeyboard() }, 200)
         } else {
             b.searchInput.setText(initialQuery)
             b.searchInput.setSelection(initialQuery.length)
-            search(initialQuery)
         }
     }
 
@@ -109,22 +75,9 @@ class YouTubeSearchSheet(
     }
 
     private fun search(query: String) {
-        val q = query.trim()
-        if (q.isEmpty()) return
+        if (query.isBlank()) return
         hideKeyboard()
-        b.web.loadUrl("https://m.youtube.com/results?search_query=" + URLEncoder.encode(q, "UTF-8"))
-    }
-
-    private fun tryPick(url: String): Boolean {
-        if (picked) return true
-        val isVideoPage = url.contains("/watch") || url.contains("/shorts/")
-        if (!isVideoPage) return false
-        val id = YouTubeLink.extractId(url) ?: return false
-        picked = true
-        b.web.stopLoading()
-        onPick(id)
-        dismiss()
-        return true
+        SearchWeb.search(query)
     }
 
     private fun showKeyboard() {
