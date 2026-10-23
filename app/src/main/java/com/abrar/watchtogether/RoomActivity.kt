@@ -14,6 +14,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
@@ -97,8 +98,10 @@ class RoomActivity : AppCompatActivity() {
         SearchWeb.warmUp(this)   // YouTube search is ready before anyone taps it
         updateEmptyState()
         onBackPressedDispatcher.addCallback(this, exitFullscreenOnBack)
+        onBackPressedDispatcher.addCallback(this, exitTikTokOnBack)
 
         b.backButton.setOnClickListener { finish() }
+        b.exitTikTok.setOnClickListener { exitTikTok() }
         b.shareButton.setOnClickListener {
             val text = tr(R.string.share_text, code)
             startActivity(Intent.createChooser(
@@ -126,6 +129,11 @@ class RoomActivity : AppCompatActivity() {
         sync.start(
             onState = { state ->
                 remote = state
+                // In TikTok mode this phone drives the feed; others pausing/playing is mirrored on it
+                tiktok?.let { mode ->
+                    if (state.by != userId) mode.setPlaying(state.playing)
+                    return@start
+                }
                 // Our own change coming back from the server: nothing to do
                 if (state.by == userId && state.videoId == currentVideoId) return@start
                 applyRemote(state, force = false)
@@ -165,6 +173,8 @@ class RoomActivity : AppCompatActivity() {
             b.topBar.updatePadding(top = if (fullscreen) dp(6) else bars.top + dp(6))
             b.inputBar.updatePadding(bottom = max(bars.bottom, ime) + dp(12))
             b.chatToast.translationY = bars.top.toFloat()
+            (b.exitTikTok.layoutParams as ViewGroup.MarginLayoutParams).topMargin = bars.top + dp(8)
+            b.exitTikTok.requestLayout()
             insets
         }
     }
@@ -504,7 +514,7 @@ class RoomActivity : AppCompatActivity() {
 
     private fun openSearch(query: String?) {
         b.emptySearchInput.clearFocus()
-        YouTubeSearchSheet(this, query?.trim()) { id ->
+        YouTubeSearchSheet(this, query?.trim(), onTikTokMode = { enterTikTok() }) { id ->
             b.emptySearchInput.setText("")
             // The page it came from becomes everyone's swipe list
             val list = SearchWeb.lastList
@@ -514,6 +524,46 @@ class RoomActivity : AppCompatActivity() {
             }
             playForEveryone(id)
         }.show()
+    }
+
+    // ---------- TikTok mode ----------
+
+    private var tiktok: TikTokMode? = null
+    private val exitTikTokOnBack = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() = exitTikTok()
+    }
+
+    /** The real TikTok feed fills the room; the reel on screen plays for everyone. */
+    private fun enterTikTok() {
+        if (tiktok != null) return
+        player?.pause()
+        hideLoading(delayMs = 0)
+        b.controls.visibility = View.GONE
+        b.emptyState.visibility = View.GONE
+        b.tiktokHost.visibility = View.VISIBLE
+        b.exitTikTok.visibility = View.VISIBLE
+        exitTikTokOnBack.isEnabled = true
+        queue = emptyList()
+        tiktok = TikTokMode(b.tiktokHost) { id, second, playing ->
+            val key = "tt:$id"
+            currentVideoId = key
+            lastSecond = second
+            lastSecondAt = SystemClock.elapsedRealtime()
+            sync.pushState(key, playing, second.toDouble())
+        }.also { it.start() }
+    }
+
+    private fun exitTikTok() {
+        val mode = tiktok ?: return
+        tiktok = null
+        mode.stop()
+        b.tiktokHost.visibility = View.GONE
+        b.exitTikTok.visibility = View.GONE
+        exitTikTokOnBack.isEnabled = false
+        // Pick up where the feed was, in the normal player
+        val state = remote
+        currentVideoId = null
+        if (state != null) applyRemote(state, force = true) else updateEmptyState()
     }
 
     // ---------- Swipe list ----------
@@ -668,6 +718,8 @@ class RoomActivity : AppCompatActivity() {
     override fun onDestroy() {
         isOpen = false
         FeedFetcher.stop()
+        tiktok?.stop()
+        tiktok = null
         if (::sync.isInitialized) sync.stop()
         player?.release()
         player = null

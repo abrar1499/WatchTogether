@@ -108,6 +108,18 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <!-- TikTok mode: the real TikTok feed fills the room (above the video, below the chat) -->
+    <FrameLayout
+        android:id="@+id/tiktokHost"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#000000"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/inputBar"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <!-- Chat floats over video and reflection; older messages dim step by step -->
     <com.abrar.watchtogether.FadingRecyclerView
         android:id="@+id/chatList"
@@ -319,6 +331,17 @@
                 android:src="@drawable/ic_search" />
         </LinearLayout>
     </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/exitTikTok"
+        style="@style/GlassIcon"
+        android:layout_marginStart="10dp"
+        android:layout_marginTop="40dp"
+        android:contentDescription="@string/close"
+        android:src="@drawable/ic_close"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <!-- "+10s" hint for double-tap seeking -->
     <TextView
