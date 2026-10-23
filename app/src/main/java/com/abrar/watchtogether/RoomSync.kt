@@ -152,6 +152,11 @@ class RoomSync(
         )
     }
 
+    /** The app's step-by-step log, so problems can be looked at from outside the phone. */
+    fun pushDebug(text: String) {
+        room.child("debug").child(userId.take(8)).setValue(text.takeLast(20_000))
+    }
+
     /** The list everyone can swipe through. */
     fun pushQueue(keys: List<String>) {
         room.child("queue").setValue(keys.take(60))

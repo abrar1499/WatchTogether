@@ -127,6 +127,18 @@ class RoomActivity : AppCompatActivity() {
             if (id == EditorInfo.IME_ACTION_SEND) { sendChat(); true } else false
         }
 
+        // Keep a copy of the log in the room (every few seconds at most)
+        DebugLog.log("room", "joined $code as $name, app v${BuildConfig.VERSION_NAME}")
+        b.root.postDelayed(object : Runnable {
+            var last = ""
+            override fun run() {
+                if (isDestroyed) return
+                val t = DebugLog.text()
+                if (t != last) { last = t; sync.pushDebug(t) }
+                b.root.postDelayed(this, 4000)
+            }
+        }, 4000)
+
         sync.start(
             onState = { state ->
                 remote = state
