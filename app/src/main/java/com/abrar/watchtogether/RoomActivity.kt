@@ -243,6 +243,13 @@ class RoomActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         player?.onResume()
+        isOpen = true
+        // A video shared from TikTok / Facebook / YouTube plays here for everyone
+        PendingShare.key?.let { key ->
+            PendingShare.key = null
+            queue = emptyList()
+            b.root.post { playForEveryone(key) }
+        }
     }
 
     // ---------- Controls ----------
@@ -639,7 +646,12 @@ class RoomActivity : AppCompatActivity() {
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)   // brought back by a share; onResume plays it
+    }
+
     override fun onDestroy() {
+        isOpen = false
         if (::sync.isInitialized) sync.stop()
         player?.release()
         player = null
@@ -649,6 +661,9 @@ class RoomActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_CODE = "code"
+
+        /** True while a room screen exists (used by ShareActivity). */
+        @Volatile var isOpen = false
         const val EXTRA_NAME = "name"
         private const val IGNORE_MS = 1500L
         private const val SEEK_THRESHOLD = 2.5f

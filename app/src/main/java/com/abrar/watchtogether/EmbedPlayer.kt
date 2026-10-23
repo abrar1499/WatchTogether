@@ -57,11 +57,13 @@ class EmbedPlayer(
         web.addJavascriptInterface(Bridge(), "WT")
         web.webViewClient = object : WebViewClient() {
             override fun onPageCommitVisible(view: WebView, url: String) {
+                if (officialEmbed) return
                 view.evaluateJavascript("window.__wtWantPlay=$wantPlay;window.__wtStart=$startAt;" + hookJs(), null)
                 applyLayout()
             }
 
             override fun onPageFinished(view: WebView, url: String) {
+                if (officialEmbed) return
                 view.evaluateJavascript("window.__wtWantPlay=$wantPlay;window.__wtStart=$startAt;" + hookJs(), null)
                 applyLayout()
             }
@@ -69,7 +71,7 @@ class EmbedPlayer(
             // Stay on the video's own site (block "open in app" links and outside pages)
             // Only the video matters: skip pictures, fonts, ads and trackers so the page loads fast
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                if (request.isForMainFrame) return null
+                if (request.isForMainFrame || officialEmbed) return null
                 val u = request.url
                 val host = u.host ?: return null
                 val path = u.path?.lowercase() ?: ""
@@ -113,17 +115,88 @@ class EmbedPlayer(
         currentKey = key
         web.settings.userAgentString =
             if (Media.siteOf(key) == Site.NETFLIX) Media.DESKTOP_UA else defaultUa
+        videoFound = false
+        main.removeCallbacks(tryFallback)
+
+        // TikTok: its official embed player inside our own small page, driven by TikTok's player API
+        officialEmbed = Media.siteOf(key) == Site.TIKTOK
+        if (officialEmbed) {
+            web.loadDataWithBaseURL(
+                "https://$packageName/", tiktokHostPage(key.substringAfter(':'), start), "text/html", "utf-8", null
+            )
+            return
+        }
+
         val url = Media.playerUrl(key, start)
         // YouTube refuses embeds without a Referer (error 153) or with youtube.com (error 152)
         web.loadUrl(url, mapOf("Referer" to "https://$packageName/"))
 
         // If no video shows up in time, try the site's other way of opening it
-        videoFound = false
-        main.removeCallbacks(tryFallback)
         if (Media.fallbackUrl(key) != null) main.postDelayed(tryFallback, 8_000)
     }
 
     private var videoFound = false
+    private var officialEmbed = false
+
+    /**
+     * TikTok's official embed player (developers.tiktok.com/doc/embed-player) in an iframe,
+     * controlled with its postMessage API; its events are passed on to the app.
+     */
+    private fun tiktokHostPage(id: String, start: Float): String {
+        val src = "https://www.tiktok.com/player/v1/$id?autoplay=1&muted=0&controls=0&progress_bar=0" +
+            "&play_button=0&volume_control=0&fullscreen_button=0&timestamp=0&loop=0&music_info=0" +
+            "&description=0&rel=0&native_context_menu=0&closed_caption=0"
+        return """
+            <!doctype html><html><head>
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}
+            iframe{position:fixed;inset:0;width:100vw;height:100vh;border:0}</style>
+            </head><body>
+            <iframe id="f" allow="autoplay; fullscreen; encrypted-media" src="$src"></iframe>
+            <script>
+              var f = document.getElementById('f'), start = $start, ready = false;
+              function send(type, value){
+                var m = {type: type, 'x-tiktok-player': true};
+                if (value !== undefined) m.value = value;
+                f.contentWindow.postMessage(m, '*');
+              }
+              window.TT = {
+                play: function(){ send('unMute'); send('play'); },
+                pause: function(){ send('pause'); },
+                seek: function(s){ send('seekTo', s); }
+              };
+              window.__wtWantPlay = true;
+              addEventListener('message', function(e){
+                var d = e.data;
+                if (typeof d === 'string') { try { d = JSON.parse(d); } catch(x) { return; } }
+                if (!d || !d['x-tiktok-player']) return;
+                switch (d.type) {
+                  case 'onPlayerReady':
+                    ready = true; WT.found(); WT.area(1);
+                    send('unMute');
+                    if (start > 1) send('seekTo', start);
+                    if (window.__wtWantPlay) send('play');
+                    break;
+                  case 'onStateChange':
+                    var v = d.value;
+                    if (v === 1) WT.state('playing');
+                    else if (v === 2) WT.state('paused');
+                    else if (v === 3) WT.state('buffering');
+                    else if (v === 0) WT.state('ended');
+                    break;
+                  case 'onCurrentTime':
+                    var c = d.value || {};
+                    if (c.duration) WT.duration(c.duration);
+                    WT.time(c.currentTime || 0);
+                    break;
+                  case 'onPlayerError':
+                    WT.error(String((d.value && (d.value.errorType || d.value.errorCode)) || 'error'));
+                    break;
+                }
+              });
+            </script></body></html>
+        """.trimIndent()
+    }
     private val tryFallback = Runnable {
         if (videoFound) return@Runnable
         Media.fallbackUrl(currentKey)?.let { web.loadUrl(it) }
@@ -133,16 +206,18 @@ class EmbedPlayer(
 
     fun play() {
         wantPlay = true
-        js("window.__wtWantPlay=true;var v=document.querySelector('video');if(v){v.play().catch(function(){});}")
+        js("window.__wtWantPlay=true;if(window.TT){TT.play();return;}" +
+            "var v=document.querySelector('video');if(v){v.play().catch(function(){});}")
     }
 
     fun pause() {
         wantPlay = false
-        js("window.__wtWantPlay=false;var v=document.querySelector('video');if(v){v.pause();}")
+        js("window.__wtWantPlay=false;if(window.TT){TT.pause();return;}" +
+            "var v=document.querySelector('video');if(v){v.pause();}")
     }
 
     fun seekTo(second: Float) {
-        js("var v=document.querySelector('video');if(v){v.currentTime=$second;}")
+        js("if(window.TT){TT.seek($second);return;}var v=document.querySelector('video');if(v){v.currentTime=$second;}")
     }
 
     /**
