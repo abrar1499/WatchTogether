@@ -36,6 +36,15 @@ object RemoteConfig {
     @Volatile var sheetHeight: Float = 0.62f
         private set
 
+    /** Button text that marks a site's "open the app" popup (it gets hidden). */
+    @Volatile var nagPhrases: List<String> = DEFAULT_NAGS
+        private set
+
+    private val DEFAULT_NAGS = listOf(
+        "open tiktok", "open facebook", "open app", "open the app", "open in app",
+        "get the full", "use the app", "continue in app", "download app", "get the app", "not now"
+    )
+
     /** Opacity of chat messages, newest first. */
     @Volatile var chatLevels: FloatArray? = null
         private set
@@ -73,6 +82,9 @@ object RemoteConfig {
             chatLevels = json.optJSONArray("chatLevels")?.let { arr ->
                 FloatArray(arr.length()) { i -> arr.optDouble(i, 0.0).toFloat().coerceIn(0f, 1f) }
             }?.takeIf { it.isNotEmpty() }
+            nagPhrases = json.optJSONArray("nagPhrases")?.let { arr ->
+                (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() }
+            }?.takeIf { it.isNotEmpty() } ?: DEFAULT_NAGS
             sheetHeight = json.optDouble("sheetHeight", 0.62).toFloat().coerceIn(0.4f, 0.95f)
             texts = json.optJSONObject("texts")?.let { obj ->
                 obj.keys().asSequence().associateWith { obj.optString(it) }.filterValues { it.isNotEmpty() }

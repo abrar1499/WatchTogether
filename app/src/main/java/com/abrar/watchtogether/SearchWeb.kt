@@ -173,8 +173,14 @@ object SearchWeb {
                 tryPick(view, url, fromHistory = true)
             }
 
-            override fun onPageCommitVisible(view: WebView, url: String) = injectCss(view)
-            override fun onPageFinished(view: WebView, url: String) = injectCss(view)
+            override fun onPageCommitVisible(view: WebView, url: String) {
+                injectCss(view)
+                removeAppNags(view)
+            }
+            override fun onPageFinished(view: WebView, url: String) {
+                injectCss(view)
+                removeAppNags(view)
+            }
         }
         return v
     }
@@ -198,6 +204,58 @@ object SearchWeb {
     }
 
     // Hide YouTube's own top bar and bottom tabs; our search bar replaces them
+    /**
+     * Sites keep popping up "Open the app" boxes. Find any button with such text,
+     * hide the floating box around it and the dark layer behind it, and unlock scrolling.
+     */
+    private fun removeAppNags(view: WebView) {
+        val phrases = JSONObject.wrap(RemoteConfig.nagPhrases.map { it.lowercase() }).toString()
+        view.evaluateJavascript(
+            """
+            (function(){
+              window.__wtPhrases = $phrases;
+              if (window.__wtNag) return; window.__wtNag = true;
+              function fixedAncestor(el){
+                var top = null;
+                for (var e = el; e && e !== document.body; e = e.parentElement) {
+                  var p = getComputedStyle(e).position;
+                  if (p === 'fixed' || p === 'sticky' || e.getAttribute('role') === 'dialog' || e.getAttribute('aria-modal') === 'true') top = e;
+                }
+                return top;
+              }
+              function clean(){
+                var words = window.__wtPhrases || [], hid = false;
+                document.querySelectorAll('a,button,[role=button],span,div[tabindex]').forEach(function(b){
+                  var t = (b.innerText || '').trim().toLowerCase();
+                  if (!t || t.length > 40) return;
+                  if (!words.some(function(w){ return t.indexOf(w) >= 0; })) return;
+                  var box = fixedAncestor(b) || b;
+                  if (box.style.display !== 'none') { box.style.setProperty('display','none','important'); hid = true; }
+                });
+                // A dark full-screen layer left in the middle of the screen
+                var mid = document.elementFromPoint(innerWidth/2, innerHeight/2);
+                for (var e = mid; e && e !== document.body; e = e.parentElement) {
+                  var cs = getComputedStyle(e);
+                  if (cs.position === 'fixed' && e.offsetWidth >= innerWidth*0.9 && e.offsetHeight >= innerHeight*0.6 &&
+                      !(e.innerText || '').trim() && !e.querySelector('video,img')) {
+                    e.style.setProperty('display','none','important'); hid = true; break;
+                  }
+                }
+                if (hid) {
+                  [document.documentElement, document.body].forEach(function(x){
+                    x.style.setProperty('overflow','auto','important');
+                    x.style.setProperty('position','static','important');
+                  });
+                }
+              }
+              clean();
+              var n = 0, fast = setInterval(function(){ clean(); if (++n > 25) { clearInterval(fast); setInterval(clean, 2500); } }, 400);
+            })();
+            """.trimIndent(),
+            null
+        )
+    }
+
     private fun injectCss(view: WebView) {
         if (site != Site.YOUTUBE) return
         val css = JSONObject.quote(RemoteConfig.searchCss ?: DEFAULT_CSS)

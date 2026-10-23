@@ -6,11 +6,11 @@
     android:background="@drawable/site_tab_bg"
     android:gravity="center"
     android:orientation="horizontal"
-    android:paddingHorizontal="6dp">
+    android:paddingHorizontal="4dp">
 
     <FrameLayout
-        android:layout_width="20dp"
-        android:layout_height="20dp">
+        android:layout_width="18dp"
+        android:layout_height="18dp">
 
         <TextView
             android:id="@+id/letter"
@@ -33,10 +33,10 @@
         android:id="@+id/label"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="6dp"
+        android:layout_marginStart="5dp"
         android:ellipsize="end"
         android:fontFamily="sans-serif-medium"
         android:maxLines="1"
         android:textColor="@color/site_tab_text"
-        android:textSize="13sp" />
+        android:textSize="12sp" />
 </LinearLayout>

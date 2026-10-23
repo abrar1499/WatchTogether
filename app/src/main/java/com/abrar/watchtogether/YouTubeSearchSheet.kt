@@ -110,7 +110,7 @@ class YouTubeSearchSheet(
 
     /** YouTube / Netflix / Facebook / TikTok tabs above the search bar. */
     private fun buildTabs() {
-        val gap = (8 * context.resources.displayMetrics.density).toInt()
+        val gap = (6 * context.resources.displayMetrics.density).toInt()
         Site.values().forEachIndexed { i, site ->
             val t = ItemSiteTabBinding.inflate(layoutInflater, b.tabs, false)
             (t.root.layoutParams as LinearLayout.LayoutParams).marginStart = if (i == 0) 0 else gap
