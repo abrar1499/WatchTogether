@@ -215,13 +215,18 @@ object SearchWeb {
             (function(){
               window.__wtPhrases = $phrases;
               if (window.__wtNag) return; window.__wtNag = true;
-              function fixedAncestor(el){
-                var top = null;
+              // The nearest floating box around the button, but never a box that is basically the whole page
+              function popupBox(el){
                 for (var e = el; e && e !== document.body; e = e.parentElement) {
                   var p = getComputedStyle(e).position;
-                  if (p === 'fixed' || p === 'sticky' || e.getAttribute('role') === 'dialog' || e.getAttribute('aria-modal') === 'true') top = e;
+                  var floating = p === 'fixed' || p === 'sticky' || e.getAttribute('role') === 'dialog' || e.getAttribute('aria-modal') === 'true';
+                  if (!floating) continue;
+                  var big = e.offsetWidth * e.offsetHeight > innerWidth * innerHeight * 0.85;
+                  var busy = e.querySelectorAll('a').length > 12 || e.querySelector('video');
+                  if (big && busy) return null;          // that's the app itself, leave it
+                  return e;
                 }
-                return top;
+                return null;
               }
               function clean(){
                 var words = window.__wtPhrases || [], hid = false;
@@ -229,7 +234,8 @@ object SearchWeb {
                   var t = (b.innerText || '').trim().toLowerCase();
                   if (!t || t.length > 40) return;
                   if (!words.some(function(w){ return t.indexOf(w) >= 0; })) return;
-                  var box = fixedAncestor(b) || b;
+                  var box = popupBox(b);
+                  if (!box) return;
                   if (box.style.display !== 'none') { box.style.setProperty('display','none','important'); hid = true; }
                 });
                 // A dark full-screen layer left in the middle of the screen
@@ -237,7 +243,7 @@ object SearchWeb {
                 for (var e = mid; e && e !== document.body; e = e.parentElement) {
                   var cs = getComputedStyle(e);
                   if (cs.position === 'fixed' && e.offsetWidth >= innerWidth*0.9 && e.offsetHeight >= innerHeight*0.6 &&
-                      !(e.innerText || '').trim() && !e.querySelector('video,img')) {
+                      !(e.innerText || '').trim() && !e.querySelector('video,img,canvas') && e.children.length < 3) {
                     e.style.setProperty('display','none','important'); hid = true; break;
                   }
                 }
@@ -248,6 +254,11 @@ object SearchWeb {
                   });
                 }
               }
+              // Previews in the search sheet stay silent
+              document.addEventListener('play', function(ev){ try { ev.target.muted = true; } catch(e){} }, true);
+              setInterval(function(){
+                document.querySelectorAll('video,audio').forEach(function(m){ if (!m.muted) m.muted = true; });
+              }, 500);
               clean();
               var n = 0, fast = setInterval(function(){ clean(); if (++n > 25) { clearInterval(fast); setInterval(clean, 2500); } }, 400);
             })();

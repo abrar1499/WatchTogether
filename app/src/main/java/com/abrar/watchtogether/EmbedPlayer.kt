@@ -261,7 +261,10 @@ class EmbedPlayer(
                   var go = function(){ try { v.currentTime = window.__wtStart; } catch(e){} window.__wtStart = 0; };
                   if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true });
                 }
-                v.addEventListener('playing', function(){ WT.state('playing'); });
+                // Some sites (Facebook) start muted: turn the sound on
+                var unmute = function(){ if (v.muted) v.muted = false; if (v.volume < 1) v.volume = 1; };
+                unmute();
+                v.addEventListener('playing', function(){ unmute(); WT.state('playing'); });
                 v.addEventListener('pause', function(){ WT.state('paused'); });
                 v.addEventListener('waiting', function(){ WT.state('buffering'); });
                 v.addEventListener('ended', function(){ window.__wtWantPlay = false; WT.state('ended'); });
