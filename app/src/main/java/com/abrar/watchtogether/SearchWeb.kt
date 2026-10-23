@@ -214,7 +214,11 @@ object SearchWeb {
             "ytm-feed-filter-chip-bar-renderer{display:none!important}" +
             "body,ytm-app{padding-top:0!important;background:#141416!important}" +
             "ytm-spinner,ytm-spinner-renderer,.spinner-container{opacity:0!important}" +
-            "html{zoom:.78!important}"
+            "ytm-video-with-context-renderer .media-item-thumbnail-container," +
+            "ytm-media-item .media-item-thumbnail-container," +
+            "ytm-video-with-context-renderer>a:first-child" +
+            "{width:72%!important;margin:8px auto 0!important;display:block!important;" +
+            "border-radius:12px!important;overflow:hidden!important}"
 
     // Any real video card on the page means results are ready to show
     private const val READY_CHECK =
