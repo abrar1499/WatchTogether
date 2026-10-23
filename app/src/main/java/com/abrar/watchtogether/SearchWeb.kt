@@ -263,7 +263,7 @@ object SearchWeb {
               var PAT = /tiktok/.test(host)
                 ? { re: /(?:\/video\/|xgwrapper-\d+-)(\d{17,20})/, url: 'https://www.tiktok.com/video/' }
                 : /facebook/.test(host)
-                ? { re: /(?:\/reel\/|\/videos\/|video_id=|"videoID":"|"video_id":")(\d{8,20})/, url: 'https://www.facebook.com/watch/?v=' }
+                ? { re: /(?:\/reel\/|\/videos\/(?:[^\/"&]+\/)?|watch\/?\?v=|video_id=|data-video-id="|(?:videoID|video_id|videoId)(?:"|&quot;):(?:"|&quot;))(\d{8,20})/, url: 'https://www.facebook.com/watch/?v=' }
                 : null;
               // The video under the finger (feeds stack many videos on one page)
               function videoAt(x, y){
