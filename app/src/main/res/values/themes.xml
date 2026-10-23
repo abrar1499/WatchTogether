@@ -20,4 +20,19 @@
         <!-- Makes YouTube's site use its dark theme -->
         <item name="android:isLightTheme">false</item>
     </style>
+
+    <style name="JoinField">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">54dp</item>
+        <item name="android:background">@drawable/join_field</item>
+        <item name="android:paddingStart">18dp</item>
+        <item name="android:paddingEnd">18dp</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textColorHint">#66FFFFFF</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:importantForAutofill">no</item>
+        <item name="android:textCursorDrawable">@null</item>
+    </style>
 </resources>

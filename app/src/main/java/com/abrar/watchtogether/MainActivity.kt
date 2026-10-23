@@ -1,10 +1,15 @@
 package com.abrar.watchtogether
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.abrar.watchtogether.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
@@ -17,14 +22,15 @@ class MainActivity : AppCompatActivity() {
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
         prefs = Prefs(this)
+        edgeToEdge()
 
         // Labels can be changed from the remote settings file
         b.titleText.textR(R.string.app_name)
         b.setupWarning.textR(R.string.setup_needed)
-        b.nameLayout.hintR(R.string.your_name)
+        b.nameInput.hintR(R.string.your_name)
         b.createButton.textR(R.string.create_room)
         b.orText.textR(R.string.or_join)
-        b.codeLayout.hintR(R.string.room_code)
+        b.codeInput.hintR(R.string.room_code)
         b.joinButton.textR(R.string.join_room)
 
         b.nameInput.setText(prefs.name)
@@ -44,6 +50,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        b.codeInput.setOnEditorActionListener { _, id, _ ->
+            if (id == EditorInfo.IME_ACTION_GO) { b.joinButton.performClick(); true } else false
+        }
         b.joinButton.setOnClickListener {
             val name = readName() ?: return@setOnClickListener
             val code = b.codeInput.text.toString().trim().uppercase()
@@ -60,6 +69,22 @@ class MainActivity : AppCompatActivity() {
                     null -> toast(tr(R.string.error_network))
                 }
             }
+        }
+    }
+
+    /** Background runs behind the status and navigation bars. */
+    private fun edgeToEdge() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(b.root) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
+            v.setPadding(0, bars.top, 0, bars.bottom)
+            insets
         }
     }
 
@@ -91,7 +116,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setBusy(busy: Boolean) {
-        b.progress.visibility = if (busy) View.VISIBLE else View.GONE
+        b.progress.visibility = if (busy) View.VISIBLE else View.INVISIBLE
         b.createButton.isEnabled = !busy
         b.joinButton.isEnabled = !busy
     }
