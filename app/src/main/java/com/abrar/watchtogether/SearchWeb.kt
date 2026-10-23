@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -160,6 +161,7 @@ object SearchWeb {
                 onProgress?.invoke(newProgress)
             }
         }
+        v.addJavascriptInterface(TapBridge(v), "WTS")
         v.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (tryPick(view, request.url.toString(), fromHistory = false)) return true
@@ -176,10 +178,12 @@ object SearchWeb {
             override fun onPageCommitVisible(view: WebView, url: String) {
                 injectCss(view)
                 removeAppNags(view)
+                watchTaps(view)
             }
             override fun onPageFinished(view: WebView, url: String) {
                 injectCss(view)
                 removeAppNags(view)
+                watchTaps(view)
             }
         }
         return v
@@ -194,6 +198,54 @@ object SearchWeb {
         if (fromHistory) view.evaluateJavascript("history.back();", null)
         onPick?.invoke(key)
         return true
+    }
+
+    /** Called from the page: is this link a video we can play in the room? */
+    private class TapBridge(val view: WebView) {
+        @JavascriptInterface
+        fun isVideo(href: String): Boolean = Media.keyFromUrl(site, href) != null
+
+        @JavascriptInterface
+        fun pick(href: String) {
+            main.post { tryPick(view, href, fromHistory = false) }
+        }
+    }
+
+    /**
+     * TikTok and Facebook often play a video right on the page without changing the address.
+     * Catch the tap itself (and any quiet address change) and send the video to the room instead.
+     */
+    private fun watchTaps(view: WebView) {
+        view.evaluateJavascript(
+            """
+            (function(){
+              if (window.__wtTaps) return; window.__wtTaps = true;
+              function linkOf(t){
+                for (var e = t; e && e !== document; e = e.parentElement) {
+                  if (e.href && typeof e.href === 'string') return e.href;
+                  var h = e.getAttribute && (e.getAttribute('href') || e.getAttribute('data-href'));
+                  if (h) { try { return new URL(h, location.href).href; } catch(x){} }
+                }
+                return '';
+              }
+              document.addEventListener('click', function(ev){
+                var href = linkOf(ev.target);
+                if (href && WTS.isVideo(href)) {
+                  ev.preventDefault(); ev.stopPropagation();
+                  WTS.pick(href);
+                }
+              }, true);
+              var last = location.href;
+              setInterval(function(){
+                if (location.href !== last) {
+                  last = location.href;
+                  if (WTS.isVideo(last)) WTS.pick(last);
+                }
+              }, 400);
+            })();
+            """.trimIndent(),
+            null
+        )
     }
 
     private fun stopMedia(view: WebView) {
