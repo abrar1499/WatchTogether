@@ -28,6 +28,7 @@ object SearchWeb {
     private var wrapper: MutableContextWrapper? = null
     private var picked = false
     private var lastQuery: String? = null
+    private var defaultUa: String? = null
 
     /** The site currently open in the search sheet. */
     var site = Site.YOUTUBE
@@ -124,6 +125,7 @@ object SearchWeb {
         val v = web ?: return
         stopMedia(v)
         onLoadingStart?.invoke()
+        v.settings.userAgentString = if (site == Site.NETFLIX) Media.DESKTOP_UA else defaultUa
         v.loadUrl(site.home)
         startPolling()
     }
@@ -144,6 +146,7 @@ object SearchWeb {
     @SuppressLint("SetJavaScriptEnabled")
     private fun create(context: Context): WebView {
         val v = WebView(context)
+        defaultUa = v.settings.userAgentString
         with(v.settings) {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -177,16 +180,13 @@ object SearchWeb {
     }
 
     private fun tryPick(view: WebView, url: String, fromHistory: Boolean): Boolean {
-        if (site != Site.YOUTUBE) return false   // other sites can be browsed, not played yet
-        val isVideoPage = url.contains("/watch") || url.contains("/shorts/")
-        if (!isVideoPage) return false
+        val key = Media.keyFromUrl(site, url) ?: return false
         if (picked) return true
-        val id = YouTubeLink.extractId(url) ?: return false
         picked = true
-        // Don't let YouTube start that video in the background; go back to the results
+        // Don't let the site start that video in the background; go back to the list
         stopMedia(view)
         if (fromHistory) view.evaluateJavascript("history.back();", null)
-        onPick?.invoke(id)
+        onPick?.invoke(key)
         return true
     }
 
@@ -214,11 +214,12 @@ object SearchWeb {
             "ytm-feed-filter-chip-bar-renderer{display:none!important}" +
             "body,ytm-app{padding-top:0!important;background:#141416!important}" +
             "ytm-spinner,ytm-spinner-renderer,.spinner-container{opacity:0!important}" +
-            "ytm-video-with-context-renderer .media-item-thumbnail-container," +
-            "ytm-media-item .media-item-thumbnail-container," +
-            "ytm-video-with-context-renderer>a:first-child" +
-            "{width:72%!important;margin:8px auto 0!important;display:block!important;" +
-            "border-radius:12px!important;overflow:hidden!important}"
+            // Full-width but shorter thumbnails, so more results fit
+            ".media-item-thumbnail-container,.video-thumbnail-container-large,ytm-thumbnail-cover" +
+            "{aspect-ratio:21/9!important;height:auto!important;padding-top:0!important;overflow:hidden!important}" +
+            ".media-item-thumbnail-container img,.video-thumbnail-container-large img,ytm-thumbnail-cover img," +
+            ".video-thumbnail-img{width:100%!important;height:100%!important;object-fit:cover!important;" +
+            "position:absolute!important;inset:0!important}"
 
     // Any real video card on the page means results are ready to show
     private const val READY_CHECK =

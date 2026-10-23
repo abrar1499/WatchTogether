@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
+import android.webkit.PermissionRequest
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -53,31 +55,50 @@ class EmbedPlayer(
         web.addJavascriptInterface(Bridge(), "WT")
         web.webViewClient = object : WebViewClient() {
             override fun onPageCommitVisible(view: WebView, url: String) {
-                view.evaluateJavascript("window.__wtWantPlay=$wantPlay;" + hookJs(), null)
+                view.evaluateJavascript("window.__wtWantPlay=$wantPlay;window.__wtStart=$startAt;" + hookJs(), null)
                 applyLayout()
             }
 
             override fun onPageFinished(view: WebView, url: String) {
-                view.evaluateJavascript("window.__wtWantPlay=$wantPlay;" + hookJs(), null)
+                view.evaluateJavascript("window.__wtWantPlay=$wantPlay;window.__wtStart=$startAt;" + hookJs(), null)
                 applyLayout()
             }
 
-            // Never leave the embed page (e.g. a tap on the title would open youtube.com)
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                !request.url.toString().startsWith("https://www.youtube.com/embed/")
+            // Stay on the video's own site (block "open in app" links and outside pages)
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val u = request.url
+                if (u.scheme != "https" && u.scheme != "http") return true
+                if (Media.siteOf(currentKey) == Site.YOUTUBE) return !u.toString().startsWith("https://www.youtube.com/embed/")
+                return !Media.allowedHost(u.host ?: "")
+            }
         }
+        // Netflix needs protected-media (DRM) permission
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onPermissionRequest(request: PermissionRequest) {
+                val ok = request.resources.filter { it == PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID }
+                if (ok.isNotEmpty()) request.grant(ok.toTypedArray()) else request.deny()
+            }
+        }
+        defaultUa = web.settings.userAgentString
     }
 
-    /** Load a video. If [autoplay] is false it is paused at [start] once ready. */
-    fun load(videoId: String, start: Float, autoplay: Boolean) {
+    private var currentKey = ""
+    private var defaultUa: String? = null
+
+    /** Load a video (any site, see [Media]). If [autoplay] is false it is paused at [start] once ready. */
+    fun load(key: String, start: Float, autoplay: Boolean) {
         wantPlay = true          // let the page start so the video element is created
         startPaused = !autoplay
-        val url = "https://www.youtube.com/embed/$videoId" +
-            "?autoplay=1&controls=0&rel=0&iv_load_policy=3&playsinline=1&fs=0" +
-            "&disablekb=1&modestbranding=1&cc_load_policy=0&start=${start.toInt()}"
+        startAt = start
+        currentKey = key
+        web.settings.userAgentString =
+            if (Media.siteOf(key) == Site.NETFLIX) Media.DESKTOP_UA else defaultUa
+        val url = Media.playerUrl(key, start)
         // YouTube refuses embeds without a Referer (error 153) or with youtube.com (error 152)
         web.loadUrl(url, mapOf("Referer" to "https://$packageName/"))
     }
+
+    private var startAt = 0f
 
     fun play() {
         wantPlay = true
@@ -235,6 +256,11 @@ class EmbedPlayer(
               addEventListener('resize', relayout);
               function hook(v){
                 hooked = v;
+                // Jump to where the room is (YouTube already does this via its start parameter)
+                if (window.__wtStart > 1 && !/youtube/.test(location.host)) {
+                  var go = function(){ try { v.currentTime = window.__wtStart; } catch(e){} window.__wtStart = 0; };
+                  if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true });
+                }
                 v.addEventListener('playing', function(){ WT.state('playing'); });
                 v.addEventListener('pause', function(){ WT.state('paused'); });
                 v.addEventListener('waiting', function(){ WT.state('buffering'); });

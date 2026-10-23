@@ -559,7 +559,7 @@ class RoomActivity : AppCompatActivity() {
         b.loadingOverlay.visibility = View.VISIBLE
         b.loadingThumb.setImageDrawable(null)
         b.loadingBlur.setImageDrawable(null)
-        loadThumbnail(videoId)
+        Media.youtubeId(videoId)?.let { loadThumbnail(it) }
         // Never get stuck: give up on the loading screen after 15 seconds
         b.loadingOverlay.postDelayed(hideLoadingNow, 15_000)
     }
