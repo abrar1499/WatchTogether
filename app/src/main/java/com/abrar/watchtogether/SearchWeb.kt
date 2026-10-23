@@ -29,6 +29,13 @@ object SearchWeb {
     private var picked = false
     private var lastQuery: String? = null
 
+    /** The site currently open in the search sheet. */
+    var site = Site.YOUTUBE
+        private set
+
+    /** Each site's own icon, fetched from the site (like a browser tab icon). */
+    val icons = HashMap<Site, android.graphics.Bitmap>()
+
     var onPick: ((String) -> Unit)? = null
     var onProgress: ((Int) -> Unit)? = null
     var onLoadingStart: (() -> Unit)? = null
@@ -43,7 +50,8 @@ object SearchWeb {
     private val poll = object : Runnable {
         override fun run() {
             val v = web ?: return
-            v.evaluateJavascript(READY_CHECK) { result ->
+            val check = if (site == Site.YOUTUBE) READY_CHECK else "document.readyState=='complete'"
+            v.evaluateJavascript(check) { result ->
                 if (result == "true" || SystemClock.elapsedRealtime() - pollStarted > 8_000) markReady()
                 else main.postDelayed(this, 120)
             }
@@ -70,7 +78,7 @@ object SearchWeb {
         val app = context.applicationContext
         val w = MutableContextWrapper(app)
         wrapper = w
-        web = create(w).also { it.loadUrl(HOME) }
+        web = create(w).also { it.loadUrl(site.home) }
         startPolling()
     }
 
@@ -104,7 +112,19 @@ object SearchWeb {
         if (q == lastQuery && v.url?.contains("/results") == true) return   // already showing it
         lastQuery = q
         onLoadingStart?.invoke()
-        v.loadUrl(RESULTS + URLEncoder.encode(q, "UTF-8"))
+        v.loadUrl(site.searchUrl + URLEncoder.encode(q, "UTF-8"))
+        startPolling()
+    }
+
+    /** Open another site's tab. */
+    fun switchTo(newSite: Site) {
+        if (newSite == site && web != null) return
+        site = newSite
+        lastQuery = null
+        val v = web ?: return
+        stopMedia(v)
+        onLoadingStart?.invoke()
+        v.loadUrl(site.home)
         startPolling()
     }
 
@@ -157,6 +177,7 @@ object SearchWeb {
     }
 
     private fun tryPick(view: WebView, url: String, fromHistory: Boolean): Boolean {
+        if (site != Site.YOUTUBE) return false   // other sites can be browsed, not played yet
         val isVideoPage = url.contains("/watch") || url.contains("/shorts/")
         if (!isVideoPage) return false
         if (picked) return true
@@ -178,6 +199,7 @@ object SearchWeb {
 
     // Hide YouTube's own top bar and bottom tabs; our search bar replaces them
     private fun injectCss(view: WebView) {
+        if (site != Site.YOUTUBE) return
         val css = JSONObject.quote(RemoteConfig.searchCss ?: DEFAULT_CSS)
         view.evaluateJavascript(
             "(function(){if(document.getElementById('wtcss'))return;" +

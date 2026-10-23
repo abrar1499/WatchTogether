@@ -49,6 +49,7 @@
 
     <string name="search_hint">Search YouTube</string>
     <string name="search">Search</string>
+    <string name="search_in">Search %1$s</string>
 
     <string name="update_installing">Updating…</string>
     <string name="update_permission_title">Automatic updates</string>

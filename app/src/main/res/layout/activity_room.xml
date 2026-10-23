@@ -191,13 +191,6 @@
                 android:src="@drawable/ic_search" />
 
             <ImageButton
-                android:id="@+id/linkButton"
-                style="@style/GlassIcon"
-                android:layout_marginStart="6dp"
-                android:contentDescription="@string/paste_link"
-                android:src="@drawable/ic_link" />
-
-            <ImageButton
                 android:id="@+id/shareButton"
                 style="@style/GlassIcon"
                 android:layout_marginStart="6dp"

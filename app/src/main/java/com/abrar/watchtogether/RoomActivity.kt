@@ -112,7 +112,6 @@ class RoomActivity : AppCompatActivity() {
         b.emptySearchInput.setOnEditorActionListener { _, id, _ ->
             if (id == EditorInfo.IME_ACTION_SEARCH) { openSearch(b.emptySearchInput.text.toString()); true } else false
         }
-        b.linkButton.setOnClickListener { askForLink() }
 
         b.resyncButton.setOnClickListener {
             remote?.let { applyRemote(it, force = true) }

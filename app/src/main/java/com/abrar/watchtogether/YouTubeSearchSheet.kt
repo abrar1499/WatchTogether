@@ -8,7 +8,15 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.drawable.GradientDrawable
+import android.widget.LinearLayout
+import com.abrar.watchtogether.databinding.ItemSiteTabBinding
 import com.abrar.watchtogether.databinding.SheetYoutubeSearchBinding
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlin.concurrent.thread
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 
@@ -29,13 +37,14 @@ class YouTubeSearchSheet(
         b = SheetYoutubeSearchBinding.inflate(layoutInflater)
         setContentView(b.root)
 
-        b.searchInput.hintR(R.string.search_hint)
         b.closeButton.setOnClickListener { dismiss() }
         b.searchInput.setOnEditorActionListener { _, id, _ ->
             if (id == EditorInfo.IME_ACTION_SEARCH) { search(b.searchInput.text.toString()); true } else false
         }
         b.searchButton.setOnClickListener { search(b.searchInput.text.toString()) }
 
+        // A search typed on the room screen is always a YouTube search
+        if (!initialQuery.isNullOrBlank()) SearchWeb.switchTo(Site.YOUTUBE)
         val web = SearchWeb.obtain(activity)
         // The page sits under a shimmering placeholder until real results are on it
         b.webHost.addView(web, 0, ViewGroup.LayoutParams(
@@ -67,6 +76,7 @@ class YouTubeSearchSheet(
             SearchWeb.search(initialQuery)
             if (SearchWeb.contentReady) showResults()   // same search as last time: already there
         }
+        buildTabs()
         SearchWeb.onPick = { id ->
             onPick(id)
             dismiss()
@@ -94,6 +104,61 @@ class YouTubeSearchSheet(
         behavior.skipCollapsed = true
         behavior.isDraggable = false
         behavior.state = BottomSheetBehavior.STATE_EXPANDED
+    }
+
+    private val tabViews = HashMap<Site, ItemSiteTabBinding>()
+
+    /** YouTube / Netflix / Facebook / TikTok tabs above the search bar. */
+    private fun buildTabs() {
+        val gap = (8 * context.resources.displayMetrics.density).toInt()
+        Site.values().forEachIndexed { i, site ->
+            val t = ItemSiteTabBinding.inflate(layoutInflater, b.tabs, false)
+            (t.root.layoutParams as LinearLayout.LayoutParams).marginStart = if (i == 0) 0 else gap
+            t.label.text = site.label
+            t.letter.text = site.label.take(1)
+            t.letter.background = GradientDrawable().apply {
+                cornerRadius = 6 * context.resources.displayMetrics.density
+                setColor(site.color)
+            }
+            SearchWeb.icons[site]?.let { showIcon(t, it) } ?: loadIcon(site, t)
+            t.root.setOnClickListener { select(site) }
+            b.tabs.addView(t.root)
+            tabViews[site] = t
+        }
+        markSelected()
+    }
+
+    private fun select(site: Site) {
+        if (site == SearchWeb.site) return
+        SearchWeb.switchTo(site)
+        markSelected()
+    }
+
+    private fun markSelected() {
+        tabViews.forEach { (site, t) -> t.root.isSelected = site == SearchWeb.site }
+        b.searchInput.hint = context.tr(R.string.search_in, SearchWeb.site.label)
+    }
+
+    private fun showIcon(t: ItemSiteTabBinding, bmp: Bitmap) {
+        t.icon.setImageBitmap(bmp)
+        t.letter.visibility = View.INVISIBLE
+    }
+
+    /** Fetch the site's own icon, the same way a browser shows a tab icon. */
+    private fun loadIcon(site: Site, t: ItemSiteTabBinding) {
+        thread {
+            val bmp = try {
+                val conn = URL("https://www.google.com/s2/favicons?sz=64&domain=" + site.domain)
+                    .openConnection() as HttpURLConnection
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                if (conn.responseCode == 200) conn.inputStream.use { BitmapFactory.decodeStream(it) } else null
+            } catch (e: Exception) {
+                null
+            } ?: return@thread
+            SearchWeb.icons[site] = bmp
+            activity.runOnUiThread { if (isShowing) showIcon(t, bmp) }
+        }
     }
 
     private fun search(query: String) {
