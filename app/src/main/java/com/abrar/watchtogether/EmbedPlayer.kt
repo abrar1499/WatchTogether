@@ -6,7 +6,9 @@ import android.os.Looper
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
+import android.os.Build
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import org.json.JSONObject
@@ -65,6 +67,20 @@ class EmbedPlayer(
             }
 
             // Stay on the video's own site (block "open in app" links and outside pages)
+            // Only the video matters: skip pictures, fonts, ads and trackers so the page loads fast
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                if (request.isForMainFrame) return null
+                val u = request.url
+                val host = u.host ?: return null
+                val path = u.path?.lowercase() ?: ""
+                val accept = request.requestHeaders["Accept"] ?: ""
+                val isPicture = IMAGE_EXT.any { path.endsWith(it) } ||
+                    (accept.startsWith("image/") && !path.endsWith(".m3u8") && !path.endsWith(".mpd"))
+                val isFont = FONT_EXT.any { path.endsWith(it) }
+                val isJunk = BLOCK_HOSTS.any { host == it || host.endsWith(".$it") }
+                return if (isPicture || isFont || isJunk) EMPTY() else null
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val u = request.url
                 if (u.scheme != "https" && u.scheme != "http") return true
@@ -80,6 +96,10 @@ class EmbedPlayer(
             }
         }
         defaultUa = web.settings.userAgentString
+        // Give the player priority over everything else in the app
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            web.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+        }
     }
 
     private var currentKey = ""
@@ -191,6 +211,16 @@ class EmbedPlayer(
     }
 
     companion object {
+        private val IMAGE_EXT = listOf(".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico", ".avif")
+        private val FONT_EXT = listOf(".woff", ".woff2", ".ttf", ".otf")
+        private val BLOCK_HOSTS = listOf(
+            "doubleclick.net", "googlesyndication.com", "googleadservices.com", "google-analytics.com",
+            "googletagmanager.com", "googletagservices.com", "adservice.google.com", "imasdk.googleapis.com",
+            "connect.facebook.net", "analytics.tiktok.com", "mon.tiktokv.com", "mcs.tiktokv.com",
+            "scorecardresearch.com", "criteo.com", "taboola.com", "outbrain.com"
+        )
+        private fun EMPTY() = WebResourceResponse("text/plain", "utf-8", java.io.ByteArrayInputStream(ByteArray(0)))
+
         // Everything YouTube draws on top of the video
         private const val HIDE_CSS =
             ".ytp-chrome-top,.ytp-chrome-bottom,.ytp-gradient-top,.ytp-gradient-bottom," +
@@ -309,7 +339,7 @@ class EmbedPlayer(
                   if (v && v.paused) { v.play().catch(function(){}); }
                   if (!v) { var b = document.querySelector('.ytp-large-play-button'); if (b) b.click(); }
                 }
-              }, 300);
+              }, 150);
               // Glow: a tiny copy of the current frame, blended with the last one so colours flow
               setInterval(function(){
                 if (!hooked || hooked.readyState < 2) return;
