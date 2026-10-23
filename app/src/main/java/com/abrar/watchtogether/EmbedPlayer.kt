@@ -63,6 +63,7 @@ class EmbedPlayer(
             }
 
             override fun onPageFinished(view: WebView, url: String) {
+                DebugLog.log("player", "page loaded: " + url.take(120))
                 if (officialEmbed) return
                 view.evaluateJavascript("window.__wtWantPlay=$wantPlay;window.__wtStart=$startAt;" + hookJs(), null)
                 applyLayout()
@@ -92,6 +93,13 @@ class EmbedPlayer(
         }
         // Netflix needs protected-media (DRM) permission
         web.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
+                if (m.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
+                    DebugLog.log("player-js", m.message() + " @" + m.lineNumber())
+                }
+                return true
+            }
+
             override fun onPermissionRequest(request: PermissionRequest) {
                 val ok = request.resources.filter { it == PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID }
                 if (ok.isNotEmpty()) request.grant(ok.toTypedArray()) else request.deny()
@@ -109,6 +117,7 @@ class EmbedPlayer(
 
     /** Load a video (any site, see [Media]). If [autoplay] is false it is paused at [start] once ready. */
     fun load(key: String, start: Float, autoplay: Boolean) {
+        DebugLog.log("player", "load $key at ${start.toInt()}s autoplay=$autoplay")
         wantPlay = true          // let the page start so the video element is created
         startPaused = !autoplay
         startAt = start
@@ -128,6 +137,7 @@ class EmbedPlayer(
         }
 
         val url = Media.playerUrl(key, start)
+        DebugLog.log("player", "open $url")
         // YouTube refuses embeds without a Referer (error 153) or with youtube.com (error 152)
         web.loadUrl(url, mapOf("Referer" to "https://$packageName/"))
 
@@ -212,6 +222,7 @@ class EmbedPlayer(
                 var d = e.data;
                 if (typeof d === 'string') { try { d = JSON.parse(d); } catch(x) { return; } }
                 if (!d || !d['x-tiktok-player']) return;
+                if (d.type !== 'onCurrentTime') console.error('tt-msg ' + (e.source === mf.contentWindow ? 'mirror ' : 'main ') + d.type + ' ' + JSON.stringify(d.value));
                 // The mirror copy: keep it silent and in step with the main player
                 if (e.source === mf.contentWindow) {
                   if (d.type === 'onPlayerReady') { sendTo(mf, 'mute'); if (window.__wtWantPlay) sendTo(mf, 'play'); }
@@ -248,6 +259,7 @@ class EmbedPlayer(
     }
     private val tryFallback = Runnable {
         if (videoFound) return@Runnable
+        DebugLog.log("player", "no video after 8s, trying fallback")
         Media.fallbackUrl(currentKey)?.let { web.loadUrl(it) }
     }
 
@@ -299,6 +311,7 @@ class EmbedPlayer(
     private inner class Bridge {
         @JavascriptInterface
         fun state(name: String) = main.post {
+            DebugLog.log("player", "state $name")
             val s = when (name) {
                 "playing" -> State.PLAYING
                 "paused" -> State.PAUSED
@@ -322,10 +335,12 @@ class EmbedPlayer(
         fun duration(d: Double) = main.post { listener.onDuration(d.toFloat()) }
 
         @JavascriptInterface
-        fun error(message: String) = main.post { listener.onError(message) }
+        fun error(message: String) = main.post {
+            DebugLog.log("player", "ERROR $message") listener.onError(message) }
 
         @JavascriptInterface
         fun found() = main.post {
+            DebugLog.log("player", "video found")
             videoFound = true
             main.removeCallbacks(tryFallback)
         }

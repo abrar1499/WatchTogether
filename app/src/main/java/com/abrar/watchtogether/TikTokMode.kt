@@ -53,14 +53,19 @@ class TikTokMode(
             }
 
             override fun onPageCommitVisible(view: WebView, url: String) = inject(view)
-            override fun onPageFinished(view: WebView, url: String) = inject(view)
+            override fun onPageFinished(view: WebView, url: String) {
+                DebugLog.log("tiktok", "feed page: " + url.take(100))
+                inject(view)
+            }
         }
         hide()
+        DebugLog.log("tiktok", "hidden feed start")
         web.loadUrl("https://www.tiktok.com/foryou")
     }
 
     /** Move the hidden feed one reel down (1) or up (-1). */
     fun step(dir: Int) {
+        DebugLog.log("tiktok", "step $dir from $lastId")
         askedAt = SystemClock.elapsedRealtime()
         val before = lastId
         web.evaluateJavascript("window.__wtStep&&window.__wtStep($dir);", null)
@@ -73,6 +78,7 @@ class TikTokMode(
                 lastId = next
                 onReel(next)
             } else if (dir > 0) {
+                DebugLog.log("tiktok", "stuck: feed did not move")
                 onStuck()
             }
         }, 2500)
@@ -108,6 +114,7 @@ class TikTokMode(
         @JavascriptInterface
         fun current(id: String) = main.post {
             if (id == lastId) return@post
+            DebugLog.log("tiktok", "feed reel $id")
             lastId = id
             onReel(id)
         }
@@ -119,6 +126,7 @@ class TikTokMode(
                 (0 until a.length()).map { a.getString(it) }
             } catch (e: Exception) { emptyList() }
             if (ids.isNotEmpty() && ids != known) {
+                DebugLog.log("tiktok", "feed knows ${ids.size} reels")
                 known = ids
                 onList(ids)
             }

@@ -112,6 +112,7 @@ object SearchWeb {
     }
 
     fun search(query: String) {
+        DebugLog.log("search", "${site.label} search: $query")
         val q = query.trim()
         if (q.isEmpty()) return
         val v = web ?: return
@@ -124,6 +125,7 @@ object SearchWeb {
 
     /** Open another site's tab. */
     fun switchTo(newSite: Site) {
+        DebugLog.log("search", "tab -> ${newSite.label}")
         if (newSite == site && web != null) return
         site = newSite
         lastQuery = null
@@ -161,6 +163,13 @@ object SearchWeb {
         }
         v.setBackgroundColor(Color.parseColor("#141416"))
         v.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
+                if (m.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
+                    DebugLog.log("search-js", m.message() + " @" + m.lineNumber())
+                }
+                return true
+            }
+
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 onProgress?.invoke(newProgress)
             }
@@ -185,6 +194,7 @@ object SearchWeb {
                 watchTaps(view)
             }
             override fun onPageFinished(view: WebView, url: String) {
+                DebugLog.log("search", "page loaded: $url")
                 injectCss(view)
                 removeAppNags(view)
                 watchTaps(view)
@@ -194,7 +204,12 @@ object SearchWeb {
     }
 
     private fun tryPick(view: WebView, url: String, fromHistory: Boolean): Boolean {
-        val key = Media.keyFromUrl(site, url) ?: return false
+        val key = Media.keyFromUrl(site, url)
+        if (key == null) {
+            if (!fromHistory) DebugLog.log("search", "tap on ${site.label} but no video in: $url")
+            return false
+        }
+        DebugLog.log("search", "picked ${site.label} $key (from ${if (fromHistory) "address" else "tap"})")
         if (picked) return true
         picked = true
         // Don't let the site start that video in the background; go back to the list
@@ -217,6 +232,7 @@ object SearchWeb {
         /** The page's video links in order; turned into room keys. */
         @JavascriptInterface
         fun list(json: String) {
+            DebugLog.log("search", "page list size=" + json.count { it == ',' }.plus(1))
             val keys = try {
                 val arr = org.json.JSONArray(json)
                 (0 until arr.length()).mapNotNull { Media.keyFromUrl(site, arr.optString(it)) }.distinct()

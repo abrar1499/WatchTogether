@@ -25,7 +25,9 @@ class ShareActivity : Activity() {
             return
         }
         thread {
+            DebugLog.log("share", "got $link")
             val found = resolve(link)
+            DebugLog.log("share", "resolved to ${found?.first} via ${found?.second}")
             val key = found?.first
             runOnUiThread {
                 if (key == null) {

@@ -101,6 +101,7 @@ class RoomActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, exitTikTokOnBack)
 
         b.backButton.setOnClickListener { finish() }
+        b.roomCode.setOnLongClickListener { toggleDebug(); true }
         b.exitTikTok.setOnClickListener { exitTikTok() }
         b.shareButton.setOnClickListener {
             val text = tr(R.string.share_text, code)
@@ -521,6 +522,64 @@ class RoomActivity : AppCompatActivity() {
         }.show()
     }
 
+    // ---------- Debug log ----------
+
+    private var debugPanel: View? = null
+
+    /** Long-press the room code: show what the app is doing, step by step. */
+    private fun toggleDebug() {
+        debugPanel?.let {
+            b.root.removeView(it)
+            debugPanel = null
+            DebugLog.onChange = null
+            return
+        }
+        val pad = dp(12)
+        val text = android.widget.TextView(this).apply {
+            setTextColor(Color.WHITE)
+            textSize = 10f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextIsSelectable(true)
+            setPadding(pad, pad, pad, pad)
+        }
+        val scroll = android.widget.ScrollView(this).apply { addView(text) }
+        val bar = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            setPadding(pad, 0, pad, pad)
+            fun btn(label: String, click: () -> Unit) = addView(
+                com.google.android.material.button.MaterialButton(this@RoomActivity).apply {
+                    this.text = label
+                    textSize = 12f
+                    setOnClickListener { click() }
+                },
+                android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(8) }
+            )
+            btn("Copy") {
+                val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("log", DebugLog.text()))
+                toast("Copied")
+            }
+            btn("Clear") { DebugLog.clear() }
+            btn("Close") { toggleDebug() }
+        }
+        val panel = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundColor(Color.argb(235, 10, 10, 12))
+            setPadding(0, topInset + dp(8), 0, 0)
+            isClickable = true
+            addView(scroll, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(bar)
+        }
+        b.root.addView(panel, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        debugPanel = panel
+        val refresh = {
+            text.text = DebugLog.text().ifEmpty { "(empty)" } + "\n\napp v" + BuildConfig.VERSION_NAME
+            scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        }
+        DebugLog.onChange = { refresh() }
+        refresh()
+    }
+
     // ---------- TikTok mode ----------
 
     private var tiktok: TikTokMode? = null
@@ -615,6 +674,7 @@ class RoomActivity : AppCompatActivity() {
     }
 
     private fun playForEveryone(id: String) {
+        DebugLog.log("room", "play for everyone: $id")
         val p = player
         if (p != null) {
             currentVideoId = id
@@ -633,6 +693,7 @@ class RoomActivity : AppCompatActivity() {
     }
 
     private fun applyRemote(state: PlaybackState, force: Boolean) {
+        DebugLog.log("room", "remote ${state.videoId} playing=${state.playing} by=${state.by.take(4)}")
         val p = player ?: return
         ignoreLocalUntil = SystemClock.elapsedRealtime() + IGNORE_MS
         val target = state.positionAt(sync.serverNow()).toFloat()
