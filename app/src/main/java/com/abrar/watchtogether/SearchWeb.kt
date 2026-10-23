@@ -248,10 +248,36 @@ object SearchWeb {
                   var h = a.href; if (!h || seen[h]) return; seen[h] = 1;
                   if (WTS.isVideo(h)) out.push(h);
                 });
+                // Plus every video number in a feed, in page order
+                if (PAT) {
+                  var g = new RegExp(PAT.re.source, 'g'), m, html = document.body.innerHTML;
+                  while ((m = g.exec(html)) && out.length < 80) {
+                    var u = PAT.url + m[1]; if (!seen[u]) { seen[u] = 1; out.push(u); }
+                  }
+                }
                 WTS.list(JSON.stringify(out));
+              }
+              // Feeds (TikTok, Facebook Reels) play videos without links: find the video's number
+              // in the tapped card's own markup instead
+              var host = location.host;
+              var PAT = /tiktok/.test(host)
+                ? { re: /(?:\/video\/|xgwrapper-\d+-|"id":")(\d{17,20})/, url: 'https://www.tiktok.com/video/' }
+                : /facebook/.test(host)
+                ? { re: /(?:\/reel\/|\/videos\/|video_id=|"videoID":"|"video_id":")(\d{8,20})/, url: 'https://www.facebook.com/watch/?v=' }
+                : null;
+              function idUrlOf(t){
+                if (!PAT) return '';
+                for (var e = t, i = 0; e && e !== document.body && i < 12; e = e.parentElement, i++) {
+                  var html = e.outerHTML || '';
+                  if (html.length > 300000) break;
+                  var m = PAT.re.exec(html);
+                  if (m) return PAT.url + m[1];
+                }
+                return '';
               }
               document.addEventListener('click', function(ev){
                 var href = linkOf(ev.target);
+                if (!href || !WTS.isVideo(href)) href = idUrlOf(ev.target) || href;
                 if (href && WTS.isVideo(href)) {
                   ev.preventDefault(); ev.stopPropagation();
                   sendList();
