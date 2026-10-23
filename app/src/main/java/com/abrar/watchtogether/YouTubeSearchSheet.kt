@@ -94,9 +94,9 @@ class YouTubeSearchSheet(
 
     override fun onStart() {
         super.onStart()
-        // Tall sheet that stays open (scrolling the results shouldn't drag it closed)
+        // Sheet leaves the top of the video visible and stays open (scrolling the results shouldn't drag it closed)
         val sheet = findViewById<View>(com.google.android.material.R.id.design_bottom_sheet) ?: return
-        val h = (context.resources.displayMetrics.heightPixels * 0.88).toInt()
+        val h = (context.resources.displayMetrics.heightPixels * RemoteConfig.sheetHeight).toInt()
         sheet.layoutParams.height = h
         sheet.setBackgroundColor(Color.TRANSPARENT)
         sheet.requestLayout()

@@ -213,7 +213,8 @@ object SearchWeb {
         "ytm-mobile-topbar-renderer,#header-bar,.mobile-topbar-header,ytm-pivot-bar-renderer," +
             "ytm-feed-filter-chip-bar-renderer{display:none!important}" +
             "body,ytm-app{padding-top:0!important;background:#141416!important}" +
-            "ytm-spinner,ytm-spinner-renderer,.spinner-container{opacity:0!important}"
+            "ytm-spinner,ytm-spinner-renderer,.spinner-container{opacity:0!important}" +
+            "html{zoom:.78!important}"
 
     // Any real video card on the page means results are ready to show
     private const val READY_CHECK =

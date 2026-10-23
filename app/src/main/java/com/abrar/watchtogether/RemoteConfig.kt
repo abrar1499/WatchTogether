@@ -32,6 +32,10 @@ object RemoteConfig {
     @Volatile var texts: Map<String, String> = emptyMap()
         private set
 
+    /** Search sheet height as a fraction of the screen (the rest shows the video). */
+    @Volatile var sheetHeight: Float = 0.62f
+        private set
+
     /** Opacity of chat messages, newest first. */
     @Volatile var chatLevels: FloatArray? = null
         private set
@@ -69,6 +73,7 @@ object RemoteConfig {
             chatLevels = json.optJSONArray("chatLevels")?.let { arr ->
                 FloatArray(arr.length()) { i -> arr.optDouble(i, 0.0).toFloat().coerceIn(0f, 1f) }
             }?.takeIf { it.isNotEmpty() }
+            sheetHeight = json.optDouble("sheetHeight", 0.62).toFloat().coerceIn(0.4f, 0.95f)
             texts = json.optJSONObject("texts")?.let { obj ->
                 obj.keys().asSequence().associateWith { obj.optString(it) }.filterValues { it.isNotEmpty() }
             } ?: emptyMap()
