@@ -15,6 +15,12 @@ import kotlin.concurrent.thread
  */
 object RemoteConfig {
 
+    private val DEFAULT_NAGS = listOf(
+        "open tiktok", "open facebook", "open app", "open the app", "open in app",
+        "get the full", "use the app", "continue in app", "download app", "get the app", "not now"
+    )
+
+
     private const val CONFIG_URL =
         "https://raw.githubusercontent.com/abrar1499/WatchTogether/main/remote/config.json"
     private const val PREFS = "remote_config"
@@ -39,11 +45,6 @@ object RemoteConfig {
     /** Button text that marks a site's "open the app" popup (it gets hidden). */
     @Volatile var nagPhrases: List<String> = DEFAULT_NAGS
         private set
-
-    private val DEFAULT_NAGS = listOf(
-        "open tiktok", "open facebook", "open app", "open the app", "open in app",
-        "get the full", "use the app", "continue in app", "download app", "get the app", "not now"
-    )
 
     /** Opacity of chat messages, newest first. */
     @Volatile var chatLevels: FloatArray? = null
