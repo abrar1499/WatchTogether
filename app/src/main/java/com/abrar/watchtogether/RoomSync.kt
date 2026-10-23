@@ -50,7 +50,8 @@ class RoomSync(
     fun start(
         onState: (PlaybackState) -> Unit,
         onMembers: (List<String>) -> Unit,
-        onMessage: (ChatMessage) -> Unit
+        onMessage: (ChatMessage) -> Unit,
+        onQueue: (List<String>) -> Unit = {}
     ) {
         // Clock difference between this phone and Firebase
         val offsetRef = db.getReference(".info/serverTimeOffset")
@@ -127,6 +128,16 @@ class RoomSync(
         }
         msgQuery.addChildEventListener(msgListener)
         listeners += msgQuery to msgListener
+
+        val queueRef = room.child("queue")
+        val queueListener = object : ValueEventListener {
+            override fun onDataChange(s: DataSnapshot) {
+                onQueue(s.children.mapNotNull { it.getValue(String::class.java) })
+            }
+            override fun onCancelled(e: DatabaseError) {}
+        }
+        queueRef.addValueEventListener(queueListener)
+        listeners += queueRef to queueListener
     }
 
     fun pushState(videoId: String, playing: Boolean, position: Double) {
@@ -139,6 +150,11 @@ class RoomSync(
                 "by" to userId
             )
         )
+    }
+
+    /** The list everyone can swipe through. */
+    fun pushQueue(keys: List<String>) {
+        room.child("queue").setValue(keys.take(60))
     }
 
     fun sendMessage(text: String) {

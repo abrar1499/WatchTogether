@@ -259,6 +259,7 @@ class EmbedPlayer(
                 "-webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%);" +
                 "background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.1) 50%,rgba(0,0,0,.45))}" +
                 "html.wt-full .wtfrost{display:none}" +
+                "html.wt-reel .wtfrost,html.wt-reel #wtglow{display:none!important}html.wt-reel video{-webkit-box-reflect:none!important}" +
                 // Soft colour glow behind everything, so the space below a short video isn't empty
                 "#wtglow{position:fixed;left:-10vw;top:-10vh;width:120vw;height:120vh;z-index:-1;pointer-events:none;filter:blur(40px) saturate(1.6);opacity:.85}html.wt-full #wtglow{display:none}" +
                 // Bulletproof: hide everything YouTube draws, whatever it's called; show only the video
@@ -290,7 +291,10 @@ class EmbedPlayer(
                 var v = hooked || document.querySelector('video');
                 var z = Math.max(0, Math.min(1, window.__wtZoom || 0));
                 var half = H * 0.5, h = half, fit = false;
+                var reel = !!(v && v.videoHeight > v.videoWidth * 1.1);
+                de.classList.toggle('wt-reel', reel && !de.classList.contains('wt-full'));
                 if (de.classList.contains('wt-full')) h = H;
+                else if (reel) h = H;                     // vertical video: whole screen, like reels
                 else if (v && v.videoWidth > 0) {
                   var nat = W * v.videoHeight / v.videoWidth;
                   if (nat >= half) fit = z < 0.5;         // tall video: whole or filled

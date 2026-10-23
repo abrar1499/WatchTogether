@@ -39,6 +39,10 @@ object SearchWeb {
     val icons = HashMap<Site, android.graphics.Bitmap>()
 
     var onPick: ((String) -> Unit)? = null
+
+    /** All videos on the page the last pick came from, in order (becomes the room's swipe list). */
+    var lastList: List<String> = emptyList()
+        private set
     var onProgress: ((Int) -> Unit)? = null
     var onLoadingStart: (() -> Unit)? = null
     var onContentReady: (() -> Unit)? = null
@@ -209,6 +213,16 @@ object SearchWeb {
         fun pick(href: String) {
             main.post { tryPick(view, href, fromHistory = false) }
         }
+
+        /** The page's video links in order; turned into room keys. */
+        @JavascriptInterface
+        fun list(json: String) {
+            val keys = try {
+                val arr = org.json.JSONArray(json)
+                (0 until arr.length()).mapNotNull { Media.keyFromUrl(site, arr.optString(it)) }.distinct()
+            } catch (e: Exception) { emptyList() }
+            main.post { lastList = keys.take(60) }
+        }
     }
 
     /**
@@ -228,10 +242,19 @@ object SearchWeb {
                 }
                 return '';
               }
+              function sendList(){
+                var seen = {}, out = [];
+                document.querySelectorAll('a[href]').forEach(function(a){
+                  var h = a.href; if (!h || seen[h]) return; seen[h] = 1;
+                  if (WTS.isVideo(h)) out.push(h);
+                });
+                WTS.list(JSON.stringify(out));
+              }
               document.addEventListener('click', function(ev){
                 var href = linkOf(ev.target);
                 if (href && WTS.isVideo(href)) {
                   ev.preventDefault(); ev.stopPropagation();
+                  sendList();
                   WTS.pick(href);
                 }
               }, true);
@@ -239,7 +262,7 @@ object SearchWeb {
               setInterval(function(){
                 if (location.href !== last) {
                   last = location.href;
-                  if (WTS.isVideo(last)) WTS.pick(last);
+                  if (WTS.isVideo(last)) { sendList(); WTS.pick(last); }
                 }
               }, 400);
             })();

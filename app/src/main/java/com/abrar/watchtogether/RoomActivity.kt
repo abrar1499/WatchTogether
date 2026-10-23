@@ -134,6 +134,7 @@ class RoomActivity : AppCompatActivity() {
                 b.memberCount.text = max(members.size, 1).toString()
                 b.memberCount.contentDescription = members.joinToString(", ")
             },
+            onQueue = { list -> queue = list },
             onMessage = { msg ->
                 chat.add(msg)
                 b.chatList.scrollToPosition(chat.itemCount - 1)
@@ -222,7 +223,7 @@ class RoomActivity : AppCompatActivity() {
             }
 
             override fun onVideoArea(fraction: Float) {
-                videoFraction = fraction.coerceIn(0.15f, 0.6f)
+                videoFraction = if (fraction > 0.95f) 1f else fraction.coerceIn(0.15f, 0.6f)
                 if (!fullscreen) setVideoArea(videoFraction)
             }
 
@@ -260,8 +261,17 @@ class RoomActivity : AppCompatActivity() {
                 return true
             }
 
+            // Swipe up = next video in the list, swipe down = previous (for everyone)
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
+                if (e1 == null || queue.size < 2) return false
+                val dy = e2.y - e1.y
+                if (kotlin.math.abs(dy) < dp(60) || kotlin.math.abs(vy) < kotlin.math.abs(vx) * 1.5f) return false
+                stepQueue(if (dy < 0) 1 else -1)
+                return true
+            }
+
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                if (!fullscreen && e.y < videoBottom()) return false
+                if (!fullscreen && videoFraction < 0.99f && e.y < videoBottom()) return false
                 seekBy(if (e.x > b.root.width / 2f) SEEK_STEP else -SEEK_STEP, e.x, e.y)
                 return true
             }
@@ -474,8 +484,24 @@ class RoomActivity : AppCompatActivity() {
         b.emptySearchInput.clearFocus()
         YouTubeSearchSheet(this, query?.trim()) { id ->
             b.emptySearchInput.setText("")
+            // The page it came from becomes everyone's swipe list
+            val list = SearchWeb.lastList
+            if (list.contains(id)) {
+                queue = list
+                sync.pushQueue(list)
+            }
             playForEveryone(id)
         }.show()
+    }
+
+    // ---------- Swipe list ----------
+
+    private var queue: List<String> = emptyList()
+
+    private fun stepQueue(dir: Int) {
+        val i = queue.indexOf(currentVideoId)
+        val next = queue.getOrNull(if (i < 0) 0 else i + dir) ?: return
+        playForEveryone(next)
     }
 
     private fun askForLink() {
