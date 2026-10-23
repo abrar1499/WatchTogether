@@ -32,7 +32,7 @@ class ShareActivity : Activity() {
                     toast(R.string.share_no_video)
                 } else {
                     PendingShare.key = key
-                    PendingShare.url = found.second
+                    PendingShare.url = found?.second
                     if (RoomActivity.isOpen) {
                         startActivity(
                             Intent(this, RoomActivity::class.java)
