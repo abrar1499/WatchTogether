@@ -193,6 +193,10 @@ class RoomActivity : AppCompatActivity() {
                     EmbedPlayer.State.ENDED -> {
                         b.bufferLoader.visibility = View.GONE
                         hideLoading(delayMs = 0)
+                        // Like reels: when a video in the list ends, the next one starts
+                        if (queue.size > 1 && queue.indexOf(currentVideoId) in 0 until queue.size - 1) {
+                            b.root.postDelayed({ stepQueue(1) }, 400)
+                        }
                         localPlaying = false
                         setControlsVisible(true, autoHide = false)
                     }
@@ -246,9 +250,20 @@ class RoomActivity : AppCompatActivity() {
         isOpen = true
         // A video shared from TikTok / Facebook / YouTube plays here for everyone
         PendingShare.key?.let { key ->
+            val from = PendingShare.url
             PendingShare.key = null
+            PendingShare.url = null
             queue = emptyList()
             b.root.post { playForEveryone(key) }
+            // TikTok: fetch the creator's other videos so the room can keep swiping
+            val creator = from?.let { FeedFetcher.creatorPage(it) }
+            if (Media.siteOf(key) == Site.TIKTOK && creator != null) {
+                FeedFetcher.fetch(b.root, creator, key) { list ->
+                    if (isDestroyed) return@fetch
+                    queue = list
+                    sync.pushQueue(list)
+                }
+            }
         }
     }
 
@@ -652,6 +667,7 @@ class RoomActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         isOpen = false
+        FeedFetcher.stop()
         if (::sync.isInitialized) sync.stop()
         player?.release()
         player = null

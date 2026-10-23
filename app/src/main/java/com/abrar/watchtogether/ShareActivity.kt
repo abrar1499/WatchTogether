@@ -25,12 +25,14 @@ class ShareActivity : Activity() {
             return
         }
         thread {
-            val key = resolve(link)
+            val found = resolve(link)
+            val key = found?.first
             runOnUiThread {
                 if (key == null) {
                     toast(R.string.share_no_video)
                 } else {
                     PendingShare.key = key
+                    PendingShare.url = found.second
                     if (RoomActivity.isOpen) {
                         startActivity(
                             Intent(this, RoomActivity::class.java)
@@ -55,10 +57,11 @@ class ShareActivity : Activity() {
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
 
         /** Follows short links (vm.tiktok.com, fb.watch, share links…) until a video page is found. */
-        fun resolve(start: String): String? {
+        /** The video key and the page address it was found on. */
+        fun resolve(start: String): Pair<String, String>? {
             var url = start
             repeat(6) {
-                keyOf(url)?.let { return it }
+                keyOf(url)?.let { return it to url }
                 val next = try {
                     val c = URL(url).openConnection() as HttpURLConnection
                     c.instanceFollowRedirects = false
@@ -73,7 +76,7 @@ class ShareActivity : Activity() {
                 } ?: return null
                 url = next
             }
-            return keyOf(url)
+            return keyOf(url)?.let { it to url }
         }
 
         private fun keyOf(url: String): String? {
@@ -95,4 +98,5 @@ class ShareActivity : Activity() {
 /** A video shared from another app, waiting for a room to play it in. */
 object PendingShare {
     @Volatile var key: String? = null
+    @Volatile var url: String? = null
 }

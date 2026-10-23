@@ -153,8 +153,7 @@ class EmbedPlayer(
             :root{--wt-h:50vh}
             html,body{margin:0;height:100%;background:#000;overflow:hidden}
             /* Video on the top half, cropped edge to edge, mirrored below like YouTube */
-            #box{position:fixed;left:0;top:0;width:100vw;height:var(--wt-h);overflow:hidden;z-index:1;
-              -webkit-box-reflect:below 0px linear-gradient(rgba(255,255,255,.25),rgba(255,255,255,.6) 45%,#fff)}
+            #box{position:fixed;left:0;top:0;width:100vw;height:var(--wt-h);overflow:hidden;z-index:1}
             #f{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:0;width:100vw;height:178vw}
             .fr{position:fixed;left:0;width:100vw;bottom:0;pointer-events:none}
             #fr1{top:calc(var(--wt-h)*0.76);z-index:2;-webkit-backdrop-filter:blur(5px) saturate(1.3);backdrop-filter:blur(5px) saturate(1.3);
@@ -164,14 +163,25 @@ class EmbedPlayer(
             #fr3{top:var(--wt-h);z-index:4;-webkit-backdrop-filter:blur(22px) saturate(1.9) brightness(1.1);backdrop-filter:blur(22px) saturate(1.9) brightness(1.1);
               -webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%);
               background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.1) 50%,rgba(0,0,0,.45))}
-            html.wt-full .fr{display:none}
-            html.wt-full #box{-webkit-box-reflect:none}
+            /* Reflection: a muted copy of the same video, flipped, directly below */
+            #mwrap{position:fixed;left:0;top:var(--wt-h);width:100vw;bottom:0;overflow:hidden;z-index:1;opacity:.9;
+              -webkit-mask-image:linear-gradient(rgba(0,0,0,.95),rgba(0,0,0,.55) 60%,rgba(0,0,0,.25));
+              mask-image:linear-gradient(rgba(0,0,0,.95),rgba(0,0,0,.55) 60%,rgba(0,0,0,.25))}
+            #mbox{position:absolute;left:0;top:0;width:100vw;height:var(--wt-h);overflow:hidden;transform:scaleY(-1)}
+            #m{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:0;pointer-events:none}
+            html.wt-full .fr,html.wt-full #mwrap{display:none}
             </style>
             </head><body>
             <div id="box"><iframe id="f" allow="autoplay; fullscreen; encrypted-media" src="$src"></iframe></div>
+            <div id="mwrap"><div id="mbox"><iframe id="m" allow="autoplay" src="${src.replace("muted=0", "muted=1")}"></iframe></div></div>
             <div class="fr" id="fr1"></div><div class="fr" id="fr2"></div><div class="fr" id="fr3"></div>
             <script>
-              var f = document.getElementById('f'), start = $start, ready = false;
+              var f = document.getElementById('f'), mf = document.getElementById('m'), start = $start, ready = false;
+              function sendTo(frame, type, value){
+                var msg = {type: type, 'x-tiktok-player': true};
+                if (value !== undefined) msg.value = value;
+                try { frame.contentWindow.postMessage(msg, '*'); } catch(x){}
+              }
               // Half the screen (whole screen in full-screen mode); the 9:16 player is sized so the
               // video covers the area edge to edge and the overflow is cropped
               function relayout(){
@@ -179,8 +189,8 @@ class EmbedPlayer(
                 var h = de.classList.contains('wt-full') ? H : H * 0.5;
                 de.style.setProperty('--wt-h', h + 'px');
                 var w = Math.max(W, h * 9 / 16);
-                f.style.width = w + 'px';
-                f.style.height = (w * 16 / 9) + 'px';
+                f.style.width = mf.style.width = w + 'px';
+                f.style.height = mf.style.height = (w * 16 / 9) + 'px';
                 WT.area(h / H);
               }
               window.__wtRelayout = relayout;
@@ -192,15 +202,22 @@ class EmbedPlayer(
                 f.contentWindow.postMessage(m, '*');
               }
               window.TT = {
-                play: function(){ send('unMute'); send('play'); },
-                pause: function(){ send('pause'); },
-                seek: function(s){ send('seekTo', s); }
+                play: function(){ send('unMute'); send('play'); sendTo(mf, 'play'); },
+                pause: function(){ send('pause'); sendTo(mf, 'pause'); },
+                seek: function(s){ send('seekTo', s); sendTo(mf, 'seekTo', s); }
               };
+              var mirrorTime = 0;
               window.__wtWantPlay = true;
               addEventListener('message', function(e){
                 var d = e.data;
                 if (typeof d === 'string') { try { d = JSON.parse(d); } catch(x) { return; } }
                 if (!d || !d['x-tiktok-player']) return;
+                // The mirror copy: keep it silent and in step with the main player
+                if (e.source === mf.contentWindow) {
+                  if (d.type === 'onPlayerReady') { sendTo(mf, 'mute'); if (window.__wtWantPlay) sendTo(mf, 'play'); }
+                  if (d.type === 'onCurrentTime' && d.value) mirrorTime = d.value.currentTime || 0;
+                  return;
+                }
                 switch (d.type) {
                   case 'onPlayerReady':
                     ready = true; WT.found(); relayout();
@@ -210,8 +227,8 @@ class EmbedPlayer(
                     break;
                   case 'onStateChange':
                     var v = d.value;
-                    if (v === 1) WT.state('playing');
-                    else if (v === 2) WT.state('paused');
+                    if (v === 1) { WT.state('playing'); sendTo(mf, 'play'); }
+                    else if (v === 2) { WT.state('paused'); sendTo(mf, 'pause'); }
                     else if (v === 3) WT.state('buffering');
                     else if (v === 0) WT.state('ended');
                     break;
@@ -219,6 +236,7 @@ class EmbedPlayer(
                     var c = d.value || {};
                     if (c.duration) WT.duration(c.duration);
                     WT.time(c.currentTime || 0);
+                    if (Math.abs((c.currentTime || 0) - mirrorTime) > 0.6) sendTo(mf, 'seekTo', c.currentTime || 0);
                     break;
                   case 'onPlayerError':
                     WT.error(String((d.value && (d.value.errorType || d.value.errorCode)) || 'error'));
