@@ -149,12 +149,43 @@ class EmbedPlayer(
         return """
             <!doctype html><html><head>
             <meta name="viewport" content="width=device-width,initial-scale=1">
-            <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}
-            iframe{position:fixed;inset:0;width:100vw;height:100vh;border:0}</style>
+            <style>
+            :root{--wt-h:50vh}
+            html,body{margin:0;height:100%;background:#000;overflow:hidden}
+            /* Video on the top half, cropped edge to edge, mirrored below like YouTube */
+            #box{position:fixed;left:0;top:0;width:100vw;height:var(--wt-h);overflow:hidden;z-index:1;
+              -webkit-box-reflect:below 0px linear-gradient(rgba(255,255,255,.25),rgba(255,255,255,.6) 45%,#fff)}
+            #f{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:0;width:100vw;height:178vw}
+            .fr{position:fixed;left:0;width:100vw;bottom:0;pointer-events:none}
+            #fr1{top:calc(var(--wt-h)*0.76);z-index:2;-webkit-backdrop-filter:blur(5px) saturate(1.3);backdrop-filter:blur(5px) saturate(1.3);
+              -webkit-mask-image:linear-gradient(transparent,#000 20%);mask-image:linear-gradient(transparent,#000 20%)}
+            #fr2{top:calc(var(--wt-h)*0.88);z-index:3;-webkit-backdrop-filter:blur(12px) saturate(1.6);backdrop-filter:blur(12px) saturate(1.6);
+              -webkit-mask-image:linear-gradient(transparent,#000 22%);mask-image:linear-gradient(transparent,#000 22%)}
+            #fr3{top:var(--wt-h);z-index:4;-webkit-backdrop-filter:blur(22px) saturate(1.9) brightness(1.1);backdrop-filter:blur(22px) saturate(1.9) brightness(1.1);
+              -webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%);
+              background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.1) 50%,rgba(0,0,0,.45))}
+            html.wt-full .fr{display:none}
+            html.wt-full #box{-webkit-box-reflect:none}
+            </style>
             </head><body>
-            <iframe id="f" allow="autoplay; fullscreen; encrypted-media" src="$src"></iframe>
+            <div id="box"><iframe id="f" allow="autoplay; fullscreen; encrypted-media" src="$src"></iframe></div>
+            <div class="fr" id="fr1"></div><div class="fr" id="fr2"></div><div class="fr" id="fr3"></div>
             <script>
               var f = document.getElementById('f'), start = $start, ready = false;
+              // Half the screen (whole screen in full-screen mode); the 9:16 player is sized so the
+              // video covers the area edge to edge and the overflow is cropped
+              function relayout(){
+                var de = document.documentElement, W = innerWidth, H = innerHeight;
+                var h = de.classList.contains('wt-full') ? H : H * 0.5;
+                de.style.setProperty('--wt-h', h + 'px');
+                var w = Math.max(W, h * 9 / 16);
+                f.style.width = w + 'px';
+                f.style.height = (w * 16 / 9) + 'px';
+                WT.area(h / H);
+              }
+              window.__wtRelayout = relayout;
+              addEventListener('resize', relayout);
+              relayout();
               function send(type, value){
                 var m = {type: type, 'x-tiktok-player': true};
                 if (value !== undefined) m.value = value;
@@ -172,7 +203,7 @@ class EmbedPlayer(
                 if (!d || !d['x-tiktok-player']) return;
                 switch (d.type) {
                   case 'onPlayerReady':
-                    ready = true; WT.found(); WT.area(1);
+                    ready = true; WT.found(); relayout();
                     send('unMute');
                     if (start > 1) send('seekTo', start);
                     if (window.__wtWantPlay) send('play');
@@ -366,7 +397,7 @@ class EmbedPlayer(
                 var v = hooked || document.querySelector('video');
                 var z = Math.max(0, Math.min(1, window.__wtZoom || 0));
                 var half = H * 0.5, h = half, fit = false;
-                var reel = !!(v && v.videoHeight > v.videoWidth * 1.1);
+                var reel = false;   // vertical videos use the same half-screen look as everything else
                 de.classList.toggle('wt-reel', reel && !de.classList.contains('wt-full'));
                 if (de.classList.contains('wt-full')) h = H;
                 else if (reel) h = H;                     // vertical video: whole screen, like reels
