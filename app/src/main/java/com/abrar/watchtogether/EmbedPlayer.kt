@@ -96,6 +96,17 @@ class EmbedPlayer(
         val url = Media.playerUrl(key, start)
         // YouTube refuses embeds without a Referer (error 153) or with youtube.com (error 152)
         web.loadUrl(url, mapOf("Referer" to "https://$packageName/"))
+
+        // If no video shows up in time, try the site's other way of opening it
+        videoFound = false
+        main.removeCallbacks(tryFallback)
+        if (Media.fallbackUrl(key) != null) main.postDelayed(tryFallback, 8_000)
+    }
+
+    private var videoFound = false
+    private val tryFallback = Runnable {
+        if (videoFound) return@Runnable
+        Media.fallbackUrl(currentKey)?.let { web.loadUrl(it) }
     }
 
     private var startAt = 0f
@@ -134,6 +145,7 @@ class EmbedPlayer(
     fun onResume() = web.onResume()
 
     fun release() {
+        main.removeCallbacks(tryFallback)
         web.stopLoading()
         web.destroy()
     }
@@ -167,6 +179,12 @@ class EmbedPlayer(
 
         @JavascriptInterface
         fun error(message: String) = main.post { listener.onError(message) }
+
+        @JavascriptInterface
+        fun found() = main.post {
+            videoFound = true
+            main.removeCallbacks(tryFallback)
+        }
 
         @JavascriptInterface
         fun area(fraction: Double) = main.post { listener.onVideoArea(fraction.toFloat()) }
@@ -256,6 +274,7 @@ class EmbedPlayer(
               addEventListener('resize', relayout);
               function hook(v){
                 hooked = v;
+                WT.found();
                 // Jump to where the room is (YouTube already does this via its start parameter)
                 if (window.__wtStart > 1 && !/youtube/.test(location.host)) {
                   var go = function(){ try { v.currentTime = window.__wtStart; } catch(e){} window.__wtStart = 0; };

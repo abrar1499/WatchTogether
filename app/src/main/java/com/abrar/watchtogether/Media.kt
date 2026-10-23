@@ -15,6 +15,7 @@ object Media {
     private val FB_REEL = Regex("/reel/(\\d+)")
     private val FB_VIDEOS = Regex("/videos/(?:[^/?#]+/)?(\\d+)")
     private val FB_WATCH = Regex("[?&]v=(\\d+)")
+    private val FB_VIDEO_ID = Regex("[?&](?:video_id|story_fbid)=(\\d+)")
     private val NETFLIX = Regex("/watch/(\\d+)")
 
     /** Turns a page the person tapped in the search sheet into a room key, or null if it isn't a video. */
@@ -29,6 +30,8 @@ object Media {
                 "fb:https://www.facebook.com/watch/?v=" + FB_VIDEOS.find(url)!!.groupValues[1]
             url.contains("/watch") && FB_WATCH.containsMatchIn(url) ->
                 "fb:https://www.facebook.com/watch/?v=" + FB_WATCH.find(url)!!.groupValues[1]
+            FB_VIDEO_ID.containsMatchIn(url) && (url.contains("video") || url.contains("story.php")) ->
+                "fb:https://www.facebook.com/watch/?v=" + FB_VIDEO_ID.find(url)!!.groupValues[1]
             else -> null
         }
         Site.NETFLIX -> NETFLIX.find(url)?.let { "nf:" + it.groupValues[1] }
@@ -52,10 +55,17 @@ object Media {
                 "?autoplay=1&controls=0&progress_bar=0&play_button=0&volume_control=0" +
                 "&fullscreen_button=0&timestamp=0&loop=0&music_info=0&description=0" +
                 "&rel=0&native_context_menu=0&closed_caption=0"
-            Site.FACEBOOK -> "https://www.facebook.com/plugins/video.php?href=" +
-                URLEncoder.encode(rest, "UTF-8") + "&show_text=false&autoplay=true&mute=false"
+            // The real page (works with the person's own login, also for non-public videos)
+            Site.FACEBOOK -> rest.replace("https://www.facebook.com/", "https://m.facebook.com/")
             Site.NETFLIX -> "https://www.netflix.com/watch/$rest"
         }
+    }
+
+    /** A second way to open the video if the first page shows no video (Facebook's public embed). */
+    fun fallbackUrl(key: String): String? = when (siteOf(key)) {
+        Site.FACEBOOK -> "https://www.facebook.com/plugins/video.php?href=" +
+            URLEncoder.encode(key.substringAfter(':'), "UTF-8") + "&show_text=false&autoplay=true&mute=false"
+        else -> null
     }
 
     /** YouTube id for thumbnails, or null for other sites. */
