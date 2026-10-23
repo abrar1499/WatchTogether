@@ -261,12 +261,21 @@ object SearchWeb {
               // in the tapped card's own markup instead
               var host = location.host;
               var PAT = /tiktok/.test(host)
-                ? { re: /(?:\/video\/|xgwrapper-\d+-|"id":")(\d{17,20})/, url: 'https://www.tiktok.com/video/' }
+                ? { re: /(?:\/video\/|xgwrapper-\d+-)(\d{17,20})/, url: 'https://www.tiktok.com/video/' }
                 : /facebook/.test(host)
                 ? { re: /(?:\/reel\/|\/videos\/|video_id=|"videoID":"|"video_id":")(\d{8,20})/, url: 'https://www.facebook.com/watch/?v=' }
                 : null;
+              // The video under the finger (feeds stack many videos on one page)
+              function videoAt(x, y){
+                var best = null;
+                document.querySelectorAll('video').forEach(function(v){
+                  var r = v.getBoundingClientRect();
+                  if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) best = best || v;
+                });
+                return best;
+              }
               function idUrlOf(t){
-                if (!PAT) return '';
+                if (!PAT || !t) return '';
                 for (var e = t, i = 0; e && e !== document.body && i < 12; e = e.parentElement, i++) {
                   var html = e.outerHTML || '';
                   if (html.length > 300000) break;
@@ -275,14 +284,42 @@ object SearchWeb {
                 }
                 return '';
               }
+              function videoHrefAt(target, x, y){
+                var href = linkOf(target);
+                if (href && WTS.isVideo(href)) return href;
+                href = idUrlOf(videoAt(x, y)) || idUrlOf(target);
+                return (href && WTS.isVideo(href)) ? href : '';
+              }
+              function choose(href){
+                sendList();
+                WTS.pick(href);
+              }
+
+              // TikTok handles touches itself and never sends a "click", so catch the touch.
+              // Listening on the document in the capture phase runs before the site's own code.
+              var sx = 0, sy = 0, st = 0, handledAt = 0;
+              document.addEventListener('touchstart', function(ev){
+                var t = ev.touches[0]; if (!t) return;
+                sx = t.clientX; sy = t.clientY; st = Date.now();
+              }, { capture: true, passive: true });
+              document.addEventListener('touchend', function(ev){
+                var t = ev.changedTouches[0]; if (!t) return;
+                // Only a short, still tap (not a scroll or swipe)
+                if (Math.abs(t.clientX - sx) > 12 || Math.abs(t.clientY - sy) > 12 || Date.now() - st > 500) return;
+                var target = document.elementFromPoint(t.clientX, t.clientY) || ev.target;
+                var href = videoHrefAt(target, t.clientX, t.clientY);
+                if (!href) return;
+                ev.preventDefault(); ev.stopPropagation();
+                handledAt = Date.now();
+                choose(href);
+              }, { capture: true, passive: false });
+
               document.addEventListener('click', function(ev){
-                var href = linkOf(ev.target);
-                if (!href || !WTS.isVideo(href)) href = idUrlOf(ev.target) || href;
-                if (href && WTS.isVideo(href)) {
-                  ev.preventDefault(); ev.stopPropagation();
-                  sendList();
-                  WTS.pick(href);
-                }
+                if (Date.now() - handledAt < 800) { ev.preventDefault(); ev.stopPropagation(); return; }
+                var href = videoHrefAt(ev.target, ev.clientX, ev.clientY);
+                if (!href) return;
+                ev.preventDefault(); ev.stopPropagation();
+                choose(href);
               }, true);
               var last = location.href;
               setInterval(function(){
