@@ -66,5 +66,18 @@
     "update_permission_message": "Allow installs from this app once to enable automatic updates.",
     "update_permission_ok": "Allow"
   },
-  "sheetHeight": 0.62
+  "sheetHeight": 0.62,
+  "nagPhrases": [
+    "open tiktok",
+    "open facebook",
+    "open app",
+    "open the app",
+    "open in app",
+    "get the full",
+    "use the app",
+    "continue in app",
+    "download app",
+    "get the app",
+    "not now"
+  ]
 }
