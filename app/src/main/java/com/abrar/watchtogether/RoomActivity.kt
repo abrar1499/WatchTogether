@@ -129,11 +129,6 @@ class RoomActivity : AppCompatActivity() {
         sync.start(
             onState = { state ->
                 remote = state
-                // In TikTok mode this phone drives the feed; others pausing/playing is mirrored on it
-                tiktok?.let { mode ->
-                    if (state.by != userId) mode.setPlaying(state.playing)
-                    return@start
-                }
                 // Our own change coming back from the server: nothing to do
                 if (state.by == userId && state.videoId == currentVideoId) return@start
                 applyRemote(state, force = false)
@@ -204,8 +199,8 @@ class RoomActivity : AppCompatActivity() {
                         b.bufferLoader.visibility = View.GONE
                         hideLoading(delayMs = 0)
                         // Like reels: when a video in the list ends, the next one starts
-                        if (queue.size > 1 && queue.indexOf(currentVideoId) in 0 until queue.size - 1) {
-                            b.root.postDelayed({ stepQueue(1) }, 400)
+                        if (tiktok != null || queue.indexOf(currentVideoId) in 0 until queue.size - 1) {
+                            b.root.postDelayed({ next(1) }, 400)
                         }
                         localPlaying = false
                         setControlsVisible(true, autoHide = false)
@@ -295,11 +290,10 @@ class RoomActivity : AppCompatActivity() {
 
             // Swipe up = next video in the list, swipe down = previous (for everyone)
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
-                if (e1 == null || queue.size < 2) return false
+                if (e1 == null) return false
                 val dy = e2.y - e1.y
                 if (kotlin.math.abs(dy) < dp(60) || kotlin.math.abs(vy) < kotlin.math.abs(vx) * 1.5f) return false
-                stepQueue(if (dy < 0) 1 else -1)
-                return true
+                return next(if (dy < 0) 1 else -1)
             }
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
@@ -516,6 +510,7 @@ class RoomActivity : AppCompatActivity() {
         b.emptySearchInput.clearFocus()
         YouTubeSearchSheet(this, query?.trim(), onTikTokMode = { enterTikTok() }) { id ->
             b.emptySearchInput.setText("")
+            if (Media.siteOf(id) != Site.TIKTOK) stopTikTok()
             // The page it came from becomes everyone's swipe list
             val list = SearchWeb.lastList
             if (list.contains(id)) {
@@ -533,42 +528,64 @@ class RoomActivity : AppCompatActivity() {
         override fun handleOnBackPressed() = exitTikTok()
     }
 
-    /** The real TikTok feed fills the room; the reel on screen plays for everyone. */
+    /** TikTok reels in the room, fed by a hidden TikTok feed; swipe for the next reel. */
     private fun enterTikTok() {
         if (tiktok != null) return
-        player?.pause()
-        hideLoading(delayMs = 0)
-        b.controls.visibility = View.GONE
-        b.emptyState.visibility = View.GONE
-        b.tiktokHost.visibility = View.VISIBLE
-        b.exitTikTok.visibility = View.VISIBLE
-        exitTikTokOnBack.isEnabled = true
-        queue = emptyList()
-        tiktok = TikTokMode(b.tiktokHost) { id, second, playing ->
-            val key = "tt:$id"
-            currentVideoId = key
-            lastSecond = second
-            lastSecondAt = SystemClock.elapsedRealtime()
-            sync.pushState(key, playing, second.toDouble())
-        }.also { it.start() }
+        tiktok = TikTokMode(
+            b.root,
+            onReel = { id -> playForEveryone("tt:$id") },
+            onList = { ids ->
+                // Friends can swipe through the reels this feed has loaded
+                queue = ids.map { "tt:$it" }
+                sync.pushQueue(queue)
+            },
+            onStuck = { askTikTokLogin() }
+        ).also { it.start() }
     }
 
-    private fun exitTikTok() {
+    private fun askTikTokLogin() {
         val mode = tiktok ?: return
-        tiktok = null
-        mode.stop()
-        b.tiktokHost.visibility = View.GONE
+        if (mode.loginVisible) return
+        MaterialAlertDialogBuilder(this)
+            .setTitle(tr(R.string.tiktok_login_title))
+            .setMessage(tr(R.string.tiktok_login_message))
+            .setPositiveButton(tr(R.string.tiktok_login_ok)) { _, _ ->
+                mode.showForLogin()
+                b.exitTikTok.bringToFront()
+                b.exitTikTok.visibility = View.VISIBLE
+                exitTikTokOnBack.isEnabled = true
+            }
+            .setNegativeButton(tr(R.string.update_later), null)
+            .show()
+    }
+
+    /** ✕ / back while the TikTok login page is showing: hide it again. */
+    private fun exitTikTok() {
+        tiktok?.hide()
         b.exitTikTok.visibility = View.GONE
         exitTikTokOnBack.isEnabled = false
-        // Pick up where the feed was, in the normal player
-        val state = remote
-        currentVideoId = null
-        if (state != null) applyRemote(state, force = true) else updateEmptyState()
+    }
+
+    private fun stopTikTok() {
+        stopTikTok()
+        exitTikTok()
     }
 
     // ---------- Swipe list ----------
 
     private var queue: List<String> = emptyList()
+
+    /** Next / previous video: from the hidden TikTok feed, or from the room's swipe list. */
+    private fun next(dir: Int): Boolean {
+        val mode = tiktok
+        if (mode != null && currentVideoId?.let { Media.siteOf(it) } == Site.TIKTOK) {
+            mode.step(dir)
+            return true
+        }
+        if (queue.size < 2) return false
+        stepQueue(dir)
+        return true
+    }
 
     private fun stepQueue(dir: Int) {
         val i = queue.indexOf(currentVideoId)
@@ -718,8 +735,7 @@ class RoomActivity : AppCompatActivity() {
     override fun onDestroy() {
         isOpen = false
         FeedFetcher.stop()
-        tiktok?.stop()
-        tiktok = null
+        stopTikTok()
         if (::sync.isInitialized) sync.stop()
         player?.release()
         player = null

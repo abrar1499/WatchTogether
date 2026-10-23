@@ -3,31 +3,44 @@ package com.abrar.watchtogether
 import android.annotation.SuppressLint
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import org.json.JSONArray
 
 /**
- * The real TikTok feed inside the room. The person scrolls it like the TikTok app;
- * whichever reel is on screen (and whether it is playing) is reported, so everyone
- * else in the room gets the same reel in TikTok's official player.
+ * A TikTok feed running hidden behind the room. It is never shown (except for logging in);
+ * it only tells the room which reel comes next. The reels themselves play in TikTok's
+ * official player, in the same half-screen design as YouTube.
  */
 class TikTokMode(
-    private val host: ViewGroup,
-    private val onReel: (id: String, second: Float, playing: Boolean) -> Unit
+    private val root: ViewGroup,
+    /** A new reel is on the hidden feed. */
+    private val onReel: (id: String) -> Unit,
+    /** All reels the feed has loaded so far, in order (for friends' swipe list). */
+    private val onList: (List<String>) -> Unit,
+    /** The feed stopped giving new reels (usually TikTok asking to log in). */
+    private val onStuck: () -> Unit
 ) {
     private val main = Handler(Looper.getMainLooper())
-    private val web = WebView(host.context)
+    private val web = WebView(root.context)
+    private var lastId = ""
+    private var known: List<String> = emptyList()
+    private var askedAt = 0L
+
+    var loginVisible = false
+        private set
 
     @SuppressLint("SetJavaScriptEnabled")
     fun start() {
         with(web.settings) {
             javaScriptEnabled = true
             domStorageEnabled = true
-            mediaPlaybackRequiresUserGesture = false
+            mediaPlaybackRequiresUserGesture = true
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)   // stay logged in
         web.setBackgroundColor(0xFF000000.toInt())
@@ -42,16 +55,48 @@ class TikTokMode(
             override fun onPageCommitVisible(view: WebView, url: String) = inject(view)
             override fun onPageFinished(view: WebView, url: String) = inject(view)
         }
-        host.addView(web, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        hide()
         web.loadUrl("https://www.tiktok.com/foryou")
     }
 
-    /** Someone else in the room paused or played: do the same on the feed. */
-    fun setPlaying(play: Boolean) {
-        web.evaluateJavascript("window.__wtTMctl&&window.__wtTMctl($play);", null)
+    /** Move the hidden feed one reel down (1) or up (-1). */
+    fun step(dir: Int) {
+        askedAt = SystemClock.elapsedRealtime()
+        val before = lastId
+        web.evaluateJavascript("window.__wtStep&&window.__wtStep($dir);", null)
+        // If the feed itself didn't move, use the next reel it already loaded
+        main.postDelayed({
+            if (lastId != before) return@postDelayed
+            val i = known.indexOf(before)
+            val next = known.getOrNull(if (i < 0) 0 else i + dir)
+            if (next != null && next != before) {
+                lastId = next
+                onReel(next)
+            } else if (dir > 0) {
+                onStuck()
+            }
+        }, 2500)
+    }
+
+    /** Show the TikTok page on top of the room so the person can log in. */
+    fun showForLogin() {
+        loginVisible = true
+        (web.parent as? ViewGroup)?.removeView(web)
+        root.addView(web, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        web.evaluateJavascript("window.__wtLogin=true;", null)
+    }
+
+    /** Back behind the room (after logging in). */
+    fun hide() {
+        loginVisible = false
+        (web.parent as? ViewGroup)?.removeView(web)
+        // Underneath everything: laid out (so the page loads) but covered by the player
+        root.addView(web, 0, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        web.evaluateJavascript("window.__wtLogin=false;", null)
     }
 
     fun stop() {
+        main.removeCallbacksAndMessages(null)
         (web.parent as? ViewGroup)?.removeView(web)
         web.stopLoading()
         web.destroy()
@@ -61,8 +106,22 @@ class TikTokMode(
 
     private inner class Bridge {
         @JavascriptInterface
-        fun state(id: String, second: Double, playing: Boolean) = main.post {
-            onReel(id, second.toFloat(), playing)
+        fun current(id: String) = main.post {
+            if (id == lastId) return@post
+            lastId = id
+            onReel(id)
+        }
+
+        @JavascriptInterface
+        fun list(json: String) = main.post {
+            val ids = try {
+                val a = JSONArray(json)
+                (0 until a.length()).map { a.getString(it) }
+            } catch (e: Exception) { emptyList() }
+            if (ids.isNotEmpty() && ids != known) {
+                known = ids
+                onList(ids)
+            }
         }
     }
 
@@ -71,8 +130,14 @@ class TikTokMode(
             (function(){
               if (window.__wtTM) return; window.__wtTM = true;
               var RE = /(?:\/video\/|xgwrapper-\d+-)(\d{17,20})/;
+              var REG = /(?:\/video\/|xgwrapper-\d+-)(\d{17,20})/g;
 
-              // The reel in the middle of the screen
+              // Silent: the reel plays in the room's player, not here
+              setInterval(function(){
+                if (window.__wtLogin) return;
+                document.querySelectorAll('video,audio').forEach(function(m){ m.muted = true; if (!m.paused) m.pause(); });
+              }, 300);
+
               function current(){
                 var cy = innerHeight / 2, best = null, bd = 1e9;
                 document.querySelectorAll('video').forEach(function(v){
@@ -90,28 +155,36 @@ class TikTokMode(
                   var m = RE.exec(h);
                   if (m) return m[1];
                 }
-                var u = RE.exec(location.href);
-                return u ? u[1] : '';
+                return '';
               }
-
-              var lastId = '', lastPaused = null, lastT = 0;
+              var lastList = '';
               setInterval(function(){
-                var v = current(); if (!v) return;
-                var id = idOf(v); if (!id) return;
-                var t = v.currentTime || 0, p = v.paused;
-                var expected = p ? lastT : lastT + 0.5;
-                if (id !== lastId || p !== lastPaused || Math.abs(t - expected) > 2.5) TTM.state(id, t, !p);
-                lastId = id; lastPaused = p; lastT = t;
-              }, 500);
+                var v = current(); var id = v ? idOf(v) : '';
+                if (id) TTM.current(id);
+                var seen = {}, out = [], m, html = document.body ? document.body.innerHTML : '';
+                REG.lastIndex = 0;
+                while ((m = REG.exec(html)) && out.length < 100) { if (!seen[m[1]]) { seen[m[1]] = 1; out.push(m[1]); } }
+                var s = JSON.stringify(out);
+                if (s !== lastList) { lastList = s; TTM.list(s); }
+              }, 600);
 
-              window.__wtTMctl = function(play){
-                var v = current(); if (!v) return;
-                if (play) v.play().catch(function(){}); else v.pause();
+              // Next / previous reel: scroll the feed's own scroller one screen, with arrow keys as backup
+              window.__wtStep = function(dir){
+                var best = document.scrollingElement, bh = 0;
+                document.querySelectorAll('div,main,section').forEach(function(e){
+                  if (e.scrollHeight <= e.clientHeight + 50) return;
+                  var oy = getComputedStyle(e).overflowY;
+                  if ((oy === 'auto' || oy === 'scroll') && e.clientHeight > bh) { bh = e.clientHeight; best = e; }
+                });
+                var h = (best && best.clientHeight) || innerHeight;
+                try { best.scrollBy({ top: dir * h, behavior: 'instant' }); } catch (x) { best.scrollTop += dir * h; }
+                var key = dir > 0 ? 'ArrowDown' : 'ArrowUp';
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: key, code: key, keyCode: dir > 0 ? 40 : 38, bubbles: true }));
               };
 
-              // Hide "open the TikTok app" banners and boxes (never the login screens)
-              var words = ['open tiktok', 'open app', 'open the app', 'get the app', 'get tiktok', 'download tiktok', 'download app'];
-              function hideNags(){
+              // Hide "open the TikTok app" boxes (never the login screens)
+              var words = ['open tiktok', 'open app', 'open the app', 'get the app', 'get tiktok', 'download tiktok', 'download app', 'not now'];
+              setInterval(function(){
                 document.querySelectorAll('a,button,[role=button]').forEach(function(b){
                   var t = (b.innerText || '').trim().toLowerCase();
                   if (!t || t.length > 30 || !words.some(function(w){ return t.indexOf(w) >= 0; })) return;
@@ -123,8 +196,7 @@ class TikTokMode(
                     }
                   }
                 });
-              }
-              setInterval(hideNags, 1000);
+              }, 1000);
             })();
         """.trimIndent()
     }

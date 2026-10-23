@@ -59,6 +59,10 @@
     <string name="share_no_video">No video in this link</string>
     <string name="share_open_room">Open a room to play it</string>
 
+    <string name="tiktok_login_title">TikTok login</string>
+    <string name="tiktok_login_message">TikTok wants you to log in to keep loading reels. Log in once, then tap ✕.</string>
+    <string name="tiktok_login_ok">Log in</string>
+
     <plurals name="watching_count">
         <item quantity="one">%d watching</item>
         <item quantity="other">%d watching</item>
