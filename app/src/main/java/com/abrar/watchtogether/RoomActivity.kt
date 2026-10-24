@@ -126,7 +126,7 @@ class RoomActivity : AppCompatActivity() {
 
         setupPlayer()
         setupControls()
-        SearchWeb.warmUp(this)   // YouTube search is ready before anyone taps it
+        // Create the search WebView only when the search sheet is opened, to keep playback smooth.
         updateEmptyState()
         onBackPressedDispatcher.addCallback(this, exitFullscreenOnBack)
         onBackPressedDispatcher.addCallback(this, exitTikTokOnBack)
@@ -235,6 +235,8 @@ class RoomActivity : AppCompatActivity() {
                             b.root.postDelayed({ next(1) }, 400)
                         }
                         localPlaying = false
+                        // Ended is a room-wide playback state; don't let periodic drift correction restart it.
+                        publish(false, lastSecond)
                         setControlsVisible(true, autoHide = false)
                     }
                     EmbedPlayer.State.BUFFERING -> {
