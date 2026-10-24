@@ -373,84 +373,66 @@ object SearchWeb {
                   try { h = new URL(h, location.href).href; } catch(x) {}
                   return WTS.isVideo(h) ? h : '';
                 }
-                function idFromRaw(raw){
-                  if (!raw || !PAT) return '';
-                  var m = PAT.re.exec(raw);
-                  if (m) return PAT.url + m[1];
-                  if (/tiktok/.test(location.host)) {
-                    m = /(?:itemId|item_id|videoId|video_id|aweme_id)["']?\s*[:=]\s*["']?(\d{17,20})/i.exec(raw);
-                    if (m) return PAT.url + m[1];
-                  }
-                  return '';
-                }
-                function hrefFromNode(n){
-                  if (!n || !n.getAttribute) return '';
-                  var attrs = ['href','data-href','data-url','data-video-url','data-link'];
-                  for (var a = 0; a < attrs.length; a++) {
-                    var h = n.href || n.getAttribute(attrs[a]);
-                    h = normal(h);
-                    if (h) return h;
-                  }
-                  var raw = (n.getAttribute('data-video-id') || n.getAttribute('data-item-id') ||
-                    n.getAttribute('data-id') || n.id || '');
-                  return idFromRaw(raw);
+                function isUiLayer(n){
+                  if (!n || n.nodeType !== 1 || !n.matches) return false;
+                  return n.matches(
+                    'button,input,textarea,select,option,label,nav,header,[role="tab"],' +
+                    '[role="dialog"],[aria-modal="true"],[data-e2e*="close" i],' +
+                    '[aria-label*="close" i],[aria-label*="back" i],' +
+                    '[class*="modal" i],[class*="drawer" i],[class*="description" i],' +
+                    '[data-e2e*="description" i]'
+                  );
                 }
 
-                // First inspect the exact elements Android says were touched, including shadow DOM.
-                if (ev && ev.composedPath) {
-                  var path = ev.composedPath();
-                  for (var p = 0; p < path.length; p++) {
-                    var h = hrefFromNode(path[p]);
-                    if (h) return h;
+                // Never hijack TikTok's own navigation, modal/description sheet, or its close button.
+                // Check the complete composed path because some controls are rendered in shadow roots.
+                var path = (ev && ev.composedPath) ? ev.composedPath() : [];
+                for (var p = 0; p < path.length; p++) {
+                  var n = path[p];
+                  if (!n || n.nodeType !== 1) continue;
+                  if (isUiLayer(n)) return '';
+                  if (n.tagName === 'A') {
+                    var raw = n.href || n.getAttribute('href') || '';
+                    return normal(raw); // A non-video link belongs to TikTok; let it navigate normally.
                   }
                 }
-                var h = linkOf(target);
-                if (h && WTS.isVideo(h)) return h;
 
-                // TikTok search cards often put the clickable video anchor beside the preview layer.
-                // Prefer a video anchor whose rectangle actually contains the tap point.
-                for (var e = target, depth = 0; e && e !== document.body && depth < 18; e = e.parentElement, depth++) {
+                // If the target belongs to a link, respect that link instead of searching its parents.
+                var anchor = target && target.closest ? target.closest('a[href]') : null;
+                if (anchor) return normal(anchor.href);
+
+                // Some grid thumbnails expose the link on a surrounding tile. Only accept an anchor
+                // whose visible rectangle actually contains the tap point; never pick a nearby tile.
+                for (var e = target, depth = 0; e && e !== document.body && depth < 10; e = e.parentElement, depth++) {
+                  if (isUiLayer(e)) return '';
                   if (!e.querySelectorAll) continue;
-                  var links = e.querySelectorAll('a[href]');
-                  for (var i = 0; i < Math.min(links.length, 80); i++) {
-                    h = normal(links[i].href);
+                  var links = e.querySelectorAll('a[href*="/video/"],a[href*="xgwrapper-"]');
+                  for (var i = 0; i < Math.min(links.length, 40); i++) {
+                    var h = normal(links[i].href);
                     if (!h) continue;
                     var r = links[i].getBoundingClientRect();
                     if (r.width > 0 && r.height > 0 &&
                         x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return h;
                   }
-                  h = idFromRaw(e.getAttribute && (e.getAttribute('data-video-id') ||
-                    e.getAttribute('data-item-id') || e.getAttribute('data-id') || e.id || ''));
-                  if (h && WTS.isVideo(h)) return h;
                 }
 
-                // Fallback for TikTok's thumbnail overlays: choose the closest visible video link.
-                if (/tiktok/.test(location.host)) {
-                  var best = '', bestDist = Infinity;
-                  document.querySelectorAll('a[href*="/video/"],a[href*="xgwrapper-"]').forEach(function(a){
-                    var h = normal(a.href);
-                    if (!h) return;
-                    var r = a.getBoundingClientRect();
-                    if (r.width < 4 || r.height < 4 || r.bottom <= 0 || r.top >= innerHeight) return;
-                    var dx = x < r.left ? r.left - x : (x > r.right ? x - r.right : 0);
-                    var dy = y < r.top ? r.top - y : (y > r.bottom ? y - r.bottom : 0);
-                    var dist = dx * dx + dy * dy;
-                    if (dist < bestDist) { bestDist = dist; best = h; }
-                  });
-                  if (best && bestDist <= Math.pow(Math.max(innerWidth, innerHeight) * 0.4, 2)) return best;
+                // A tap on the actual video element can be resolved from its own item's markup.
+                // Do not scan arbitrary page ancestors: that was selecting a video on every tap.
+                var v = videoAt(x, y);
+                if (v && (target === v || (v.contains && v.contains(target)) ||
+                    (target && target.contains && target.contains(v)))) {
+                  var videoUrl = idUrlOf(v);
+                  if (videoUrl && WTS.isVideo(videoUrl)) return videoUrl;
                 }
-
-                // Finally inspect the video and its parent markup for an embedded item ID.
-                h = idUrlOf(videoAt(x, y)) || idUrlOf(target);
-                return (h && WTS.isVideo(h)) ? h : '';
+                return '';
               }
               function choose(href){
                 sendList();
                 WTS.pick(href);
               }
 
-              // TikTok handles touches itself and never sends a "click", so catch the touch.
-              // Listening on the document in the capture phase runs before the site's own code.
+              // Only intercept actual video tiles. Profile/feed navigation and modal controls stay native.
+              // Listening in capture phase lets us select a video before TikTok navigates to it.
               var sx = 0, sy = 0, st = 0, handledAt = 0;
               document.addEventListener('touchstart', function(ev){
                 var t = ev.touches[0]; if (!t) return;
