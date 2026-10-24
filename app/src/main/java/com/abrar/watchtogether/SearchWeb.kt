@@ -314,10 +314,16 @@ object SearchWeb {
                 : null;
               // The video under the finger (feeds stack many videos on one page)
               function videoAt(x, y){
-                var best = null;
+                var best = null, bestScore = -1;
                 document.querySelectorAll('video').forEach(function(v){
-                  var r = v.getBoundingClientRect();
-                  if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) best = best || v;
+                  var r = v.getBoundingClientRect(), s = getComputedStyle(v);
+                  if (r.width < 80 || r.height < 120 || r.bottom <= 0 || r.top >= innerHeight ||
+                      s.display === 'none' || s.visibility === 'hidden' || Number(s.opacity) < 0.05) return;
+                  if (x < r.left || x > r.right || y < r.top || y > r.bottom) return;
+                  var score = Math.min(r.width, innerWidth) * Math.min(r.height, innerHeight);
+                  if (!v.paused) score += 1000000;
+                  if (r.height >= innerHeight * 0.65) score += 1000000;
+                  if (score > bestScore) { bestScore = score; best = v; }
                 });
                 return best;
               }
@@ -378,14 +384,21 @@ object SearchWeb {
                   return n.matches(
                     'button,input,textarea,select,option,label,nav,header,[role="tab"],' +
                     '[role="dialog"],[aria-modal="true"],[data-e2e*="close" i],' +
-                    '[aria-label*="close" i],[aria-label*="back" i],' +
-                    '[class*="modal" i],[class*="drawer" i],[class*="description" i],' +
-                    '[data-e2e*="description" i]'
+                    '[data-e2e*="like" i],[data-e2e*="comment" i],[data-e2e*="share" i],' +
+                    '[data-e2e*="follow" i],[data-e2e*="feed-tab" i],[data-e2e*="bottom" i],' +
+                    '[data-e2e*="description" i],[data-e2e*="desc" i],' +
+                    '[aria-label*="close" i],[aria-label*="back" i],[aria-label*="comment" i],' +
+                    '[aria-label*="share" i],[aria-label*="like" i],[aria-label*="profile" i],' +
+                    '[aria-label*="discover" i],[aria-label*="inbox" i],[aria-label*="home" i],' +
+                    '[class*="modal" i],[class*="drawer" i],[class*="description" i]'
                   );
                 }
+                function isFeedRoute(){
+                  var p = (location.pathname || '/').replace(/\/+$/, '') || '/';
+                  return p === '/' || p === '/foryou' || p === '/following';
+                }
 
-                // Never hijack TikTok's own navigation, modal/description sheet, or its close button.
-                // Check the complete composed path because some controls are rendered in shadow roots.
+                // Navigation and overlay controls always belong to TikTok, not the room player.
                 var path = (ev && ev.composedPath) ? ev.composedPath() : [];
                 for (var p = 0; p < path.length; p++) {
                   var n = path[p];
@@ -393,22 +406,27 @@ object SearchWeb {
                   if (isUiLayer(n)) return '';
                   if (n.tagName === 'A') {
                     var raw = n.href || n.getAttribute('href') || '';
-                    return normal(raw); // A non-video link belongs to TikTok; let it navigate normally.
+                    return normal(raw);
                   }
                 }
 
-                // If the target belongs to a link, respect that link instead of searching its parents.
                 var anchor = target && target.closest ? target.closest('a[href]') : null;
                 if (anchor) return normal(anchor.href);
 
-                // Do not search ancestor containers for any overlapping video links.
-                // A description sheet or navigation overlay can sit above a video tile; choosing
-                // links by rectangle alone incorrectly steals taps meant for the overlay.
-                // Profile-grid video tiles are handled by their actual <a href> in the event path.
-                
-                // Only accept a video element if the touched element is the video itself or a
-                // descendant inside it. Never accept a page/root wrapper that merely contains it.
                 var v = videoAt(x, y);
+                if (isFeedRoute() && v) {
+                  // TikTok's For You feed renders the video under transparent overlay divs,
+                  // so the touch target is often NOT a child of <video>. Resolve the visible
+                  // video only on feed routes and only after excluding navigation/control layers.
+                  var r = v.getBoundingClientRect();
+                  if (r.width > 80 && r.height > 120 &&
+                      x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+                    var feedUrl = idUrlOf(v);
+                    if (feedUrl && WTS.isVideo(feedUrl)) return feedUrl;
+                  }
+                }
+
+                // On Discover/profile pages, only a real video anchor or direct video target counts.
                 if (v && (target === v || (v.contains && v.contains(target)))) {
                   var videoUrl = idUrlOf(v);
                   if (videoUrl && WTS.isVideo(videoUrl)) return videoUrl;
@@ -464,13 +482,14 @@ object SearchWeb {
                 ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
                 choose(href);
               }, true);
+              // Track SPA URL changes, but never pick a room video just because a route changed.
               var last = location.href;
               setInterval(function(){
                 if (location.href !== last) {
                   last = location.href;
-                  if (WTS.isVideo(last)) { sendList(); WTS.pick(last); }
+                  if (/tiktok\.com/i.test(location.host)) sendList();
                 }
-              }, 400);
+              }, 700);
             })();
             """.trimIndent(),
             null
