@@ -567,8 +567,9 @@ class RoomActivity : AppCompatActivity() {
     }
 
     private fun stopTikTok() {
-        stopTikTok()
         exitTikTok()
+        tiktok?.stop()
+        tiktok = null
     }
 
     // ---------- Swipe list ----------
