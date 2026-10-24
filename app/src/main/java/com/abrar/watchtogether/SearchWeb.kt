@@ -169,9 +169,15 @@ object SearchWeb {
         v.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (tryPick(view, request.url.toString(), fromHistory = false)) return true
-                // Block "open in YouTube app" style links (intent://, vnd.youtube://)
+                // Never let TikTok's "open/install the app" CTA take the search WebView to Google Play.
                 val scheme = request.url.scheme ?: return true
-                return scheme != "http" && scheme != "https"
+                if (scheme != "http" && scheme != "https") return true
+                if (site == Site.TIKTOK) {
+                    val host = request.url.host?.lowercase().orEmpty()
+                    if (host == "play.google.com" || host.endsWith(".play.google.com") ||
+                        host == "apps.apple.com" || host.endsWith(".apps.apple.com")) return true
+                }
+                return false
             }
 
             // YouTube's mobile site changes pages without reloading, so watch the history too
@@ -234,11 +240,31 @@ object SearchWeb {
             """
             (function(){
               if (window.__wtTaps) return; window.__wtTaps = true;
+              // Search all nearby links instead of stopping at a non-video wrapper link.
+              // TikTok cards often nest the video link inside several clickable containers.
               function linkOf(t){
-                for (var e = t; e && e !== document; e = e.parentElement) {
-                  if (e.href && typeof e.href === 'string') return e.href;
-                  var h = e.getAttribute && (e.getAttribute('href') || e.getAttribute('data-href'));
-                  if (h) { try { return new URL(h, location.href).href; } catch(x){} }
+                for (var e = t, depth = 0; e && e !== document && depth < 30; e = e.parentElement, depth++) {
+                  var candidates = [];
+                  try { if (e.href && typeof e.href === 'string') candidates.push(e.href); } catch(x){}
+                  if (e.getAttribute) {
+                    ['href','data-href','data-url','data-video-url','data-link'].forEach(function(k){
+                      var h = e.getAttribute(k);
+                      if (h) { try { candidates.push(new URL(h, location.href).href); } catch(x) { candidates.push(h); } }
+                    });
+                  }
+                  for (var i = 0; i < candidates.length; i++) {
+                    if (WTS.isVideo(candidates[i])) return candidates[i];
+                  }
+                  // Some TikTok cards store the item ID in data attributes rather than an href.
+                  if (PAT && /tiktok/.test(location.host) && e.attributes) {
+                    for (var j = 0; j < e.attributes.length; j++) {
+                      var raw = e.attributes[j].value || '';
+                      var m = PAT.re.exec(raw);
+                      if (m) return PAT.url + m[1];
+                      m = /(?:itemId|item_id|videoId|video_id|aweme_id)["']?\s*[:=]\s*["']?(\d{17,20})/i.exec(raw);
+                      if (m) return PAT.url + m[1];
+                    }
+                  }
                 }
                 return '';
               }
@@ -276,11 +302,29 @@ object SearchWeb {
               }
               function idUrlOf(t){
                 if (!PAT || !t) return '';
-                for (var e = t, i = 0; e && e !== document.body && i < 12; e = e.parentElement, i++) {
+                for (var e = t, i = 0; e && e !== document.body && i < 30; e = e.parentElement, i++) {
+                  // Check URLs/data attributes first; a full card's outerHTML can be very large.
+                  if (e.getAttribute) {
+                    var names = ['href','data-href','data-url','data-video-id','data-item-id','data-id','id'];
+                    for (var j = 0; j < names.length; j++) {
+                      var raw = e.getAttribute(names[j]) || '';
+                      var m = PAT.re.exec(raw);
+                      if (m) return PAT.url + m[1];
+                      if (/tiktok/.test(location.host)) {
+                        m = /(?:itemId|item_id|videoId|video_id|aweme_id)["']?\s*[:=]\s*["']?(\d{17,20})/i.exec(raw);
+                        if (m) return PAT.url + m[1];
+                      }
+                    }
+                  }
                   var html = e.outerHTML || '';
-                  if (html.length > 300000) break;
+                  // Keep scanning parents even if one contains a huge subtree.
+                  if (html.length > 600000) html = html.slice(0, 600000);
                   var m = PAT.re.exec(html);
                   if (m) return PAT.url + m[1];
+                  if (/tiktok/.test(location.host)) {
+                    m = /(?:itemId|item_id|videoId|video_id|aweme_id)["']?\s*[:=]\s*["']?(\d{17,20})/i.exec(html);
+                    if (m) return PAT.url + m[1];
+                  }
                 }
                 return '';
               }
