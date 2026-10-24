@@ -44,10 +44,9 @@ class YouTubeSearchSheet(
         }
         b.searchButton.setOnClickListener { search(b.searchInput.text.toString()) }
 
-        // A search typed on the room screen is always a YouTube search
-        if (!initialQuery.isNullOrBlank() || (SearchWeb.site == Site.TIKTOK && onTikTokMode != null)) {
-            SearchWeb.switchTo(Site.YOUTUBE)
-        }
+        // A search typed on the room screen is always a YouTube search.
+        // Otherwise keep the selected site, including TikTok, so its search can be used normally.
+        if (!initialQuery.isNullOrBlank()) SearchWeb.switchTo(Site.YOUTUBE)
         val web = SearchWeb.obtain(activity)
         // The page sits under a shimmering placeholder until real results are on it
         b.webHost.addView(web, 0, ViewGroup.LayoutParams(
@@ -132,12 +131,8 @@ class YouTubeSearchSheet(
     }
 
     private fun select(site: Site) {
-        // TikTok opens the real TikTok feed inside the room
-        if (site == Site.TIKTOK && onTikTokMode != null) {
-            dismiss()
-            onTikTokMode.invoke()
-            return
-        }
+        // All site tabs use the same browse/search flow; selecting a TikTok result
+        // sends its video ID to the shared room player just like a YouTube result.
         if (site == SearchWeb.site) return
         SearchWeb.switchTo(site)
         markSelected()
