@@ -1,6 +1,7 @@
 package com.abrar.watchtogether
 
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
@@ -11,11 +12,18 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.abrar.watchtogether.databinding.ActivityMainBinding
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityMainBinding
     private lateinit var prefs: Prefs
+    private var liveUiRef: DatabaseReference? = null
+    private var liveUiListener: ValueEventListener? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,6 +94,55 @@ class MainActivity : AppCompatActivity() {
             v.setPadding(0, bars.top, 0, bars.bottom)
             insets
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Read-only live UI updates; the Firebase path is controlled by database rules.
+        if (!WatchApp.isFirebaseConfigured() || liveUiListener != null) return
+        try {
+            val ref = FirebaseDatabase.getInstance().getReference("appConfig/live")
+            val listener = object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    // Defaults remain intact if the config is absent or malformed.
+                    val texts = snapshot.child("texts")
+                    fun label(key: String, fallback: Int): String {
+                        val value = texts.child(key).getValue(String::class.java)?.trim()
+                        return value?.takeIf { it.isNotEmpty() && it.length <= 80 } ?: tr(fallback)
+                    }
+                    b.titleText.text = label("app_name", R.string.app_name)
+                    b.createButton.text = label("create_room", R.string.create_room)
+                    b.joinButton.text = label("join_room", R.string.join_room)
+
+                    val color = snapshot.child("theme/primaryColor")
+                        .getValue(String::class.java)
+                    val parsedColor = color?.takeIf {
+                        Regex("^#[0-9a-fA-F]{6}$").matches(it)
+                    }?.let { runCatching { Color.parseColor(it) }.getOrNull() }
+                    b.createButton.backgroundTintList = ColorStateList.valueOf(
+                        parsedColor ?: androidx.core.content.ContextCompat.getColor(
+                            this@MainActivity, R.color.accent
+                        )
+                    )
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    // Keep the existing UI when access is denied or offline.
+                }
+            }
+            ref.addValueEventListener(listener)
+            liveUiRef = ref
+            liveUiListener = listener
+        } catch (_: Exception) {
+            // Firebase might not be initialized on an unconfigured installation.
+        }
+    }
+
+    override fun onStop() {
+        liveUiListener?.let { listener -> liveUiRef?.removeEventListener(listener) }
+        liveUiListener = null
+        liveUiRef = null
+        super.onStop()
     }
 
     override fun onResume() {
