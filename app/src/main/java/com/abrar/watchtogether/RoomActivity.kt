@@ -567,7 +567,8 @@ class RoomActivity : AppCompatActivity() {
     }
 
     private fun stopTikTok() {
-        stopTikTok()
+        tiktok?.stop()
+        tiktok = null
         exitTikTok()
     }
 
