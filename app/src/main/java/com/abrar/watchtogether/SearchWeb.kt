@@ -401,26 +401,15 @@ object SearchWeb {
                 var anchor = target && target.closest ? target.closest('a[href]') : null;
                 if (anchor) return normal(anchor.href);
 
-                // Some grid thumbnails expose the link on a surrounding tile. Only accept an anchor
-                // whose visible rectangle actually contains the tap point; never pick a nearby tile.
-                for (var e = target, depth = 0; e && e !== document.body && depth < 10; e = e.parentElement, depth++) {
-                  if (isUiLayer(e)) return '';
-                  if (!e.querySelectorAll) continue;
-                  var links = e.querySelectorAll('a[href*="/video/"],a[href*="xgwrapper-"]');
-                  for (var i = 0; i < Math.min(links.length, 40); i++) {
-                    var h = normal(links[i].href);
-                    if (!h) continue;
-                    var r = links[i].getBoundingClientRect();
-                    if (r.width > 0 && r.height > 0 &&
-                        x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return h;
-                  }
-                }
-
-                // A tap on the actual video element can be resolved from its own item's markup.
-                // Do not scan arbitrary page ancestors: that was selecting a video on every tap.
+                // Do not search ancestor containers for any overlapping video links.
+                // A description sheet or navigation overlay can sit above a video tile; choosing
+                // links by rectangle alone incorrectly steals taps meant for the overlay.
+                // Profile-grid video tiles are handled by their actual <a href> in the event path.
+                
+                // Only accept a video element if the touched element is the video itself or a
+                // descendant inside it. Never accept a page/root wrapper that merely contains it.
                 var v = videoAt(x, y);
-                if (v && (target === v || (v.contains && v.contains(target)) ||
-                    (target && target.contains && target.contains(v)))) {
+                if (v && (target === v || (v.contains && v.contains(target)))) {
                   var videoUrl = idUrlOf(v);
                   if (videoUrl && WTS.isVideo(videoUrl)) return videoUrl;
                 }
