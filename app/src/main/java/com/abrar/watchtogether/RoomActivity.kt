@@ -510,7 +510,8 @@ class RoomActivity : AppCompatActivity() {
         b.emptySearchInput.clearFocus()
         YouTubeSearchSheet(this, query?.trim(), onTikTokMode = { enterTikTok() }) { id ->
             b.emptySearchInput.setText("")
-            if (Media.siteOf(id) != Site.TIKTOK) stopTikTok()
+            // Search-selected videos use the page's queue, not the hidden TikTok feed.
+            stopTikTok()
             // The page it came from becomes everyone's swipe list
             val list = SearchWeb.lastList
             if (list.contains(id)) {
