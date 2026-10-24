@@ -11,6 +11,12 @@
           }
         }
       }
+    },
+    "appConfig": {
+      "live": {
+        ".read": true,
+        ".write": false
+      }
     }
   }
 }
