@@ -78,6 +78,13 @@ object SearchWeb {
         onContentReady?.invoke()
     }
 
+    private fun isAppStoreHost(host: String): Boolean {
+        val h = host.lowercase()
+        return h == "play.google.com" || h.endsWith(".play.google.com") ||
+            h == "apps.apple.com" || h.endsWith(".apps.apple.com") ||
+            h == "itunes.apple.com" || h.endsWith(".itunes.apple.com")
+    }
+
     /** Start loading YouTube in the background (call when the room opens). */
     fun warmUp(context: Context) {
         if (web != null) return
@@ -169,15 +176,22 @@ object SearchWeb {
         v.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (tryPick(view, request.url.toString(), fromHistory = false)) return true
-                // Never let TikTok's "open/install the app" CTA take the search WebView to Google Play.
                 val scheme = request.url.scheme ?: return true
                 if (scheme != "http" && scheme != "https") return true
-                if (site == Site.TIKTOK) {
-                    val host = request.url.host?.lowercase().orEmpty()
-                    if (host == "play.google.com" || host.endsWith(".play.google.com") ||
-                        host == "apps.apple.com" || host.endsWith(".apps.apple.com")) return true
-                }
+                if (site == Site.TIKTOK && isAppStoreHost(request.url.host.orEmpty())) return true
                 return false
+            }
+
+            // TikTok sometimes opens its app-install page through a redirect or an embedded frame.
+            // Block those requests too; shouldOverrideUrlLoading alone doesn't cover every redirect.
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                if (site == Site.TIKTOK && isAppStoreHost(request.url.host.orEmpty())) {
+                    return WebResourceResponse(
+                        "text/plain", "UTF-8",
+                        java.io.ByteArrayInputStream(ByteArray(0))
+                    )
+                }
+                return null
             }
 
             // YouTube's mobile site changes pages without reloading, so watch the history too
@@ -328,9 +342,77 @@ object SearchWeb {
                 }
                 return '';
               }
-              function videoHrefAt(target, x, y){
+              function isStoreUrl(href){
+                try {
+                  var u = new URL(href, location.href), h = (u.host || '').toLowerCase();
+                  return h === 'play.google.com' || h.endsWith('.play.google.com') ||
+                    h === 'apps.apple.com' || h.endsWith('.apps.apple.com') ||
+                    h === 'itunes.apple.com' || h.endsWith('.itunes.apple.com');
+                } catch(x) { return false; }
+              }
+              function rawLinkOf(t){
+                for (var e = t, depth = 0; e && e !== document && depth < 30; e = e.parentElement, depth++) {
+                  if (e.href && typeof e.href === 'string') return e.href;
+                  if (e.getAttribute) {
+                    var h = e.getAttribute('href') || e.getAttribute('data-href') || e.getAttribute('data-url');
+                    if (h) { try { return new URL(h, location.href).href; } catch(x) { return h; } }
+                  }
+                }
+                return '';
+              }
+              function videoHrefAt(target, x, y, ev){
+                // Inspect the composed event path too: TikTok can render clickable cards in shadow roots.
+                if (ev && ev.composedPath) {
+                  var path = ev.composedPath();
+                  for (var p = 0; p < path.length; p++) {
+                    var n = path[p];
+                    if (!n || !n.getAttribute) continue;
+                    var h = n.href || n.getAttribute('href') || n.getAttribute('data-href') ||
+                      n.getAttribute('data-url') || n.getAttribute('data-video-url');
+                    if (h) {
+                      try { h = new URL(h, location.href).href; } catch(x) {}
+                      if (WTS.isVideo(h)) return h;
+                    }
+                    var raw = (n.getAttribute('data-video-id') || n.getAttribute('data-item-id') ||
+                      n.getAttribute('data-id') || n.id || '');
+                    var m = PAT && PAT.re.exec(raw);
+                    if (m) return PAT.url + m[1];
+                    if (/tiktok/.test(location.host)) {
+                      m = /(?:itemId|item_id|videoId|video_id|aweme_id)["']?\\s*[:=]\\s*["']?(\\d{17,20})/i.exec(raw);
+                      if (m) return PAT.url + m[1];
+                    }
+                  }
+                }
+
                 var href = linkOf(target);
                 if (href && WTS.isVideo(href)) return href;
+
+                // Search result cards often keep the actual video anchor in a child/sibling
+                // rather than on the tapped thumbnail itself.
+                for (var e = target, depth = 0; e && e !== document.body && depth < 14; e = e.parentElement, depth++) {
+                  if (!e.querySelectorAll) continue;
+                  var isCard = /search|item|video|card/i.test(
+                    (e.getAttribute && (e.getAttribute('data-e2e') || e.getAttribute('class') || '')) || ''
+                  );
+                  if (isCard) {
+                    var links = e.querySelectorAll('a[href]');
+                    for (var i = 0; i < Math.min(links.length, 40); i++) {
+                      if (WTS.isVideo(links[i].href)) return links[i].href;
+                    }
+                  }
+                  var dataNodes = e.querySelectorAll('[data-video-id],[data-item-id],[data-id]');
+                  for (var j = 0; j < Math.min(dataNodes.length, 20); j++) {
+                    var raw = dataNodes[j].getAttribute('data-video-id') ||
+                      dataNodes[j].getAttribute('data-item-id') || dataNodes[j].getAttribute('data-id') || '';
+                    var m = PAT && PAT.re.exec(raw);
+                    if (m) return PAT.url + m[1];
+                    if (/tiktok/.test(location.host)) {
+                      m = /(?:itemId|item_id|videoId|video_id|aweme_id)["']?\\s*[:=]\\s*["']?(\\d{17,20})/i.exec(raw);
+                      if (m) return PAT.url + m[1];
+                    }
+                  }
+                }
+
                 href = idUrlOf(videoAt(x, y)) || idUrlOf(target);
                 return (href && WTS.isVideo(href)) ? href : '';
               }
@@ -346,23 +428,41 @@ object SearchWeb {
                 var t = ev.touches[0]; if (!t) return;
                 sx = t.clientX; sy = t.clientY; st = Date.now();
               }, { capture: true, passive: true });
+              // Stop TikTok's app-install CTA from opening the Play Store inside the search sheet.
+              // Preserve normal web navigation for other destinations.
+              var oldOpen = window.open;
+              window.open = function(url) {
+                if (isStoreUrl(String(url || ''))) return null;
+                return oldOpen ? oldOpen.apply(window, arguments) : null;
+              };
+
               document.addEventListener('touchend', function(ev){
                 var t = ev.changedTouches[0]; if (!t) return;
                 // Only a short, still tap (not a scroll or swipe)
                 if (Math.abs(t.clientX - sx) > 12 || Math.abs(t.clientY - sy) > 12 || Date.now() - st > 500) return;
                 var target = document.elementFromPoint(t.clientX, t.clientY) || ev.target;
-                var href = videoHrefAt(target, t.clientX, t.clientY);
+                var raw = rawLinkOf(target);
+                if (isStoreUrl(raw)) {
+                  ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+                  handledAt = Date.now(); return;
+                }
+                var href = videoHrefAt(target, t.clientX, t.clientY, ev);
                 if (!href) return;
-                ev.preventDefault(); ev.stopPropagation();
+                ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
                 handledAt = Date.now();
                 choose(href);
               }, { capture: true, passive: false });
 
               document.addEventListener('click', function(ev){
-                if (Date.now() - handledAt < 800) { ev.preventDefault(); ev.stopPropagation(); return; }
-                var href = videoHrefAt(ev.target, ev.clientX, ev.clientY);
+                if (Date.now() - handledAt < 800) { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); return; }
+                var raw = rawLinkOf(ev.target);
+                if (isStoreUrl(raw)) {
+                  ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+                  handledAt = Date.now(); return;
+                }
+                var href = videoHrefAt(ev.target, ev.clientX, ev.clientY, ev);
                 if (!href) return;
-                ev.preventDefault(); ev.stopPropagation();
+                ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
                 choose(href);
               }, true);
               var last = location.href;
