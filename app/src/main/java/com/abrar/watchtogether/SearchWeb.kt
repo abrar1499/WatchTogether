@@ -11,6 +11,7 @@ import android.os.SystemClock
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
+import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -167,6 +168,11 @@ object SearchWeb {
             mediaPlaybackRequiresUserGesture = true
             offscreenPreRaster = true   // smoother scrolling
         }
+        // TikTok login relies on persistent cookies, including third-party auth cookies.
+        CookieManager.getInstance().setAcceptCookie(true)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(v, true)
+        v.isFocusable = true
+        v.isFocusableInTouchMode = true
         v.setBackgroundColor(Color.parseColor("#141416"))
         v.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
@@ -202,12 +208,12 @@ object SearchWeb {
 
             override fun onPageCommitVisible(view: WebView, url: String) {
                 injectCss(view)
-                removeAppNags(view)
+                if (site != Site.TIKTOK) removeAppNags(view)
                 watchTaps(view)
             }
             override fun onPageFinished(view: WebView, url: String) {
                 injectCss(view)
-                removeAppNags(view)
+                if (site != Site.TIKTOK) removeAppNags(view)
                 watchTaps(view)
             }
         }
@@ -362,60 +368,81 @@ object SearchWeb {
                 return '';
               }
               function videoHrefAt(target, x, y, ev){
-                // Inspect the composed event path too: TikTok can render clickable cards in shadow roots.
+                function normal(h){
+                  if (!h) return '';
+                  try { h = new URL(h, location.href).href; } catch(x) {}
+                  return WTS.isVideo(h) ? h : '';
+                }
+                function idFromRaw(raw){
+                  if (!raw || !PAT) return '';
+                  var m = PAT.re.exec(raw);
+                  if (m) return PAT.url + m[1];
+                  if (/tiktok/.test(location.host)) {
+                    m = /(?:itemId|item_id|videoId|video_id|aweme_id)["']?\s*[:=]\s*["']?(\d{17,20})/i.exec(raw);
+                    if (m) return PAT.url + m[1];
+                  }
+                  return '';
+                }
+                function hrefFromNode(n){
+                  if (!n || !n.getAttribute) return '';
+                  var attrs = ['href','data-href','data-url','data-video-url','data-link'];
+                  for (var a = 0; a < attrs.length; a++) {
+                    var h = n.href || n.getAttribute(attrs[a]);
+                    h = normal(h);
+                    if (h) return h;
+                  }
+                  var raw = (n.getAttribute('data-video-id') || n.getAttribute('data-item-id') ||
+                    n.getAttribute('data-id') || n.id || '');
+                  return idFromRaw(raw);
+                }
+
+                // First inspect the exact elements Android says were touched, including shadow DOM.
                 if (ev && ev.composedPath) {
                   var path = ev.composedPath();
                   for (var p = 0; p < path.length; p++) {
-                    var n = path[p];
-                    if (!n || !n.getAttribute) continue;
-                    var h = n.href || n.getAttribute('href') || n.getAttribute('data-href') ||
-                      n.getAttribute('data-url') || n.getAttribute('data-video-url');
-                    if (h) {
-                      try { h = new URL(h, location.href).href; } catch(x) {}
-                      if (WTS.isVideo(h)) return h;
-                    }
-                    var raw = (n.getAttribute('data-video-id') || n.getAttribute('data-item-id') ||
-                      n.getAttribute('data-id') || n.id || '');
-                    var m = PAT && PAT.re.exec(raw);
-                    if (m) return PAT.url + m[1];
-                    if (/tiktok/.test(location.host)) {
-                      m = /(?:itemId|item_id|videoId|video_id|aweme_id)["']?\\s*[:=]\\s*["']?(\\d{17,20})/i.exec(raw);
-                      if (m) return PAT.url + m[1];
-                    }
+                    var h = hrefFromNode(path[p]);
+                    if (h) return h;
                   }
                 }
+                var h = linkOf(target);
+                if (h && WTS.isVideo(h)) return h;
 
-                var href = linkOf(target);
-                if (href && WTS.isVideo(href)) return href;
-
-                // Search result cards often keep the actual video anchor in a child/sibling
-                // rather than on the tapped thumbnail itself.
-                for (var e = target, depth = 0; e && e !== document.body && depth < 14; e = e.parentElement, depth++) {
+                // TikTok search cards often put the clickable video anchor beside the preview layer.
+                // Prefer a video anchor whose rectangle actually contains the tap point.
+                for (var e = target, depth = 0; e && e !== document.body && depth < 18; e = e.parentElement, depth++) {
                   if (!e.querySelectorAll) continue;
-                  var isCard = /search|item|video|card/i.test(
-                    (e.getAttribute && (e.getAttribute('data-e2e') || e.getAttribute('class') || '')) || ''
-                  );
-                  if (isCard) {
-                    var links = e.querySelectorAll('a[href]');
-                    for (var i = 0; i < Math.min(links.length, 40); i++) {
-                      if (WTS.isVideo(links[i].href)) return links[i].href;
-                    }
+                  var links = e.querySelectorAll('a[href]');
+                  for (var i = 0; i < Math.min(links.length, 80); i++) {
+                    h = normal(links[i].href);
+                    if (!h) continue;
+                    var r = links[i].getBoundingClientRect();
+                    if (r.width > 0 && r.height > 0 &&
+                        x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return h;
                   }
-                  var dataNodes = e.querySelectorAll('[data-video-id],[data-item-id],[data-id]');
-                  for (var j = 0; j < Math.min(dataNodes.length, 20); j++) {
-                    var raw = dataNodes[j].getAttribute('data-video-id') ||
-                      dataNodes[j].getAttribute('data-item-id') || dataNodes[j].getAttribute('data-id') || '';
-                    var m = PAT && PAT.re.exec(raw);
-                    if (m) return PAT.url + m[1];
-                    if (/tiktok/.test(location.host)) {
-                      m = /(?:itemId|item_id|videoId|video_id|aweme_id)["']?\\s*[:=]\\s*["']?(\\d{17,20})/i.exec(raw);
-                      if (m) return PAT.url + m[1];
-                    }
-                  }
+                  h = idFromRaw(e.getAttribute && (e.getAttribute('data-video-id') ||
+                    e.getAttribute('data-item-id') || e.getAttribute('data-id') || e.id || ''));
+                  if (h && WTS.isVideo(h)) return h;
                 }
 
-                href = idUrlOf(videoAt(x, y)) || idUrlOf(target);
-                return (href && WTS.isVideo(href)) ? href : '';
+                // Fallback for TikTok's thumbnail overlays: choose the closest visible video link.
+                if (/tiktok/.test(location.host)) {
+                  var best = '', bestDist = Infinity;
+                  document.querySelectorAll('a[href*="/video/"],a[href*="xgwrapper-"]').forEach(function(a){
+                    var h = normal(a.href);
+                    if (!h) return;
+                    var r = a.getBoundingClientRect();
+                    if (r.width < 4 || r.height < 4 || r.bottom <= 0 || r.top >= innerHeight) return;
+                    var dx = x < r.left ? r.left - x : (x > r.right ? x - r.right : 0);
+                    var dy = y < r.top ? r.top - y : (y > r.bottom ? y - r.bottom : 0);
+                    var dist = dx * dx + dy * dy;
+                    if (dist < bestDist) { bestDist = dist; best = h; }
+                  });
+                  if (best && bestDist <= Math.pow(Math.max(innerWidth, innerHeight) * 0.4, 2)) return best;
+                }
+
+                // Finally inspect the video and its parent markup for an embedded item ID.
+                h = idUrlOf(videoAt(x, y)) || idUrlOf(target);
+                return (h && WTS.isVideo(h)) ? h : '';
               }
               function choose(href){
                 sendList();
@@ -512,6 +539,8 @@ object SearchWeb {
                 return null;
               }
               function clean(){
+                // TikTok owns its scrolling and login form. Never rewrite its layout or hide its dialog.
+                if (/tiktok\.com$/i.test(location.hostname)) return;
                 var words = window.__wtPhrases || [], hid = false;
                 document.querySelectorAll('a,button,[role=button],span,div[tabindex]').forEach(function(b){
                   var t = (b.innerText || '').trim().toLowerCase();
@@ -540,6 +569,7 @@ object SearchWeb {
               // Previews in the search sheet stay silent
               document.addEventListener('play', function(ev){ try { ev.target.muted = true; } catch(e){} }, true);
               setInterval(function(){
+                if (/tiktok\.com$/i.test(location.hostname)) return;
                 document.querySelectorAll('video,audio').forEach(function(m){ if (!m.muted) m.muted = true; });
               }, 500);
               clean();

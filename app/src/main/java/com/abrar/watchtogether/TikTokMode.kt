@@ -159,6 +159,8 @@ class TikTokMode(
               }
               var lastList = '';
               setInterval(function(){
+                // Do not scan/update the room while the user is typing into TikTok's login form.
+                if (window.__wtLogin) return;
                 var v = current(); var id = v ? idOf(v) : '';
                 if (id) TTM.current(id);
                 var seen = {}, out = [], m, html = document.body ? document.body.innerHTML : '';
@@ -168,17 +170,35 @@ class TikTokMode(
                 if (s !== lastList) { lastList = s; TTM.list(s); }
               }, 600);
 
-              // Next / previous reel: scroll the feed's own scroller one screen, with arrow keys as backup
+              // Next / previous reel: prefer the active video's own scroll container.
+              // TikTok changes its internal DOM often, so fall back to the page and a wheel event.
               window.__wtStep = function(dir){
-                var best = document.scrollingElement, bh = 0;
-                document.querySelectorAll('div,main,section').forEach(function(e){
-                  if (e.scrollHeight <= e.clientHeight + 50) return;
+                var active = current(), best = null, bh = 0;
+                function consider(e, prefer){
+                  if (!e || e.scrollHeight <= e.clientHeight + 50) return;
                   var oy = getComputedStyle(e).overflowY;
-                  if ((oy === 'auto' || oy === 'scroll') && e.clientHeight > bh) { bh = e.clientHeight; best = e; }
-                });
+                  if (oy !== 'auto' && oy !== 'scroll' && oy !== 'overlay' && e !== document.scrollingElement) return;
+                  var score = e.clientHeight + (prefer ? innerHeight * 2 : 0);
+                  if (score > bh) { bh = score; best = e; }
+                }
+                for (var p = active, depth = 0; p && p !== document.body && depth < 24; p = p.parentElement, depth++) consider(p, true);
+                if (!best) {
+                  document.querySelectorAll('div,main,section,[data-e2e]').forEach(function(e){ consider(e, false); });
+                }
                 var h = (best && best.clientHeight) || innerHeight;
-                try { best.scrollBy({ top: dir * h, behavior: 'instant' }); } catch (x) { best.scrollTop += dir * h; }
+                var target = best || document.scrollingElement || document.documentElement;
+                try {
+                  if (best) best.scrollBy({ top: dir * Math.max(300, h * 0.9), behavior: 'instant' });
+                  else window.scrollBy(0, dir * Math.max(300, h * 0.9));
+                } catch (x) {
+                  if (best) best.scrollTop += dir * Math.max(300, h * 0.9);
+                  else target.scrollTop += dir * Math.max(300, h * 0.9);
+                }
+                try {
+                  target.dispatchEvent(new WheelEvent('wheel', { deltaY: dir * h, bubbles: true, cancelable: true }));
+                } catch (x) {}
                 var key = dir > 0 ? 'ArrowDown' : 'ArrowUp';
+                target.dispatchEvent(new KeyboardEvent('keydown', { key: key, code: key, keyCode: dir > 0 ? 40 : 38, bubbles: true }));
                 document.dispatchEvent(new KeyboardEvent('keydown', { key: key, code: key, keyCode: dir > 0 ? 40 : 38, bubbles: true }));
               };
 
