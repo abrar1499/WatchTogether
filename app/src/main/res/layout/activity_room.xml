@@ -203,6 +203,13 @@
                 android:src="@drawable/ic_search" />
 
             <ImageButton
+                android:id="@+id/volumeButton"
+                style="@style/GlassIcon"
+                android:layout_marginStart="6dp"
+                android:contentDescription="@string/volume"
+                android:src="@drawable/ic_volume_up" />
+
+            <ImageButton
                 android:id="@+id/shareButton"
                 style="@style/GlassIcon"
                 android:layout_marginStart="6dp"

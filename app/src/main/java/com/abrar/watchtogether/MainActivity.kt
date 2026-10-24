@@ -24,12 +24,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
     private var liveUiRef: DatabaseReference? = null
     private var liveUiListener: ValueEventListener? = null
+    private var pendingInviteCode: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
         prefs = Prefs(this)
+        pendingInviteCode = roomCodeFromIntent(intent)
         edgeToEdge()
 
         // Labels can be changed from the remote settings file
@@ -50,6 +52,11 @@ class MainActivity : AppCompatActivity() {
 
         b.createButton.setOnClickListener {
             val name = readName() ?: return@setOnClickListener
+            val invite = pendingInviteCode
+            if (invite != null) {
+                joinRoom(invite, name)
+                return@setOnClickListener
+            }
             setBusy(true)
             val code = RoomSync.newCode()
             RoomSync.createRoom(code) { ok ->
@@ -58,25 +65,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        b.codeInput.setOnEditorActionListener { _, id, _ ->
-            if (id == EditorInfo.IME_ACTION_GO) { b.joinButton.performClick(); true } else false
-        }
-        b.joinButton.setOnClickListener {
-            val name = readName() ?: return@setOnClickListener
-            val code = b.codeInput.text.toString().trim().uppercase()
-            if (code.length != 6) {
-                b.codeInput.error = tr(R.string.error_code_length)
-                return@setOnClickListener
-            }
-            setBusy(true)
-            RoomSync.roomExists(code) { exists ->
-                setBusy(false)
-                when (exists) {
-                    true -> openRoom(code, name)
-                    false -> b.codeInput.error = tr(R.string.error_room_not_found)
-                    null -> toast(tr(R.string.error_network))
-                }
-            }
+        // Opening an invite link joins immediately when this phone already has a saved name.
+        // First-time users only need to enter their name; the room code stays inside the link.
+        pendingInviteCode?.let { code ->
+            b.createButton.text = tr(R.string.join_room)
+            val savedName = prefs.name.trim()
+            if (savedName.isNotEmpty()) b.root.post { joinRoom(code, savedName) }
         }
     }
 
@@ -111,7 +105,7 @@ class MainActivity : AppCompatActivity() {
                         return value?.takeIf { it.isNotEmpty() && it.length <= 80 } ?: tr(fallback)
                     }
                     b.titleText.text = label("app_name", R.string.app_name)
-                    b.createButton.text = label("create_room", R.string.create_room)
+                    b.createButton.text = if (pendingInviteCode != null) tr(R.string.join_room) else label("create_room", R.string.create_room)
                     b.joinButton.text = label("join_room", R.string.join_room)
 
                     val color = snapshot.child("theme/primaryColor")
@@ -138,6 +132,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val code = roomCodeFromIntent(intent) ?: return
+        pendingInviteCode = code
+        b.createButton.text = tr(R.string.join_room)
+        val savedName = prefs.name.trim().ifEmpty { b.nameInput.text.toString().trim() }
+        if (savedName.isNotEmpty()) {
+            b.nameInput.setText(savedName)
+            joinRoom(code, savedName)
+        }
+    }
+
     override fun onStop() {
         liveUiListener?.let { listener -> liveUiRef?.removeEventListener(listener) }
         liveUiListener = null
@@ -148,6 +155,38 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         Updater.onMainResumed(this)
+    }
+
+    private fun joinRoom(code: String, name: String) {
+        if (!WatchApp.isFirebaseConfigured()) {
+            toast(tr(R.string.setup_needed))
+            return
+        }
+        setBusy(true)
+        RoomSync.roomExists(code) { exists ->
+            setBusy(false)
+            when (exists) {
+                true -> {
+                    openRoom(code, name)
+                    if (pendingInviteCode == code) finish()
+                }
+                false -> {
+                    toast(tr(R.string.error_room_not_found))
+                    if (pendingInviteCode == code) {
+                        pendingInviteCode = null
+                        b.createButton.text = tr(R.string.create_room)
+                    }
+                }
+                null -> toast(tr(R.string.error_network))
+            }
+        }
+    }
+
+    private fun roomCodeFromIntent(intent: Intent?): String? {
+        val uri = intent?.data ?: return null
+        if (uri.scheme != "watchtogether" || uri.host != "room") return null
+        val code = uri.lastPathSegment?.uppercase() ?: return null
+        return code.takeIf { Regex("[A-HJ-NP-Z2-9]{6}").matches(it) }
     }
 
     private fun readName(): String? {

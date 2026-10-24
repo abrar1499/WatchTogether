@@ -39,6 +39,7 @@ class EmbedPlayer(
     private var startPaused = false
     private var zoom = 0f
     private var full = false
+    private var volume = 1f
 
     init {
         setup()
@@ -58,13 +59,13 @@ class EmbedPlayer(
         web.webViewClient = object : WebViewClient() {
             override fun onPageCommitVisible(view: WebView, url: String) {
                 if (officialEmbed) return
-                view.evaluateJavascript("window.__wtWantPlay=$wantPlay;window.__wtStart=$startAt;" + hookJs(), null)
+                view.evaluateJavascript("window.__wtWantPlay=$wantPlay;window.__wtStart=$startAt;window.__wtVolume=$volume;" + hookJs(), null)
                 applyLayout()
             }
 
             override fun onPageFinished(view: WebView, url: String) {
                 if (officialEmbed) return
-                view.evaluateJavascript("window.__wtWantPlay=$wantPlay;window.__wtStart=$startAt;" + hookJs(), null)
+                view.evaluateJavascript("window.__wtWantPlay=$wantPlay;window.__wtStart=$startAt;window.__wtVolume=$volume;" + hookJs(), null)
                 applyLayout()
             }
 
@@ -122,7 +123,7 @@ class EmbedPlayer(
         officialEmbed = Media.siteOf(key) == Site.TIKTOK
         if (officialEmbed) {
             web.loadDataWithBaseURL(
-                "https://$packageName/", tiktokHostPage(key.substringAfter(':'), start), "text/html", "utf-8", null
+                "https://$packageName/", tiktokHostPage(key.substringAfter(':'), start, volume), "text/html", "utf-8", null
             )
             return
         }
@@ -142,8 +143,8 @@ class EmbedPlayer(
      * TikTok's official embed player (developers.tiktok.com/doc/embed-player) in an iframe,
      * controlled with its postMessage API; its events are passed on to the app.
      */
-    private fun tiktokHostPage(id: String, start: Float): String {
-        val src = "https://www.tiktok.com/player/v1/$id?autoplay=1&muted=0&controls=0&progress_bar=0" +
+    private fun tiktokHostPage(id: String, start: Float, initialVolume: Float): String {
+        val src = "https://www.tiktok.com/player/v1/$id?autoplay=1&muted=${if (initialVolume <= 0f) 1 else 0}&controls=0&progress_bar=0" +
             "&play_button=0&volume_control=0&fullscreen_button=0&timestamp=0&loop=0&music_info=0" +
             "&description=0&rel=0&native_context_menu=0&closed_caption=0"
         return """
@@ -176,7 +177,7 @@ class EmbedPlayer(
             <div id="mwrap"><div id="mbox"><iframe id="m" allow="autoplay" src="${src.replace("muted=0", "muted=1")}"></iframe></div></div>
             <div class="fr" id="fr1"></div><div class="fr" id="fr2"></div><div class="fr" id="fr3"></div>
             <script>
-              var f = document.getElementById('f'), mf = document.getElementById('m'), start = $start, ready = false;
+              var f = document.getElementById('f'), mf = document.getElementById('m'), start = $start, ready = false, volume = $initialVolume;
               function sendTo(frame, type, value){
                 var msg = {type: type, 'x-tiktok-player': true};
                 if (value !== undefined) msg.value = value;
@@ -201,10 +202,16 @@ class EmbedPlayer(
                 if (value !== undefined) m.value = value;
                 f.contentWindow.postMessage(m, '*');
               }
+              function applyVolume(){
+                volume = Math.max(0, Math.min(1, Number(volume) || 0));
+                if (volume > 0) { send('unMute'); send('setVolume', Math.round(volume * 100)); }
+                else send('mute');
+              }
               window.TT = {
-                play: function(){ send('unMute'); send('play'); sendTo(mf, 'play'); },
+                play: function(){ applyVolume(); send('play'); sendTo(mf, 'play'); },
                 pause: function(){ send('pause'); sendTo(mf, 'pause'); },
-                seek: function(s){ send('seekTo', s); sendTo(mf, 'seekTo', s); }
+                seek: function(s){ send('seekTo', s); sendTo(mf, 'seekTo', s); },
+                volume: function(v){ volume = Number(v); applyVolume(); }
               };
               var mirrorTime = 0;
               window.__wtWantPlay = true;
@@ -221,7 +228,7 @@ class EmbedPlayer(
                 switch (d.type) {
                   case 'onPlayerReady':
                     ready = true; WT.found(); relayout();
-                    send('unMute');
+                    applyVolume();
                     if (start > 1) send('seekTo', start);
                     if (window.__wtWantPlay) send('play');
                     break;
@@ -256,13 +263,21 @@ class EmbedPlayer(
     fun play() {
         wantPlay = true
         js("window.__wtWantPlay=true;if(window.TT){TT.play();return;}" +
-            "var v=document.querySelector('video');if(v){v.play().catch(function(){});}")
+            "var v=document.querySelector('video');if(v){v.volume=window.__wtVolume===undefined?1:window.__wtVolume;v.muted=v.volume<=0;v.play().catch(function(){});}")
     }
 
     fun pause() {
         wantPlay = false
         js("window.__wtWantPlay=false;if(window.TT){TT.pause();return;}" +
             "var v=document.querySelector('video');if(v){v.pause();}")
+    }
+
+    /** Local volume control; each viewer keeps their own level. */
+    fun setVolume(value: Float) {
+        volume = value.coerceIn(0f, 1f)
+        val level = volume
+        js("window.__wtVolume=$level;if(window.TT){TT.volume($level);return;}" +
+            "var v=document.querySelector('video');if(v){v.volume=$level;v.muted=$level<=0;}")
     }
 
     fun seekTo(second: Float) {
@@ -439,9 +454,15 @@ class EmbedPlayer(
                   if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true });
                 }
                 // Some sites (Facebook) start muted: turn the sound on
-                var unmute = function(){ if (v.muted) v.muted = false; if (v.volume < 1) v.volume = 1; };
-                unmute();
-                v.addEventListener('playing', function(){ unmute(); WT.state('playing'); });
+                var applyVolume = function(){
+                  var level = Number(window.__wtVolume);
+                  if (!isFinite(level)) level = 1;
+                  level = Math.max(0, Math.min(1, level));
+                  v.volume = level;
+                  v.muted = level <= 0;
+                };
+                applyVolume();
+                v.addEventListener('playing', function(){ applyVolume(); WT.state('playing'); });
                 v.addEventListener('pause', function(){ WT.state('paused'); });
                 v.addEventListener('waiting', function(){ WT.state('buffering'); });
                 v.addEventListener('ended', function(){ window.__wtWantPlay = false; WT.state('ended'); });
@@ -464,10 +485,10 @@ class EmbedPlayer(
                 }
                 // Autoplay can be blocked until the page is ready: keep nudging while we want playback
                 if (window.__wtWantPlay) {
-                  if (v && v.paused) { v.play().catch(function(){}); }
+                  if (v && v.paused && v.readyState >= 2) { v.play().catch(function(){}); }
                   if (!v) { var b = document.querySelector('.ytp-large-play-button'); if (b) b.click(); }
                 }
-              }, 150);
+              }, 400);
               // Glow: a tiny copy of the current frame, blended with the last one so colours flow
               setInterval(function(){
                 if (!hooked || hooked.readyState < 2) return;
@@ -477,7 +498,7 @@ class EmbedPlayer(
                   gctx.drawImage(hooked, 0, 0, glow.width, glow.height);
                   firstFrame = false;
                 } catch (e) {}
-              }, 80);
+              }, 250);
             })();
         """.trimIndent()
     }

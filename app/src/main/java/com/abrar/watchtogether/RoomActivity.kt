@@ -48,6 +48,7 @@ class RoomActivity : AppCompatActivity() {
     private var player: EmbedPlayer? = null
     private var currentVideoId: String? = null
     private var remote: PlaybackState? = null
+    private var activityVisible = false
 
     // What the local player is doing
     private var localPlaying = false
@@ -67,6 +68,36 @@ class RoomActivity : AppCompatActivity() {
     private var topInset = 0
     private val hideControls = Runnable { setControlsVisible(false) }
     private val hideChatToast = Runnable { b.chatToast.visibility = View.GONE }
+    private val syncPlayback = object : Runnable {
+        override fun run() {
+            if (!activityVisible || isFinishing || isDestroyed || !::sync.isInitialized) return
+            val state = remote
+            if (state != null && state.videoId == currentVideoId && !loading && !userSeeking) {
+                val elapsed = SystemClock.elapsedRealtime()
+                val target = state.positionAt(sync.serverNow()).toFloat().coerceAtLeast(0f)
+                val local = if (localPlaying && lastSecondAt > 0L) {
+                    lastSecond + (elapsed - lastSecondAt) / 1000f
+                } else lastSecond
+
+                // Resume a viewer that stalled and correct accumulated drift without
+                // repeatedly writing time updates back to Firebase.
+                if (state.playing && !localPlaying) {
+                    ignoreLocalUntil = elapsed + IGNORE_MS
+                    player?.play()
+                } else if (!state.playing && localPlaying) {
+                    ignoreLocalUntil = elapsed + IGNORE_MS
+                    player?.pause()
+                }
+                if (abs(local - target) > DRIFT_THRESHOLD) {
+                    ignoreLocalUntil = elapsed + IGNORE_MS
+                    lastSecond = target
+                    lastSecondAt = elapsed
+                    player?.seekTo(target)
+                }
+            }
+            b.root.postDelayed(this, SYNC_INTERVAL_MS)
+        }
+    }
     private val exitFullscreenOnBack = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() = setFullscreen(false)
     }
@@ -85,7 +116,7 @@ class RoomActivity : AppCompatActivity() {
         zoom = prefs.zoom
         sync = RoomSync(code, userId, name)
 
-        b.roomCode.text = code
+        b.roomCode.text = tr(R.string.room_label)
         b.emptySearchInput.hintR(R.string.search_hint)
         b.messageInput.hintR(R.string.message_hint)
         b.memberCount.text = "1"
@@ -103,7 +134,8 @@ class RoomActivity : AppCompatActivity() {
         b.backButton.setOnClickListener { finish() }
         b.exitTikTok.setOnClickListener { exitTikTok() }
         b.shareButton.setOnClickListener {
-            val text = tr(R.string.share_text, code)
+            val inviteLink = "watchtogether://room/$code"
+            val text = tr(R.string.share_text, inviteLink)
             startActivity(Intent.createChooser(
                 Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text),
                 tr(R.string.share)
@@ -241,17 +273,26 @@ class RoomActivity : AppCompatActivity() {
                 toast(tr(R.string.error_video))
             }
         })
+        player?.setVolume(prefs.volume)
         player?.setLayout(zoom, full = false)
     }
 
     override fun onPause() {
+        // A local Activity pause (including the creator leaving) must not be
+        // broadcast as a room-wide pause. The Firebase state stays available to viewers.
+        activityVisible = false
+        b.root.removeCallbacks(syncPlayback)
+        ignoreLocalUntil = SystemClock.elapsedRealtime() + IGNORE_MS
         super.onPause()
         player?.onPause()
     }
 
     override fun onResume() {
         super.onResume()
+        activityVisible = true
         player?.onResume()
+        b.root.removeCallbacks(syncPlayback)
+        b.root.postDelayed(syncPlayback, 800)
         isOpen = true
         // A video shared from TikTok / Facebook / YouTube plays here for everyone
         PendingShare.key?.let { key ->
@@ -337,8 +378,11 @@ class RoomActivity : AppCompatActivity() {
             }
             override fun onStopTrackingTouch(bar: SeekBar) {
                 userSeeking = false
-                // The jump is picked up in onTime and shared with the room
-                player?.seekTo(bar.progress.toFloat())
+                val target = bar.progress.toFloat()
+                lastSecond = target
+                lastSecondAt = SystemClock.elapsedRealtime()
+                player?.seekTo(target)
+                publish(localPlaying, target)
                 scheduleHide()
             }
         })
@@ -350,6 +394,30 @@ class RoomActivity : AppCompatActivity() {
         }
 
         b.fullscreenButton.setOnClickListener { setFullscreen(!fullscreen) }
+        b.volumeButton.setOnClickListener { showVolumeDialog() }
+    }
+
+    private fun showVolumeDialog() {
+        val bar = SeekBar(this).apply {
+            max = 100
+            progress = (prefs.volume * 100f).toInt()
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val value = progress / 100f
+                prefs.volume = value
+                player?.setVolume(value)
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar) {}
+        })
+        MaterialAlertDialogBuilder(this)
+            .setTitle(tr(R.string.volume))
+            .setView(bar)
+            .setPositiveButton(tr(R.string.done), null)
+            .show()
     }
 
     private fun updateEmptyState() {
@@ -621,7 +689,10 @@ class RoomActivity : AppCompatActivity() {
         if (p != null) {
             currentVideoId = id
             lastSecond = 0f
+            lastSecondAt = SystemClock.elapsedRealtime()
+            localPlaying = true
             ignoreLocalUntil = SystemClock.elapsedRealtime() + IGNORE_MS
+            remote = PlaybackState(id, true, 0.0, sync.serverNow(), userId)
             showLoading(id, autoplay = true)
             p.load(id, 0f, autoplay = true)
             updateEmptyState()
@@ -631,6 +702,7 @@ class RoomActivity : AppCompatActivity() {
 
     private fun publish(playing: Boolean, position: Float) {
         val id = currentVideoId ?: return
+        remote = PlaybackState(id, playing, position.toDouble(), sync.serverNow(), userId)
         sync.pushState(id, playing, position.toDouble())
     }
 
@@ -736,6 +808,7 @@ class RoomActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         isOpen = false
+        b.root.removeCallbacks(syncPlayback)
         FeedFetcher.stop()
         stopTikTok()
         if (::sync.isInitialized) sync.stop()
@@ -753,8 +826,9 @@ class RoomActivity : AppCompatActivity() {
         const val EXTRA_NAME = "name"
         private const val IGNORE_MS = 1500L
         private const val SEEK_THRESHOLD = 2.5f
-        private const val DRIFT_THRESHOLD = 1.5f
-        private const val CONTROLS_HIDE_MS = 1000L
+        private const val DRIFT_THRESHOLD = 1.0f
+        private const val SYNC_INTERVAL_MS = 1800L
+        private const val CONTROLS_HIDE_MS = 4000L
         private const val SEEK_STEP = 10
     }
 }

@@ -16,6 +16,11 @@ class Prefs(context: Context) {
         get() = sp.getFloat("zoom2", 1f)
         set(value) = sp.edit().putFloat("zoom2", value).apply()
 
+    /** Per-device playback volume; never synchronized to other room members. */
+    var volume: Float
+        get() = sp.getFloat("volume", 1f)
+        set(value) = sp.edit().putFloat("volume", value.coerceIn(0f, 1f)).apply()
+
     val userId: String
         get() {
             var id = sp.getString("uid", null)

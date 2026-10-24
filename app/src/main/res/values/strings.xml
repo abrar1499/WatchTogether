@@ -8,7 +8,10 @@
     <string name="room_code_label">%1$s</string>
     <string name="invite">Invite</string>
     <string name="share">Share</string>
-    <string name="share_text">Join my room on Watch Together: %1$s</string>
+    <string name="share_text">Join my Watch Together room: %1$s</string>
+    <string name="room_label">Watch Party</string>
+    <string name="volume">Volume</string>
+    <string name="done">Done</string>
     <string name="resync">Sync</string>
     <string name="paste_link">Paste link</string>
     <string name="open_youtube">Search</string>
