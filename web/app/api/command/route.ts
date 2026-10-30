@@ -85,7 +85,7 @@ function dateRange(period: "today" | "month" | "last_month" | "week" | "all") {
 }
 const fmt = (value: number, currency = "SAR") => new Intl.NumberFormat("en", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
 
-async function execute(db: ReturnType<typeof createClient>, userId: string, action: CommandAction): Promise<{ reply: string; refresh?: boolean }> {
+async function execute(db: any, userId: string, action: CommandAction): Promise<{ reply: string; refresh?: boolean }> {
   const accountQuery = () => db.from("accounts").select("*").eq("user_id", userId).eq("archived", false);
   const accountsResult = await accountQuery().order("created_at");
   if (accountsResult.error) throw accountsResult.error;
