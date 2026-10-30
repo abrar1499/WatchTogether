@@ -1,49 +1,25 @@
-# Watch Together (v0.1)
+# Pocket AI — AI-first Expense Manager
 
-Door bethay log ek hi waqt par YouTube video dekhein. Ek banda room banata hai, code share karta hai, baaki join karte hain. Koi bhi play, pause ya aage/peeche kare to sab ke phone par wahi ho jata hai. Saath mein chat bhi hai.
+This repository is being transformed from the original WatchTogether Android project into **Pocket AI**, a chat-first personal finance manager.
 
-## Is version mein kya hai
-- Naam ke saath room banana (6 harf ka code) ya code se join karna
-- YouTube link paste karke sab ke liye video chalana (watch, youtu.be, shorts, live links)
-- Play / pause / seek realtime sync (Firebase server time se drift theek hota hai)
-- **Sync** button: agar kisi ka video peeche reh jaye to ek tap mein barabar
-- Kitne log room mein hain, aur room chat
-- Invite button se code WhatsApp waghera par share
+## Applications
+- **Web:** Next.js 15 + TypeScript + Tailwind in [web/](web/). Includes a responsive dashboard, conversational command input, CSV export, light/dark themes, Supabase authentication, server-side AI provider settings, and an installable PWA.
+- **Android:** a native Kotlin WebView companion in the existing Android project. It opens the deployed Pocket AI web app using the `WEB_APP_URL` build setting. The PWA can also be installed directly from Chrome on Android.
 
-## Ek dafa setup: Firebase (free)
-1. https://console.firebase.google.com par jaa kar **Add project** karein (naam: WatchTogether). Analytics off kar sakte hain.
-2. Left menu: **Build → Realtime Database → Create database**. Location chunein, phir **Start in locked mode**.
-3. **Rules** tab mein is repo ki `database.rules.json` ka content paste karke **Publish** karein.
-4. **Project settings (gear icon) → General → Your apps → Android icon**. Package name: `com.abrar.watchtogether`. Register karein (google-services.json download karne ki zaroorat nahi, skip kar dein).
-5. Wahi page par yeh values milengi. GitHub repo mein **Settings → Secrets and variables → Actions → New repository secret** se yeh 4 secrets banayein:
+## Quick start
+Read [web/README.md](web/README.md) for local development, Supabase schema setup, AI key security, and Android build configuration.
 
-| Secret ka naam | Kahan se milega |
-|---|---|
-| `FIREBASE_API_KEY` | Project settings → Web API Key |
-| `FIREBASE_APP_ID` | Your apps → Android app → App ID (`1:...:android:...`) |
-| `FIREBASE_PROJECT_ID` | Project settings → Project ID |
-| `FIREBASE_DB_URL` | Realtime Database page ke upar wala URL (`https://...firebasedatabase.app`) |
+## Required backend setup
+The repository does not contain your Supabase project credentials or provider API keys. Configure these as environment secrets on your deployment host:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (server only)
+- `CREDENTIALS_ENCRYPTION_KEY` (server only; 32 bytes)
+- `WEB_APP_URL` (GitHub Actions secret for the Android WebView build)
 
-6. **Actions** tab → **Build APK** → **Run workflow**. Build ke baad artifact se APK download karke install karein.
+Run the SQL migration at `web/supabase/migrations/0001_initial_schema.sql` in your Supabase project.
 
-Har build ka version number barhta hai aur signing key repo mein fixed hai, is liye naya APK purane ke upar update ho jayega, uninstall ki zaroorat nahi.
-
-## Apne computer par build (optional)
-`local.properties` mein yeh 4 lines daal dein, phir Android Studio se Run karein:
-```
-FIREBASE_API_KEY=...
-FIREBASE_APP_ID=...
-FIREBASE_PROJECT_ID=...
-FIREBASE_DB_URL=...
-```
-
-## Pata hona chahiye
-- Kuch YouTube videos (zyada tar music labels ki) embed allow nahi karti; un par error aayega.
-- Abhi rules sab ke liye open hain (jis ke paas room code ho woh join kar sakta hai). Public release se pehle Firebase Anonymous Auth lagana behtar hoga.
-- Netflix is version mein nahi hai: har banda apne account se dekhe aur app sirf sync kare, yeh agla step hai.
-
-## Agle steps
-- Voice call (WebRTC)
-- Fullscreen mode, emoji reactions
-- Facebook / TikTok links
-- Netflix sync (har user ka apna login)
+## Demo mode
+A private, local-only demo is available without Supabase. It is intended for exploration only; demo records are not cloud-backed and must not be treated as real financial records.

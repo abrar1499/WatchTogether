@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "WatchTogether"
+rootProject.name = "PocketAI"
 include(":app")
