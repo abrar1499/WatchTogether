@@ -1,0 +1,15 @@
+{
+  "id": "/",
+  "name": "Pocket AI Expense Manager",
+  "short_name": "Pocket AI",
+  "description": "Your personal finance manager, powered by conversation.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#10141f",
+  "theme_color": "#10141f",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

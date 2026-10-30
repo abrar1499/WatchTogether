@@ -5,3 +5,8 @@ local.properties
 *.iml
 .DS_Store
 captures/
+web/node_modules/
+web/.next/
+web/out/
+web/.env*
+!web/.env.example

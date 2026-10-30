@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Watch Together</string>
+    <string name="app_name">Pocket AI</string>
     <string name="your_name">Name</string>
     <string name="create_room">Create Room</string>
     <string name="or_join">or</string>
@@ -20,15 +20,13 @@
     <string name="message_hint">Message</string>
     <string name="send">Send</string>
     <string name="you">You</string>
-
-    <string name="setup_needed">Server not configured</string>
+    <string name="setup_needed">Web app URL not configured</string>
     <string name="error_name">Enter your name</string>
     <string name="error_code_length">6 characters</string>
     <string name="error_room_not_found">Room not found</string>
     <string name="error_network">Connection failed</string>
     <string name="error_link">Invalid link</string>
     <string name="error_video">Video unavailable</string>
-
     <string name="update_title">Update available (v%1$d)</string>
     <string name="update_message">Install the latest version?</string>
     <string name="update_now">Update</string>
@@ -40,34 +38,24 @@
     <string name="update_none">Up to date</string>
     <string name="check_update">Check for updates</string>
     <string name="version_label">v%1$s</string>
-
     <string name="play_pause">Play/Pause</string>
     <string name="crop">Fit/Fill</string>
     <string name="fullscreen">Fullscreen</string>
     <string name="crop_fill">Fill</string>
     <string name="crop_fit">Fit</string>
-
     <string name="back">Back</string>
     <string name="link_dialog_title">YouTube link</string>
-
     <string name="search_hint">Search YouTube</string>
     <string name="search">Search</string>
     <string name="search_in">Search %1$s</string>
-
     <string name="update_installing">Updating…</string>
     <string name="update_permission_title">Automatic updates</string>
     <string name="update_permission_message">Allow installs from this app once to enable automatic updates.</string>
     <string name="update_permission_ok">Allow</string>
-
     <string name="share_no_video">No video in this link</string>
     <string name="share_open_room">Open a room to play it</string>
-
     <string name="tiktok_login_title">TikTok login</string>
     <string name="tiktok_login_message">TikTok wants you to log in to keep loading reels. Log in once, then tap ✕.</string>
     <string name="tiktok_login_ok">Log in</string>
-
-    <plurals name="watching_count">
-        <item quantity="one">%d watching</item>
-        <item quantity="other">%d watching</item>
-    </plurals>
+    <plurals name="watching_count"><item quantity="one">%d watching</item><item quantity="other">%d watching</item></plurals>
 </resources>
