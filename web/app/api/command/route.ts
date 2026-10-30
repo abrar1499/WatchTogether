@@ -89,7 +89,7 @@ async function execute(db: any, userId: string, action: CommandAction): Promise<
   const accountQuery = () => db.from("accounts").select("*").eq("user_id", userId).eq("archived", false);
   const accountsResult = await accountQuery().order("created_at");
   if (accountsResult.error) throw accountsResult.error;
-  const accounts = accountsResult.data || [];
+  const accounts: any[] = accountsResult.data || [];
   const getAccount = (name?: string) => {
     if (!name) return accounts.find(a => a.account_type === "cash") || accounts[0];
     const exact = accounts.find(a => a.name.toLowerCase() === name.toLowerCase());
@@ -171,11 +171,12 @@ async function execute(db: any, userId: string, action: CommandAction): Promise<
     const { data: budgets, error } = await db.from("budgets").select("amount,category_id").eq("user_id", userId).eq("period", "monthly");
     if (error) throw error;
     const start = dateRange("month").start.toISOString();
-    const budgetRows = budgets || [];
+    const budgetRows: any[] = budgets || [];
     const { data: categorizedExpenses, error: categoryError } = await db.from("transactions").select("amount,category_id").eq("user_id", userId).eq("transaction_kind", "expense").gte("occurred_at", start);
     if (categoryError) throw categoryError;
-    const spent = budgetRows.reduce((total, budget) => total + (categorizedExpenses || []).filter(row => budget.category_id ? row.category_id === budget.category_id : true).reduce((sum, row) => sum + Number(row.amount), 0), 0);
-    const remaining = budgetRows.reduce((s, b) => s + Number(b.amount), 0) - spent;
+    const expenseRows: any[] = categorizedExpenses || [];
+    const spent = budgetRows.reduce((total: number, budget: any) => total + expenseRows.filter((row: any) => budget.category_id ? row.category_id === budget.category_id : true).reduce((sum: number, row: any) => sum + Number(row.amount), 0), 0);
+    const remaining = budgetRows.reduce((s: number, b: any) => s + Number(b.amount), 0) - spent;
     return { reply: budgets?.length ? "You have " + fmt(remaining) + " left across your monthly budgets." : "No monthly budget yet. Try “Set food budget 1000”." };
   }
   if (action.type === "create_category") {
@@ -243,7 +244,8 @@ async function execute(db: any, userId: string, action: CommandAction): Promise<
     if (!account) return { reply: "Which account should receive that opening balance?" };
     const { data: tx, error: txError } = await db.from("transactions").select("amount,transaction_kind").eq("user_id", userId).eq("account_id", account.id);
     if (txError) throw txError;
-    const activity = (tx || []).reduce((sum, row) => sum + (row.transaction_kind === "income" || row.transaction_kind === "transfer_in" ? Number(row.amount) : -Number(row.amount)), 0);
+    const txRows: any[] = tx || [];
+    const activity = txRows.reduce((sum: number, row: any) => sum + (row.transaction_kind === "income" || row.transaction_kind === "transfer_in" ? Number(row.amount) : -Number(row.amount)), 0);
     const { error } = await db.from("accounts").update({ opening_balance: action.amount, current_balance: action.amount + activity }).eq("id", account.id).eq("user_id", userId);
     if (error) throw error;
     return { reply: "✓ Opening balance for " + account.name + " set to " + fmt(action.amount, account.currency) + ".", refresh: true };
@@ -261,22 +263,25 @@ async function execute(db: any, userId: string, action: CommandAction): Promise<
     if (period !== "all") query = query.gte("occurred_at", range.start.toISOString()).lt("occurred_at", range.end.toISOString());
     if (action.category && action.category !== "uncategorized") {
       const { data: categories } = await db.from("categories").select("id").eq("user_id", userId).ilike("name", "%" + action.category + "%");
-      const ids = (categories || []).map(c => c.id);
+      const categoryRows: any[] = categories || [];
+      const ids = categoryRows.map((c: any) => c.id);
       if (!ids.length) return { reply: "No category named " + action.category + " was found." };
       query = query.in("category_id", ids);
     } else if (action.category === "uncategorized") query = query.is("category_id", null);
     const { data, error } = await query;
     if (error) throw error;
-    return { reply: (data || []).map(t => t.description + " · " + fmt(Number(t.amount), (t.accounts as any)?.currency || "SAR") + " · " + new Date(t.occurred_at).toLocaleDateString()).join("\n") || "No matching transactions." };
+    const transactionRows: any[] = data || [];
+    return { reply: transactionRows.map((t: any) => t.description + " · " + fmt(Number(t.amount), (t.accounts as any)?.currency || "SAR") + " · " + new Date(t.occurred_at).toLocaleDateString()).join("\n") || "No matching transactions." };
   }
   if (action.type === "summary") {
     const range = dateRange(action.period);
     const { data, error } = await db.from("transactions").select("amount,transaction_kind,categories(name)").eq("user_id", userId).gte("occurred_at", range.start.toISOString()).lt("occurred_at", range.end.toISOString()).in("transaction_kind", ["expense","income"]);
     if (error) throw error;
-    const income = (data || []).filter(t => t.transaction_kind === "income").reduce((s, t) => s + Number(t.amount), 0);
-    const expense = (data || []).filter(t => t.transaction_kind === "expense").reduce((s, t) => s + Number(t.amount), 0);
+    const summaryRows: any[] = data || [];
+    const income = summaryRows.filter((t: any) => t.transaction_kind === "income").reduce((s: number, t: any) => s + Number(t.amount), 0);
+    const expense = summaryRows.filter((t: any) => t.transaction_kind === "expense").reduce((s: number, t: any) => s + Number(t.amount), 0);
     const byCategory = new Map<string, number>();
-    (data || []).filter(t => t.transaction_kind === "expense").forEach(t => {
+    summaryRows.filter((t: any) => t.transaction_kind === "expense").forEach((t: any) => {
       const name = (t.categories as any)?.name || "Other";
       byCategory.set(name, (byCategory.get(name) || 0) + Number(t.amount));
     });
