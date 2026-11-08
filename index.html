@@ -276,7 +276,7 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
       <span><kbd>AIM</kbd>Hold (left side) to aim with the red dot</span>
       <span><kbd>1×/4×</kbd>Switch the rifle scope</span>
       <span><kbd>MAP</kbd>Map</span>
-      <span><kbd>VIEW</kbd>First / third person</span>
+      <span><kbd>VIEW</kbd>Close view, closer view, first person</span>
       <span><kbd>USE</kbd>Use / Search body</span>
       <span><kbd>CROUCH</kbd>Tap to crouch, hold to lie prone</span>
       <span><kbd>NADE</kbd>Throw a grenade</span>
@@ -292,7 +292,7 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
       <span><kbd>R</kbd>Reload</span>
       <span><kbd>B</kbd>Binoculars</span>
       <span><kbd>M</kbd>Map</span>
-      <span><kbd>V</kbd>First / third person</span>
+      <span><kbd>V</kbd>Close view, closer view, first person</span>
       <span><kbd>E</kbd>Use / Search body</span>
       <span><kbd>Space</kbd>Jump</span>
       <span><kbd>Esc</kbd>Pause</span>
@@ -946,7 +946,9 @@ const weapons=[
 ];
 let SENS=1;try{SENS=parseFloat(localStorage.getItem('ds-sens'))||1;}catch(e){}
 let wi=1,reloading=0,firing=false,switchT=0,ads=false,scopeLvl=1;
-let view='third';try{const v=localStorage.getItem('ds-view');if(v==='first'||v==='third')view=v;}catch(e){}
+let view='near';try{const v=localStorage.getItem('ds-view');if(v==='first'||v==='near'||v==='close')view=v;}catch(e){}
+/* each close view is the wide third-person picture zoomed in on the soldier: [zoom, centre x, centre y] of the wide picture */
+const VZ={near:[1.8,0.436,0.611],close:[2.7,0.4556,0.574]};let viewZoom=1;
 const PL={group:null,camDist:0,lastShot:-9};
 
 /* first-person viewmodels with hands */
@@ -1950,7 +1952,7 @@ cvs.addEventListener('mousedown',e=>{
   if(e.button===0){firing=true;if(!binoc)fire();}
 });
 addEventListener('mouseup',e=>{if(e.button===0)firing=false;if(e.button===2){dragLook=false;if(locked)ads=false;}});
-function look(dx,dy,s){s*=SENS*(ads?(scopeLvl===4&&wi>0?0.28:0.55):1);P.yaw-=dx*s;P.pitch=clamp(P.pitch-dy*s,-1.45,1.45);swayX=clamp(swayX+dx*0.00025,-0.05,0.05);swayY=clamp(swayY+dy*0.00025,-0.04,0.04);}
+function look(dx,dy,s){s*=SENS*(ads?(scopeLvl===4&&wi>0?0.28:0.55):1)/Math.sqrt(viewZoom);P.yaw-=dx*s;P.pitch=clamp(P.pitch-dy*s,-1.45,1.45);swayX=clamp(swayX+dx*0.00025,-0.05,0.05);swayY=clamp(swayY+dy*0.00025,-0.04,0.04);}
 addEventListener('mousemove',e=>{
   if(state!=='play'||paused)return;
   if(!locked&&!dragLook)return;
@@ -2920,6 +2922,7 @@ function autoQuality(raw){if(window.__noAQ)return;
 function frame(){
   requestAnimationFrame(frame);
   const raw=clock.getDelta();const dt=Math.min(raw,0.05);autoQuality(raw);
+  if(state!=='play'&&camera.view&&camera.view.enabled){camera.clearViewOffset();viewZoom=1;xhEl.style.left=hitEl.style.left='50%';xhEl.style.top=hitEl.style.top='50%';}
   if(state==='play'&&!paused)step(dt);
   else if(state==='dying')stepDying(dt);
   if(!paused)musicTick(dt);
@@ -2931,8 +2934,18 @@ function frame(){
 function updateGuardIdle(g,dt){if(g.static)g.group.rotation.y=g.face+Math.sin(time*0.35+g.phase)*0.85;else{g.mv=0;const t=g.path[g.wp];if(g.wait>0)g.wait-=dt;else if(moveTo(g,t[0],t[1],g.speed,dt)<0.3){g.wp=(g.wp+1)%g.path.length;g.wait=rand(0.8,2.4);}}animateGuard(g,dt);}
 const camRay=new THREE.Raycaster();let adsK=0;
 function scoped(){return ads&&scopeLvl===4&&wi>0;}
-function isTPS(){return view==='third'&&!binoc&&!!PL.group&&!scoped();}
-function toggleView(){view=view==='third'?'first':'third';try{localStorage.setItem('ds-view',view);}catch(e){}beep(600,0.04,0.05);}
+function isTPS(){return view!=='first'&&!binoc&&!!PL.group&&!scoped();}
+function toggleView(){view=view==='near'?'close':view==='close'?'first':'near';try{localStorage.setItem('ds-view',view);}catch(e){}pickToast(view==='near'?'Close view':view==='close'?'Closer view':'First person');}
+const xhEl=document.getElementById('xhair'),hitEl=document.getElementById('hit');
+function applyView(tps){
+  const cfg=tps&&state==='play'?VZ[view]:null;let z=1,cx=0.5,cy=0.5;
+  if(cfg){z=lerp(cfg[0],1,adsK);cx=lerp(cfg[1],0.5,adsK);cy=lerp(cfg[2],0.5,adsK);}
+  viewZoom=z;
+  if(z<1.002){if(camera.view&&camera.view.enabled)camera.clearViewOffset();}
+  else{const W=innerWidth,H=innerHeight;camera.setViewOffset(W*z,H*z,cx*W*z-W/2,cy*H*z-H/2,W,H);}
+  const px=((0.5+z*(0.5-cx))*100).toFixed(2)+'%',py=((0.5+z*(0.5-cy))*100).toFixed(2)+'%';
+  if(xhEl.style.left!==px){xhEl.style.left=hitEl.style.left=px;}if(xhEl.style.top!==py){xhEl.style.top=hitEl.style.top=py;}
+}
 function playerDie(){
   if(state!=='play')return;{const o=['die','dieFront','dying','dieLeft'].filter(k=>PL.actions&&PL.actions[k]);PL.dieClip=o[(Math.random()*o.length)|0]||'die';}deathSfx(P.pos,'player');musicEnd(false);state='dying';P.dead=true;P.deadT=0;firing=false;fireTouch=null;ads=false;autoStop();
   $('tc').hidden=true;document.body.classList.add('dying');try{document.exitPointerLock&&document.exitPointerLock();}catch(e){}
@@ -3006,6 +3019,7 @@ function step(dt){
     camera.position.set(sx-fx*d+fxNoise(4)*shake*0.12,Math.max(0.3,sy-fy*d),sz-fz*d+fxNoise(5)*shake*0.12);
   }else{PL.camDist=0;camera.position.set(P.pos.x+fxNoise(4)*shake*0.15+r.x*bobX,P.eye+P.jy+bob+land+breath,P.pos.z+r.z*bobX+fxNoise(5)*shake*0.15);}
   const tf=binoc?11:ads?(scoped()?16:tps?56:58):(sprint&&P.speed>0.1?70:64);if(Math.abs(camera.fov-tf)>0.05){camera.fov+=(tf-camera.fov)*Math.min(1,dt*10);camera.updateProjectionMatrix();}
+  applyView(tps);
   // viewmodel
   gunRoot.visible=!binoc&&!tps;
   updatePlayerBody(dt,tps,sprint);
