@@ -6,7 +6,7 @@ A first-person stealth shooter that runs in the browser. Mission 1: get into the
 
 Open `index.html` through any web server (for example GitHub Pages). It does not work when opened straight from the file system, because the soldier model is loaded with `fetch`.
 
-**Computer:** WASD move, mouse look, click fire, Shift sprint, C crouch, 1/2 weapons, R reload, B binoculars, M map, V first/third person, E use, Space jump, Esc pause.
+**Computer:** WASD move, mouse look, click fire, Shift sprint, C crouch, 1/2/3 pistol, M4A1, AK-47, R reload, B binoculars, M map, V first/third person, E use, Space jump, Esc pause.
 
 **Phone:** hold the phone sideways. Drag in the bottom-left corner to move, drag anywhere else to aim, and use the on-screen buttons for the rest. VIEW switches between third person (your soldier on screen, the default) and first person.
 
@@ -21,6 +21,10 @@ It shows the same `index.html` full screen in landscape, and needs internet the 
 ## Your own soldier
 
 On the start screen, tap **Upload soldier file** and choose a Mixamo character downloaded as **FBX Binary, T-pose**. The game converts it in the browser, shrinks the textures, and saves it on that device. **Use standard soldier** switches back.
+
+## Your own music
+
+On the start screen, **Upload music** picks a song from the device. It is saved on that device only and plays on a loop during the mission. **Remove music** turns it off.
 
 ## Files
 

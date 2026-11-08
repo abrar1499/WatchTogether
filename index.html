@@ -171,7 +171,7 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
       <span><kbd>Left thumb</kbd>Move (push to edge to sprint)</span>
       <span><kbd>Right thumb</kbd>Look around</span>
       <span><kbd>FIRE</kbd>Shoot (hold for rifle)</span>
-      <span><kbd>SWAP</kbd>Pistol / Rifle</span>
+      <span><kbd>SWAP</kbd>Pistol, M4, AK-47</span>
       <span><kbd>BINO</kbd>Binoculars</span>
       <span><kbd>MAP</kbd>Map</span>
       <span><kbd>VIEW</kbd>First / third person</span>
@@ -183,7 +183,7 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
       <span><kbd>Mouse</kbd>Look · Click to fire</span>
       <span><kbd>Shift</kbd>Sprint</span>
       <span><kbd>C</kbd>Crouch</span>
-      <span><kbd>1</kbd><kbd>2</kbd>Pistol / Rifle</span>
+      <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>Pistol / M4 / AK-47</span>
       <span><kbd>R</kbd>Reload</span>
       <span><kbd>B</kbd>Binoculars</span>
       <span><kbd>M</kbd>Map</span>
@@ -203,6 +203,16 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
         <button class="btn2" id="soldierReset" hidden>Use standard soldier</button>
       </div>
       <span class="note">Download a character from Mixamo as FBX Binary in T-pose, then choose the file here. A large file can take a minute to open on a phone. The soldier is saved on this device only.</span>
+    </div>
+    <div class="upload">
+      <span class="lbl">Music</span>
+      <p id="musicNote">No music. Choose a song from your phone to play during the mission.</p>
+      <div class="row">
+        <label class="btn2" for="musicFile" id="musicPick">Upload music</label>
+        <input type="file" id="musicFile" accept="audio/*" hidden>
+        <button class="btn2" id="musicOff" hidden>Remove music</button>
+      </div>
+      <span class="note">The song is saved on this device only and is not uploaded anywhere.</span>
     </div>
     <span class="note" id="note">On a computer, use the keyboard and mouse. If the mouse does not lock, hold the right button and drag to look. On a phone, play with the phone held sideways.</span>
   </div>
@@ -673,7 +683,8 @@ function animateGuard(g,dt){
 const P={pos:new THREE.Vector3(0,0,150),yaw:0,pitch:0,eye:1.7,crouch:false,vy:0,jy:0,hp:100,speed:0,bob:0,lastStep:0};
 const weapons=[
   {name:'SD-9 Pistol',mag:12,size:12,res:48,dmg:42,rate:0.26,spread:0.006,auto:false,loud:false,last:0},
-  {name:'KR-4 Rifle',mag:30,size:30,res:90,dmg:34,rate:0.1,spread:0.016,auto:true,loud:true,last:0}
+  {name:'M4A1 Carbine',mag:30,size:30,res:90,dmg:34,rate:0.085,spread:0.014,auto:true,loud:true,kick:1,snd:'m4',last:0},
+  {name:'AK-47',mag:30,size:30,res:90,dmg:41,rate:0.105,spread:0.021,auto:true,loud:true,kick:1.45,snd:'ak',last:0}
 ];
 let wi=0,reloading=0,firing=false,switchT=0;
 let view='third';try{const v=localStorage.getItem('ds-view');if(v==='first'||v==='third')view=v;}catch(e){}
@@ -687,6 +698,7 @@ const gunRoot=new THREE.Group();camera.add(gunRoot);
 /* sky reflections so gun metal looks like metal */
 const ENV=null;
 // (a PMREM sky reflection turned the guns black on some GPUs, so metal is lit directly instead)
+const AKM={wood:std({color:0x7a4320,roughness:0.55,metalness:0.05}),dark:new THREE.MeshBasicMaterial({color:0x2a160a}),mag:std({color:0x3a3c3e,roughness:0.5,metalness:0.3})};
 const GUNM={
   metal:std({color:0x5a5f64,metalness:0.35,roughness:0.36,envMap:ENV,envMapIntensity:1.0}),
   metal2:std({color:0x72777c,metalness:0.3,roughness:0.42,envMap:ENV,envMapIntensity:0.9}),
@@ -747,9 +759,32 @@ function buildPistol(){
   g.muz=new THREE.Object3D();g.muz.position.set(0,0.03,0.307);g.add(g.muz);g.muzY=0.03;g.muzZ=0.307;
   return g;
 }
+function buildAK(){
+  const g=new THREE.Group(),M=GUNM,W=AKM;
+  GB(g,0.046,0.06,0.3,M.metal,0,0.018,0.05);GB(g,0.044,0.022,0.28,M.metal2,0,0.058,0.05);
+  GB(g,0.004,0.03,0.11,M.metal2,0.024,0.04,0.05);GB(g,0.012,0.012,0.05,M.metal2,0.03,0.045,0.11);
+  GB(g,0.02,0.014,0.03,M.metal,0,0.072,0.2);
+  GB(g,0.052,0.05,0.2,W.wood,0,0.012,0.3);GB(g,0.044,0.03,0.18,W.wood,0,0.062,0.3);
+  for(let i=0;i<4;i++)GB(g,0.054,0.006,0.012,W.dark,0,0.03,0.23+i*0.04);
+  GC(g,0.011,0.32,M.metal,0,0.03,0.52,12);GC(g,0.012,0.2,M.metal,0,0.064,0.43,10);
+  GB(g,0.022,0.04,0.025,M.metal,0,0.05,0.62);GB(g,0.006,0.03,0.006,M.metal2,0,0.085,0.625);
+  GC(g,0.015,0.05,M.metal,0,0.03,0.695,12);GB(g,0.032,0.008,0.012,M.black,0,0.045,0.71);
+  GB(g,0.034,0.1,0.046,W.wood,0,-0.065,-0.03,0.35);
+  GB(g,0.006,0.006,0.075,M.metal,0,-0.025,0.05);GB(g,0.006,0.028,0.006,M.metal,0,-0.012,0.087);GB(g,0.004,0.018,0.005,M.metal2,0,-0.015,0.06,0.2);
+  const mag=new THREE.Group();mag.position.set(0,-0.012,0.12);g.add(mag);
+  GB(mag,0.03,0.07,0.07,W.mag,0,-0.035,0,-0.12);GB(mag,0.03,0.07,0.068,W.mag,0,-0.098,0.018,-0.38);
+  GB(mag,0.03,0.07,0.066,W.mag,0,-0.155,0.05,-0.64);GB(mag,0.033,0.012,0.07,W.mag,0,-0.19,0.072,-0.8);
+  for(let i=0;i<3;i++)GB(mag,0.032,0.004,0.05,M.black,0,-0.03-i*0.06,0.0+i*0.025,-0.15-i*0.25);
+  g.mag=mag;
+  GB(g,0.045,0.055,0.06,W.wood,0,0.012,-0.12);
+  const st=GB(g,0.042,0.075,0.26,W.wood,0,-0.012,-0.27,0.12);
+  GB(g,0.046,0.11,0.02,M.metal2,0,-0.035,-0.405,0.12);
+  g.muz=new THREE.Object3D();g.muz.position.set(0,0.03,0.725);g.add(g.muz);g.muzY=0.03;g.muzZ=0.725;
+  return g;
+}
 const VM={glove:std({color:0x2a2824,roughness:0.85}),sleeve:std({map:TX.camo,color:0xcfc6a8})};
 const vb=(p,w,h,d,m,x,y,z,rx=0,ry=0,rz=0)=>{const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.rotation.set(rx,ry,rz);p.add(o);return o;};
-const wm=[new THREE.Group(),new THREE.Group()];
+const wm=[new THREE.Group(),new THREE.Group(),new THREE.Group()];
 const vmMag=[];
 {
   // first-person pistol: model turned to face -Z (camera forward)
@@ -768,7 +803,16 @@ const vmMag=[];
   vb(r,0.08,0.08,0.38,VM.sleeve,-0.13,-0.1,-0.14,0.35,0.75,0);
   vmMag[1]=rm.mag;rm.mag.userData.y0=rm.mag.position.y;
   r.userData={pos:[0.17,-0.22,-0.46],muzzle:-rm.muzZ,muzY:rm.muzY};
-  r.visible=false;gunRoot.add(wm[0],wm[1]);
+  // first-person AK-47
+  const k=wm[2];const km=buildAK();km.rotation.y=Math.PI;k.add(km);
+  vb(k,0.06,0.078,0.09,VM.glove,0.006,-0.065,0.035,0.35);
+  vb(k,0.08,0.08,0.34,VM.sleeve,0.05,-0.14,0.22,0.55,-0.2,0);
+  vb(k,0.068,0.06,0.1,VM.glove,-0.028,-0.005,-0.3,0,0,0.5);
+  vb(k,0.08,0.08,0.38,VM.sleeve,-0.13,-0.1,-0.13,0.35,0.75,0);
+  vmMag[2]=km.mag;km.mag.userData.y0=km.mag.position.y;
+  k.userData={pos:[0.17,-0.21,-0.46],muzzle:-km.muzZ,muzY:km.muzY};
+  k.visible=false;
+  r.visible=false;gunRoot.add(wm[0],wm[1],wm[2]);
   // soft fill light so the gun in your hands is never a black shape
   const fill=new THREE.PointLight(0xfff0dd,1.1,1.6,2);fill.position.set(-0.1,0.25,0.1);gunRoot.add(fill);
   for(const w of wm)w.traverse(o=>{if(o.isMesh){o.renderOrder=2;o.castShadow=false;}});
@@ -803,19 +847,19 @@ function impact(pt,n,blood){
 }
 
 /* ---------- audio ---------- */
-let AC=null,master=null,noiseBuf=null;
+let AC=null,master=null,noiseBuf=null,windGain=null,musicSrc=null;
 function initAudio(){try{AC=new (window.AudioContext||window.webkitAudioContext)();master=AC.createGain();master.gain.value=0.55;master.connect(AC.destination);
   noiseBuf=AC.createBuffer(1,AC.sampleRate*0.6,AC.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);
   const wb=AC.createBuffer(1,AC.sampleRate*3,AC.sampleRate);const w=wb.getChannelData(0);let last=0;for(let i=0;i<w.length;i++){last=last*0.98+(Math.random()*2-1)*0.02;w[i]=last*6;}
-  const ws=AC.createBufferSource();ws.buffer=wb;ws.loop=true;const wf=AC.createBiquadFilter();wf.type='bandpass';wf.frequency.value=380;wf.Q.value=0.6;const wg=AC.createGain();wg.gain.value=0.07;ws.connect(wf);wf.connect(wg);wg.connect(master);ws.start();
+  const ws=AC.createBufferSource();ws.buffer=wb;ws.loop=true;const wf=AC.createBiquadFilter();wf.type='bandpass';wf.frequency.value=380;wf.Q.value=0.6;const wg=AC.createGain();windGain=wg;wg.gain.value=0.07;ws.connect(wf);wf.connect(wg);wg.connect(master);ws.start();
   const lfo=AC.createOscillator();lfo.frequency.value=0.08;const lg=AC.createGain();lg.gain.value=180;lfo.connect(lg);lg.connect(wf.frequency);lfo.start();
 }catch(e){AC=null;}}
 function sfxShot(kind,vol){
   if(!AC||vol<0.01)return;const t=AC.currentTime;const s=AC.createBufferSource();s.buffer=noiseBuf;
-  const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=kind==='sd'?800:kind==='rifle'?5200:2600;
-  const g=AC.createGain();const dur=kind==='sd'?0.1:0.45;const v=vol*(kind==='sd'?0.5:1);
+  const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=kind==='sd'?800:kind==='m4'?5600:kind==='ak'?3000:2600;
+  const g=AC.createGain();const dur=kind==='sd'?0.1:kind==='ak'?0.6:0.42;const v=vol*(kind==='sd'?0.5:1);
   g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(0.0008,t+dur);s.connect(f);f.connect(g);g.connect(master);s.start(t);s.stop(t+dur+0.05);
-  const o=AC.createOscillator();o.frequency.setValueAtTime(kind==='sd'?160:120,t);o.frequency.exponentialRampToValueAtTime(35,t+0.15);const og=AC.createGain();og.gain.setValueAtTime(v*0.9,t);og.gain.exponentialRampToValueAtTime(0.001,t+0.18);o.connect(og);og.connect(master);o.start(t);o.stop(t+0.2);
+  const o=AC.createOscillator();o.frequency.setValueAtTime(kind==='sd'?160:kind==='ak'?90:125,t);o.frequency.exponentialRampToValueAtTime(35,t+0.15);const og=AC.createGain();og.gain.setValueAtTime(v*0.9,t);og.gain.exponentialRampToValueAtTime(0.001,t+0.18);o.connect(og);og.connect(master);o.start(t);o.stop(t+0.2);
   if(kind==='sd'){const k=AC.createOscillator();k.type='square';k.frequency.value=2400;const kg=AC.createGain();kg.gain.setValueAtTime(0.03*vol,t+0.02);kg.gain.exponentialRampToValueAtTime(0.0005,t+0.05);k.connect(kg);kg.connect(master);k.start(t+0.02);k.stop(t+0.06);}
 }
 function sfxStep(vol){if(!AC)return;const t=AC.currentTime;const s=AC.createBufferSource();s.buffer=noiseBuf;s.playbackRate.value=rand(0.7,1);const f=AC.createBiquadFilter();f.type='bandpass';f.frequency.value=rand(500,900);f.Q.value=0.8;const g=AC.createGain();g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(0.0005,t+0.12);s.connect(f);f.connect(g);g.connect(master);s.start(t);s.stop(t+0.15);}
@@ -853,6 +897,7 @@ addEventListener('keydown',e=>{
   if(e.code==='KeyV')toggleView();
   if(e.code==='Digit1')switchW(0);
   if(e.code==='Digit2')switchW(1);
+  if(e.code==='Digit3')switchW(2);
   if(e.code==='KeyR')startReload();
   if(e.code==='KeyP')setPause(!paused);
   if(e.code==='Space'&&P.jy<=0.001&&!P.crouch)P.vy=4.6;
@@ -878,9 +923,9 @@ addEventListener('mousemove',e=>{
 let everLocked=false;
 function tryLock(){try{const r=cvs.requestPointerLock&&cvs.requestPointerLock();if(r&&r.catch)r.catch(()=>{});}catch(e){}}
 document.addEventListener('pointerlockchange',()=>{locked=document.pointerLockElement===cvs;if(locked)everLocked=true;if(!locked&&state==='play'&&everLocked&&!paused)setPause(true);});
-function setPause(v){paused=v;$('pause').hidden=!v;if(v){firing=false;for(const k in keys)keys[k]=false;if(typeof joy!=='undefined'){joy.id=null;joy.x=joy.y=0;$('joy').hidden=true;lookId=null;}}}
+function setPause(v){paused=v;$('pause').hidden=!v;try{if(AC){if(v)AC.suspend();else AC.resume();}}catch(e){}if(v){firing=false;for(const k in keys)keys[k]=false;if(typeof joy!=='undefined'){joy.id=null;joy.x=joy.y=0;$('joy').hidden=true;lookId=null;}}}
 $('resume').onclick=()=>{setPause(false);tryLock();};
-$('go').onclick=()=>{initAudio();$('start').hidden=true;state='play';document.body.classList.add('playing');
+$('go').onclick=()=>{initAudio();startMusic();$('start').hidden=true;state='play';document.body.classList.add('playing');
   if(TOUCH){$('tc').hidden=false;try{const r=document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();if(r&&r.then)r.then(()=>{try{screen.orientation.lock('landscape').catch(()=>{});}catch(e){}}).catch(()=>{});}catch(e){}}
   stats.start=performance.now();tryLock();renderObj();
   radio('Kestrel, the base is 150 meters north. Check it with binoculars first. The broken fence is on the west side.');setTimeout(()=>{if(TOUCH)$('joyhint').hidden=true;},9000);};
@@ -920,7 +965,7 @@ function act(a,down){
   if(a==='jump'&&P.jy<=0.001&&!P.crouch)P.vy=4.6;
   if(a==='crouch'){P.crouch=!P.crouch;}
   if(a==='reload')startReload();
-  if(a==='swap')switchW(1-wi);
+  if(a==='swap')switchW((wi+1)%3);
   if(a==='bino'){binoc=!binoc;beep(500,0.04,0.05);}
   if(a==='map'){mapOpen=!mapOpen;$('mapwrap').hidden=!mapOpen;}
   if(a==='view')toggleView();
@@ -934,7 +979,7 @@ tcEl.querySelectorAll('.tb').forEach(b=>{
 });
 
 /* ---------- weapons ---------- */
-function switchW(i){if(i===wi||reloading>0||switchT>0)return;switchT=0.4;setTimeout(()=>{wi=i;wm[0].visible=i===0;wm[1].visible=i===1;},200);beep(300,0.05,0.05);}
+function switchW(i){if(i===wi||reloading>0||switchT>0)return;switchT=0.4;setTimeout(()=>{wi=i;wm.forEach((m,k)=>{m.visible=k===i;});},200);beep(300,0.05,0.05);}
 function startReload(){const w=weapons[wi];if(reloading>0||w.mag===w.size||w.res<=0)return;reloading=1.6;beep(220,0.08,0.06,'square');setTimeout(()=>beep(340,0.06,0.07,'square'),900);}
 const ray=new THREE.Raycaster();const tv=new THREE.Vector3(),tv2=new THREE.Vector3(),tv3=new THREE.Vector3();
 function aliveParts(){const a=[];for(const g of guards)if(g.state!=='dead')a.push(...g.parts);return a;}
@@ -951,14 +996,14 @@ function fire(){
   if(reloading>0||switchT>0||now-w.last<w.rate)return;
   if(w.mag<=0){beep(900,0.03,0.08,'square');startReload();return;}
   w.last=now;w.mag--;stats.shots++;
-  recoil=Math.min(recoil+(w.auto?0.45:0.8),1.4);P.pitch=clamp(P.pitch+(w.auto?0.007:0.014),-1.45,1.45);P.yaw+=rand(-0.003,0.003)*(w.auto?1:0.4);
+  const kk=w.kick||1;recoil=Math.min(recoil+(w.auto?0.45:0.8)*kk,1.6);P.pitch=clamp(P.pitch+(w.auto?0.007:0.014)*kk,-1.45,1.45);P.yaw+=rand(-0.003,0.003)*(w.auto?1:0.4);
   if(w.loud)shake=Math.max(shake,0.06);
   const mz=wm[wi].userData.muzzle;
   flashT=w.loud?0.055:0.035;flash.scale.setScalar(w.loud?rand(0.2,0.3):0.1);flash.position.set(wm[wi].userData.pos[0],wm[wi].userData.pos[1]+wm[wi].userData.muzY,wm[wi].userData.pos[2]+mz);flashLight.position.copy(flash.position);
-  sfxShot(w.loud?'rifle':'sd',0.9);
+  sfxShot(w.loud?w.snd:'sd',0.9);
   // shell
   PL.lastShot=time;
-  const tps=isTPS();const tg=tps?(wi===1?PL.rifle:PL.pistol):null;
+  const tps=isTPS();const tg=tps?[PL.pistol,PL.rifle,PL.ak][wi]:null;
   if(tps){tg.muz.getWorldPosition(wFlash.position);wFlash.scale.setScalar(w.loud?rand(0.35,0.5):0.18);wLight.position.copy(wFlash.position);}
   const sh=shells[shellI++%shells.length];sh.m.visible=true;sh.t=2;
   if(tps)tg.localToWorld(sh.m.position.set(0.03,0.05,0.05));else camera.localToWorld(sh.m.position.set(0.14,-0.1,-0.35));
@@ -1126,7 +1171,7 @@ function loadSoldier(){return new Promise(res=>{
     new THREE.GLTFLoader().parse(u8.buffer,'',gl=>{clearTimeout(t);try{const sd=prepSoldier(gl);optimizeSoldier(sd.scene).then(()=>res(sd),()=>res(sd));}catch(e){res(null);}},()=>{clearTimeout(t);res(null);});
   }).catch(()=>{clearTimeout(t);res(null);});
 });}
-function buildGun(){return buildRifle();}
+function buildGun(){return buildAK();}
 function boneAttach(model,boneName,obj,x,y,z){const b=model.getObjectByName(boneName);if(!b)return null;const ws=b.getWorldScale(new THREE.Vector3()).x;obj.scale.setScalar(1/ws);obj.position.set(x/ws,y/ws,z/ws);b.add(obj);return b;}
 function makeSkinGuard(path,o={}){
   const g={kind:'skin',group:new THREE.Group(),parts:[],path,wp:0,hp:100,state:'patrol',seeT:0,cool:rand(0.6,1.2),lastKnown:new THREE.Vector3(),lostT:0,
@@ -1199,7 +1244,7 @@ function animateSkin(g,dt){
   if(g.muzzleT>0){g.muzzleT-=dt;g.mf.visible=true;g.mf.material.rotation=Math.random()*6;}else g.mf.visible=false;
 }
 function makePlayerBody(){
-  if(PL.group){scene.remove(PL.group);scene.remove(PL.rifle);scene.remove(PL.pistol);PL.group=null;}
+  if(PL.group){scene.remove(PL.group);scene.remove(PL.rifle);scene.remove(PL.pistol);scene.remove(PL.ak);PL.group=null;}
   if(!SOLDIER)return;
   const R=new THREE.Group();const m=THREE.SkeletonUtils.clone(SOLDIER.scene);m.scale.multiplyScalar(SOLDIER.scale);m.rotation.y=Math.PI;R.add(m);
   if(!SOLDIER.custom)m.traverse(c=>{if(c.isMesh&&c.material===SK.surface)c.material=SK.player;});
@@ -1209,13 +1254,13 @@ function makePlayerBody(){
   PL.mixer=new THREE.AnimationMixer(m);PL.actions={};PL.cur=null;
   for(const k in SOLDIER.clips){const a=PL.mixer.clipAction(SOLDIER.clips[k]);PL.actions[k]=a;}
   setAnim(PL,'idle',0);
-  PL.rifle=buildRifle();PL.pistol=buildPistol();scene.add(PL.rifle,PL.pistol);
-  R.visible=false;PL.rifle.visible=false;PL.pistol.visible=false;
+  PL.rifle=buildRifle();PL.pistol=buildPistol();PL.ak=buildAK();scene.add(PL.rifle,PL.pistol,PL.ak);
+  R.visible=false;PL.rifle.visible=false;PL.pistol.visible=false;PL.ak.visible=false;
 }
 const pA=new THREE.Vector3(),pB=new THREE.Vector3(),pC=new THREE.Vector3();
 function updatePlayerBody(dt,tps,sprint){
   if(!PL.group)return;
-  PL.group.visible=tps;PL.rifle.visible=tps&&wi===1&&switchT<0.2;PL.pistol.visible=tps&&wi===0&&switchT<0.2;
+  PL.group.visible=tps;const gv=tps&&switchT<0.2;PL.pistol.visible=gv&&wi===0;PL.rifle.visible=gv&&wi===1;PL.ak.visible=gv&&wi===2;
   if(!tps)return;
   PL.group.position.set(P.pos.x,P.jy,P.pos.z);PL.group.rotation.y=P.yaw;
   let want;
@@ -1227,11 +1272,12 @@ function updatePlayerBody(dt,tps,sprint){
   PL.mixer.update(dt);PL.group.updateMatrixWorld(true);
   PL.rh.getWorldPosition(pA);
   camera.getWorldDirection(pC);
-  if(wi===1){
+  if(wi>=1){
+    const gun=wi===2?PL.ak:PL.rifle;
     PL.lh.getWorldPosition(pB);const d=pB.sub(pA);const len=d.length();
     if(len>0.08&&len<0.9)d.divideScalar(len);else d.set(-Math.sin(P.yaw),0,-Math.cos(P.yaw));
-    PL.rifle.position.copy(pA).addScaledVector(d,-0.02);PL.rifle.position.y-=0.02;
-    PL.rifle.lookAt(pB.copy(PL.rifle.position).add(d));
+    gun.position.copy(pA).addScaledVector(d,-0.02);gun.position.y-=0.02;
+    gun.lookAt(pB.copy(gun.position).add(d));
   }else{
     PL.pistol.position.copy(pA);PL.pistol.position.y-=0.01;
     PL.pistol.lookAt(pB.copy(pA).addScaledVector(pC,30));
@@ -1336,6 +1382,27 @@ $('soldierSave').addEventListener('click',async()=>{
   try{const url=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);}catch(e){}
   note('If no download started, this page cannot save files. Open the game in the Dust Signal app and press Save soldier file there.');
 });
+async function musicUI(err){const n=await IDB.get('customMusicName');$('musicOff').hidden=!n;const el=$('musicNote');el.classList.toggle('err',!!err);el.textContent=err||(n?'Music: '+n:'No music. Choose a song from your phone to play during the mission.');}
+$('musicFile').addEventListener('change',async e=>{
+  const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;
+  if(f.size>80*1048576){musicUI('That song is over 80 MB. Choose a smaller file.');return;}
+  $('musicNote').textContent='Saving '+f.name+'…';
+  const buf=await f.arrayBuffer();
+  const ok=await IDB.set('customMusic',buf);if(ok)await IDB.set('customMusicName',f.name);
+  musicUI(ok?null:'The song could not be saved on this device.');
+});
+$('musicOff').addEventListener('click',async()=>{await IDB.del('customMusic');await IDB.del('customMusicName');stopMusic();musicUI();});
+function stopMusic(){try{if(musicSrc)musicSrc.stop();}catch(e){}musicSrc=null;if(windGain)windGain.gain.value=0.07;}
+async function startMusic(){
+  if(!AC)return;const buf=await IDB.get('customMusic');if(!buf)return;
+  try{
+    const ab=await new Promise((res,rej)=>{const r=AC.decodeAudioData(buf.slice(0),res,rej);if(r&&r.then)r.then(res,rej);});
+    stopMusic();musicSrc=AC.createBufferSource();musicSrc.buffer=ab;musicSrc.loop=true;
+    const mg=AC.createGain();mg.gain.value=0.4;musicSrc.connect(mg);mg.connect(master);musicSrc.start();
+    if(windGain)windGain.gain.value=0.025;
+  }catch(e){}
+}
+musicUI();
 $('soldierReset').addEventListener('click',async()=>{await IDB.del('customSoldier');SOLDIER=BASE;respawnGuards();soldierUI();});
 $('go').disabled=true;$('go').textContent='Loading soldiers…';
 loadSoldier().then(async sd=>{
@@ -1348,7 +1415,7 @@ loadSoldier().then(async sd=>{
 let near=null;
 function useKey(){
   if(!near)return;
-  if(near.type==='body'){const g=near.g;g.searched=true;weapons[1].res+=30;weapons[0].res+=12;beep(880,0.08);beep(1320,0.08,0.1);radio('Picked up 30 rifle rounds and 12 pistol rounds.','KESTREL');}
+  if(near.type==='body'){const g=near.g;g.searched=true;weapons[2].res+=30;weapons[1].res+=15;weapons[0].res+=12;beep(880,0.08);beep(1320,0.08,0.1);radio('Picked up 30 AK-47 rounds, 15 M4 rounds and 12 pistol rounds.','KESTREL');}
 }
 function findNear(){
   near=null;
