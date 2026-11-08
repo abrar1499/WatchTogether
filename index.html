@@ -1130,7 +1130,9 @@ function note(t,err){const n=$('soldierNote');n.textContent=t;n.classList.toggle
 const J='https://cdn.jsdelivr.net/npm/three@0.160.0/';
 async function fbxToGlb(file,status){
   const buf=await file.arrayBuffer();
-  if(/\.glb$/i.test(file.name))return buf;
+  const magic=String.fromCharCode.apply(null,new Uint8Array(buf,0,Math.min(20,buf.byteLength)));
+  if(magic.startsWith('glTF'))return buf;
+  if(!magic.startsWith('Kaydara FBX'))throw new Error('type');
   status('Loading the converter…');
   const T=await import(J+'build/three.module.js');
   const {FBXLoader}=await import(J+'examples/jsm/loaders/FBXLoader.js');
@@ -1168,7 +1170,6 @@ function soldierUI(){const custom=SOLDIER&&SOLDIER.custom;$('soldierReset').hidd
 $('soldierFile').addEventListener('change',async e=>{
   const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;
   if(!BASE){note('The game could not load its animations, so a soldier cannot be added right now. Reload the page and try again.',true);return;}
-  if(!/\.(fbx|glb)$/i.test(f.name)){note('Choose a .fbx or .glb file. You picked '+f.name+'.',true);return;}
   $('go').disabled=true;$('soldierPick').setAttribute('aria-disabled','true');
   try{
     const glb=await fbxToGlb(f,t=>note(t));
@@ -1179,7 +1180,7 @@ $('soldierFile').addEventListener('change',async e=>{
     const saved=await IDB.set('customSoldier',glb);
     soldierUI();note('Using your uploaded soldier ('+(glb.byteLength/1048576).toFixed(1)+' MB).'+(saved?'':' It could not be saved on this device, so you will need to upload it again next time.'));
   }catch(err){
-    note(err&&err.message==='rig'?'That file has no Mixamo skeleton. Download a Mixamo character as FBX Binary in T-pose and try again.':'That file could not be opened. If it is very large, your device may have run out of memory. Try again, or use a computer.',true);
+    note(err&&err.message==='type'?'That is not an FBX Binary or GLB file. In Mixamo, choose Format: FBX Binary (.fbx) and download again.':err&&err.message==='rig'?'That file has no Mixamo skeleton. Download a Mixamo character as FBX Binary in T-pose and try again.':'That file could not be opened. If it is very large, your device may have run out of memory. Try again, or use a computer.',true);
   }
   $('go').disabled=false;$('soldierPick').removeAttribute('aria-disabled');
 });
