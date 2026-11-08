@@ -193,6 +193,7 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
       <div class="row">
         <label class="btn2" for="soldierFile" id="soldierPick">Upload soldier file</label>
         <input type="file" id="soldierFile" hidden>
+        <button class="btn2" id="soldierSave" hidden>Save soldier file</button>
         <button class="btn2" id="soldierReset" hidden>Use standard soldier</button>
       </div>
       <span class="note">Download a character from Mixamo as FBX Binary in T-pose, then choose the file here. A large file can take a minute to open on a phone. The soldier is saved on this device only.</span>
@@ -1205,7 +1206,7 @@ async function customFrom(buf){
   return {scene:sc,scale:1.8/h,clips:BASE.clips,custom:true};
 }
 function respawnGuards(){for(const g of guards){scene.remove(g.group);if(g.gun)scene.remove(g.gun);}guards.length=0;spawnGuards();}
-function soldierUI(){const custom=SOLDIER&&SOLDIER.custom;$('soldierReset').hidden=!custom;
+function soldierUI(){const custom=SOLDIER&&SOLDIER.custom;$('soldierReset').hidden=!custom;$('soldierSave').hidden=!custom;
   note(!BASE?'The soldier model did not load, so the guards use the simple model.':custom?'Using your uploaded soldier.':'Using the standard soldier. You can upload your own below.');}
 $('soldierFile').addEventListener('change',async e=>{
   const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;
@@ -1223,6 +1224,20 @@ $('soldierFile').addEventListener('change',async e=>{
     note(err&&err.message==='type'?'That is not an FBX Binary or GLB file. In Mixamo, choose Format: FBX Binary (.fbx) and download again.':err&&err.message==='rig'?'That file has no Mixamo skeleton. Download a Mixamo character as FBX Binary in T-pose and try again.':'That file could not be opened. If it is very large, your device may have run out of memory. Try again, or use a computer.',true);
   }
   $('go').disabled=false;$('soldierPick').removeAttribute('aria-disabled');
+});
+function toB64(buf){const u8=new Uint8Array(buf);let s='';for(let i=0;i<u8.length;i+=0x8000)s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000));return btoa(s);}
+$('soldierSave').addEventListener('click',async()=>{
+  const buf=await IDB.get('customSoldier');
+  if(!buf){note('There is no uploaded soldier saved on this device. Upload one first.',true);return;}
+  const name='dust-signal-soldier.glb',mb=(buf.byteLength/1048576).toFixed(1);
+  if(window.DustApp&&window.DustApp.saveFile){
+    note('Saving the soldier file…');await new Promise(r=>setTimeout(r,30));
+    let where='';try{where=window.DustApp.saveFile(toB64(buf),name)||'';}catch(e){where='';}
+    note(where?'Saved '+name+' ('+mb+' MB) to '+where+'. Send that file in the chat.':'The file could not be saved. Check that the phone has free space and try again.',!where);
+    return;
+  }
+  try{const url=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);}catch(e){}
+  note('If no download started, this page cannot save files. Open the game in the Dust Signal app and press Save soldier file there.');
 });
 $('soldierReset').addEventListener('click',async()=>{await IDB.del('customSoldier');SOLDIER=BASE;respawnGuards();soldierUI();});
 $('go').disabled=true;$('go').textContent='Loading soldiers…';
