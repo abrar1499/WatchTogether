@@ -96,6 +96,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hi
 #tc{position:fixed;inset:0;z-index:6;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #joy{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;border:2px solid rgba(235,227,204,.35);background:rgba(10,13,12,.25);pointer-events:none}
 #joy i{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:rgba(235,227,204,.45)}
+#joyzone{position:absolute;left:0;bottom:0;width:32%;height:58%;border-top:1px dashed rgba(235,227,204,.22);border-right:1px dashed rgba(235,227,204,.22);border-top-right-radius:28px;pointer-events:none}
 #joyhint{position:absolute;left:calc(40px + env(safe-area-inset-left,0px));bottom:calc(40px + env(safe-area-inset-bottom,0px));font-size:10px;letter-spacing:.18em;color:rgba(235,227,204,.45);pointer-events:none}
 .tb{position:absolute;width:56px;height:56px;border-radius:50%;border:1.5px solid rgba(235,227,204,.4);background:rgba(10,13,12,.45);color:var(--ink);font:600 10px/1 var(--mono);letter-spacing:.08em;display:grid;place-items:center;touch-action:none;padding:0}
 .tb.on,.tb:active{background:rgba(242,181,68,.55);color:#1a1408;border-color:var(--amber)}
@@ -146,7 +147,8 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
 <div class="hud" id="rotate">Turn your phone sideways for a better view</div>
 <div id="tc" hidden>
   <div id="joy" hidden><i></i></div>
-  <span id="joyhint">MOVE · drag left side &nbsp;&nbsp; LOOK · drag right side</span>
+  <div id="joyzone"></div>
+  <span id="joyhint">MOVE · bottom-left corner &nbsp;&nbsp; AIM · anywhere else</span>
   <button class="tb" data-act="fire" aria-label="Fire">FIRE</button>
   <button class="tb" data-act="jump" aria-label="Jump">JUMP</button>
   <button class="tb" data-act="crouch" aria-label="Crouch">CROUCH</button>
@@ -832,13 +834,15 @@ if(TOUCH){document.body.classList.add('touch');$('tkeys').hidden=false;$('kkeys'
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&state==='play'&&!paused)setPause(true);});
 
 /* ---------- touch controls ---------- */
-const joy={x:0,y:0,id:null,ox:0,oy:0};let lookId=null,lx=0,ly=0;const JR=55;
+const joy={x:0,y:0,id:null,ox:0,oy:0};
+const JZ={w:0.32,top:0.42};
+function inJoyZone(x,y){return x<innerWidth*JZ.w&&y>innerHeight*JZ.top;}let lookId=null,lx=0,ly=0;const JR=55;
 const tcEl=$('tc'),joyEl=$('joy'),knob=joyEl.firstElementChild;
 tcEl.addEventListener('touchstart',e=>{
   e.preventDefault();if(state!=='play'||paused)return;
   for(const t of e.changedTouches){
     if(t.target.closest&&t.target.closest('.tb'))continue;
-    if(t.clientX<innerWidth*0.45&&joy.id===null){joy.id=t.identifier;joy.ox=t.clientX;joy.oy=t.clientY;joy.x=joy.y=0;joyEl.hidden=false;joyEl.style.left=t.clientX+'px';joyEl.style.top=t.clientY+'px';knob.style.transform='';$('joyhint').hidden=true;}
+    if(inJoyZone(t.clientX,t.clientY)&&joy.id===null){joy.id=t.identifier;joy.ox=t.clientX;joy.oy=t.clientY;joy.x=joy.y=0;joyEl.hidden=false;joyEl.style.left=t.clientX+'px';joyEl.style.top=t.clientY+'px';knob.style.transform='';$('joyhint').hidden=true;}
     else if(lookId===null){lookId=t.identifier;lx=t.clientX;ly=t.clientY;}
   }
 },{passive:false});
@@ -898,7 +902,7 @@ function fire(){
   // shell
   const sh=shells[shellI++%shells.length];sh.m.visible=true;sh.t=2;camera.localToWorld(sh.m.position.set(0.14,-0.1,-0.35));
   tv3.set(rand(1.2,2),rand(1.5,2.5),rand(-0.3,0.3)).applyQuaternion(camera.quaternion);sh.v.copy(tv3);sh.spin.set(rand(-20,20),rand(-20,20),rand(-20,20));clink();
-  const sp=w.spread*(P.speed>0.5?1.8:1)*(P.crouch?0.6:1);
+  const sp=w.spread*(P.speed>5?1.5:P.speed>0.5?1.25:1)*(P.crouch?0.6:1);
   camera.getWorldDirection(tv);tv.x+=rand(-sp,sp);tv.y+=rand(-sp,sp);tv.z+=rand(-sp,sp);tv.normalize();
   const h=castFromCamera(tv,500,true);
   if(h){
@@ -1388,8 +1392,8 @@ function step(dt){
   switchT=Math.max(0,switchT-dt);const sw=switchT>0?Math.sin(switchT/0.4*Math.PI):0;
   const rl=reloading>0?Math.sin(clamp(1-reloading/1.6,0,1)*Math.PI):0;
   const sp=sprint&&P.speed>0.1?1:0;
-  gunRoot.position.set(vmp[0]+Math.cos(P.bob)*0.012*moving-swayX*0.5+sp*0.02,vmp[1]+Math.abs(Math.sin(P.bob))*0.012*moving+swayY*0.4-rl*0.08-sw*0.25-sp*0.04,vmp[2]+recoil*0.045);
-  gunRoot.rotation.set(recoil*0.12+rl*0.35-sp*0.35+swayY*0.6,swayX*1.2+sp*0.6,-rl*0.7+swayX*0.8+sp*0.3);
+  gunRoot.position.set(vmp[0]+Math.cos(P.bob)*0.012*moving-swayX*0.5+sp*0.02,vmp[1]+Math.abs(Math.sin(P.bob))*0.012*moving+swayY*0.4-rl*0.08-sw*0.25-sp*0.012,vmp[2]+recoil*0.045);
+  gunRoot.rotation.set(recoil*0.12+rl*0.35-sp*0.06+swayY*0.6,swayX*1.2+sp*0.1,-rl*0.7+swayX*0.8+sp*0.06);
   const magK=reloading>0?clamp((1-Math.abs((1-reloading/1.6)-0.45)/0.2),0,1):0;
   if(vmMag[wi])vmMag[wi].position.y=(wi===0?-0.13:0)-magK*0.25;
   if(reloading>0){reloading-=dt;if(reloading<=0){const n=Math.min(w.size-w.mag,w.res);w.mag+=n;w.res-=n;reloading=0;}}
@@ -1415,7 +1419,7 @@ function step(dt){
   if(radioTimer>0){radioTimer-=dt;if(radioTimer<=0)$('radio').classList.remove('on');}
   hitT=Math.max(0,hitT-dt);$('hit').style.opacity=hitT>0?1:0;
   dmgT=Math.max(0,dmgT-dt);$('dmg').style.opacity=dmgT>0?Math.min(1,dmgT*2.2):(P.hp<30?0.35+Math.sin(time*5)*0.1:0);
-  $('binoc').style.opacity=binoc?1:0;$('xhair').style.opacity=binoc||sp?0:1;
+  $('binoc').style.opacity=binoc?1:0;$('xhair').style.opacity=binoc?0:1;
   hudT-=dt;
   if(hudT<=0){hudT=0.05;
     $('hpnum').textContent=Math.ceil(P.hp);const hb=$('hpbar').firstElementChild;hb.style.width=P.hp+'%';hb.style.background=P.hp>50?'var(--ok)':P.hp>25?'var(--amber)':'var(--red)';
