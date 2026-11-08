@@ -724,7 +724,7 @@ const weapons=[
   {name:'M4A1 Carbine',mag:30,size:30,res:90,dmg:34,rate:0.085,spread:0.014,auto:true,loud:true,kick:1,snd:'m4',last:0},
   {name:'AK-47',mag:30,size:30,res:90,dmg:41,rate:0.105,spread:0.021,auto:true,loud:true,kick:1.45,snd:'ak',last:0}
 ];
-let wi=0,reloading=0,firing=false,switchT=0;
+let wi=1,reloading=0,firing=false,switchT=0;
 let view='third';try{const v=localStorage.getItem('ds-view');if(v==='first'||v==='third')view=v;}catch(e){}
 const PL={group:null,camDist:0,lastShot:-9};
 
@@ -867,7 +867,7 @@ const vmMag=[];
   vmMag[2]=km.mag;km.mag.userData.y0=km.mag.position.y;
   k.userData={pos:[0.17,-0.21,-0.46],muzzle:-km.muzZ,muzY:km.muzY};
   k.visible=false;
-  r.visible=false;gunRoot.add(wm[0],wm[1],wm[2]);
+  gunRoot.add(wm[0],wm[1],wm[2]);wm.forEach((m,i)=>{m.visible=i===wi;});
   // soft fill light so the gun in your hands is never a black shape
   const fill=new THREE.PointLight(0xfff0dd,1.1,1.6,2);fill.position.set(-0.1,0.25,0.1);gunRoot.add(fill);
   for(const w of wm)w.traverse(o=>{if(o.isMesh){o.renderOrder=2;o.castShadow=false;}});
