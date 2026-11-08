@@ -8,7 +8,7 @@ Open `index.html` through any web server (for example GitHub Pages). It does not
 
 **Computer:** WASD move, mouse look, click fire, Shift sprint, C crouch, 1/2/3 pistol, M4A1, AK-47, R reload, B binoculars, M map, V first/third person, E use, Space jump, Esc pause.
 
-**Phone:** hold the phone sideways. Drag in the bottom-left corner to move, drag anywhere else to aim, and use the on-screen buttons for the rest. VIEW switches between third person (your soldier on screen, the default) and first person.
+**Phone:** hold the phone sideways. Drag in the bottom-left corner to move. On the right half of the screen, tap to fire, or hold and drag to aim while firing. On the left half, drag to aim without firing. The on-screen buttons do the rest. VIEW switches between third person (your soldier on screen, the default) and first person.
 
 ## Android app
 
@@ -35,6 +35,7 @@ The game has its own synthesized soundtrack: a tense drone, dark chords and low 
 ## Files
 
 - `index.html`: the whole game (three.js r128 from cdnjs)
+- `sfx/`: recorded gun sounds (AK-47 and M4 shots, bolt sounds for reloads)
 - `models/soldier.b64.txt`: the standard soldier (Mixamo "Swat Guy", merged into 2 meshes and simplified to about 16k triangles) with its animations, as a base64 GLB
 - `app/`: the Android wrapper (a full-screen WebView)
 - `.github/workflows/build.yml`: builds and releases the APK
@@ -42,3 +43,5 @@ The game has its own synthesized soundtrack: a tense drone, dark chords and low 
 ## Credits
 
 Soldier character and animations from [Mixamo](https://www.mixamo.com) (Adobe).
+
+Gun sounds in `sfx/` are cut from sound effects by freesound_community on [Pixabay](https://pixabay.com/sound-effects/) ("M4 assault rifle long burst", "Dry assault rifle automatic", "Lever action rifle"), used under the Pixabay Content License. All other sounds and the music are synthesized in the browser.

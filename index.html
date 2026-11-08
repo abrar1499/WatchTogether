@@ -150,7 +150,7 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
 <div id="tc" hidden>
   <div id="joy" hidden><i></i></div>
   <div id="joyzone"></div>
-  <span id="joyhint">MOVE · bottom-left corner &nbsp;&nbsp; AIM · anywhere else</span>
+  <span id="joyhint">MOVE · bottom-left corner &nbsp;&nbsp; AIM · left side &nbsp;&nbsp; AIM + FIRE · right side</span>
   <button class="tb" data-act="fire" aria-label="Fire">FIRE</button>
   <button class="tb" data-act="jump" aria-label="Jump">JUMP</button>
   <button class="tb" data-act="crouch" aria-label="Crouch">CROUCH</button>
@@ -170,7 +170,8 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
     <p>The guards carry rifles and they shoot well. If one of them sees you, the alarm goes off and soldiers come out of the barracks. The fence on the west side is broken. Use your binoculars before you move, and stay low.</p>
     <div class="keys" id="tkeys" hidden>
       <span><kbd>Left thumb</kbd>Move (push to edge to sprint)</span>
-      <span><kbd>Right thumb</kbd>Look around</span>
+      <span><kbd>Right side</kbd>Tap to fire, hold and drag to aim and fire</span>
+      <span><kbd>Left side</kbd>Drag to aim without firing</span>
       <span><kbd>FIRE</kbd>Shoot (hold for rifle)</span>
       <span><kbd>SWAP</kbd>Pistol, M4, AK-47</span>
       <span><kbd>BINO</kbd>Binoculars</span>
@@ -886,6 +887,7 @@ function initAudio(){try{AC=new (window.AudioContext||window.webkitAudioContext)
   for(let ch=0;ch<2;ch++){const d=ir.getChannelData(ch);for(let i=0;i<len;i++){const tt=i/AC.sampleRate;let v=(Math.random()*2-1)*Math.exp(-tt*5.5)*0.5;
     for(const [et,ea] of [[0.24+ch*0.012,0.45],[0.62+ch*0.02,0.25],[1.1,0.12]]){const k=tt-et;if(k>=0&&k<0.12)v+=(Math.random()*2-1)*ea*Math.exp(-k*28);}d[i]=v;}}
   const conv=AC.createConvolver();conv.buffer=ir;reverbIn=AC.createGain();reverbIn.gain.value=0.9;reverbIn.connect(conv);conv.connect(master);
+  loadSfx();
   noiseBuf=AC.createBuffer(1,AC.sampleRate*0.6,AC.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);
   const wb=AC.createBuffer(1,AC.sampleRate*3,AC.sampleRate);const w=wb.getChannelData(0);let last=0;for(let i=0;i<w.length;i++){last=last*0.98+(Math.random()*2-1)*0.02;w[i]=last*6;}
   const ws=AC.createBufferSource();ws.buffer=wb;ws.loop=true;const wf=AC.createBiquadFilter();wf.type='bandpass';wf.frequency.value=380;wf.Q.value=0.6;const wg=AC.createGain();windGain=wg;wg.gain.value=0.07;ws.connect(wf);wf.connect(wg);wg.connect(master);ws.start();
@@ -899,6 +901,16 @@ function sfxShot(kind,vol){
   const o=AC.createOscillator();o.frequency.setValueAtTime(kind==='sd'?160:kind==='ak'?90:125,t);o.frequency.exponentialRampToValueAtTime(35,t+0.15);const og=AC.createGain();og.gain.setValueAtTime(v*0.9,t);og.gain.exponentialRampToValueAtTime(0.001,t+0.18);o.connect(og);og.connect(master);o.start(t);o.stop(t+0.2);
   if(kind==='sd'){const k=AC.createOscillator();k.type='square';k.frequency.value=2400;const kg=AC.createGain();kg.gain.setValueAtTime(0.03*vol,t+0.02);kg.gain.exponentialRampToValueAtTime(0.0005,t+0.05);k.connect(kg);kg.connect(master);k.start(t+0.02);k.stop(t+0.06);}
 }
+/* ---------- recorded gun sounds (Pixabay, freesound_community) ---------- */
+const SFXBUF={};
+function loadSfx(){
+  for(const k of ['ak','m4','bolt1','bolt2']){
+    fetch('sfx/'+k+'.mp3').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer();})
+      .then(b=>new Promise((res,rej)=>{const q=AC.decodeAudioData(b,res,rej);if(q&&q.then)q.then(res,rej);}))
+      .then(buf=>{SFXBUF[k]=buf;}).catch(()=>{});
+  }
+}
+function playBuf(dst,t,buf,rate,gain){const s=AC.createBufferSource();s.buffer=buf;s.playbackRate.value=rate||1;const g=AC.createGain();g.gain.value=gain==null?1:gain;s.connect(g);g.connect(dst);s.start(t);return s;}
 /* ---------- original synthesized sound effects ---------- */
 function nsrc(rate){const s=AC.createBufferSource();s.buffer=whiteBuf;s.playbackRate.value=rate||1;s.loop=true;return s;}
 function filt(type,freq,q){const f=AC.createBiquadFilter();f.type=type;f.frequency.value=freq;if(q)f.Q.value=q;return f;}
@@ -930,6 +942,12 @@ function sfxGun(kind,vol,pan,far){
   }
   const c=GUNSND[kind]||GUNSND.ak;
   const b=bus(vol,pan,c.wet*(0.6+far*0.9),far>0.05?16000-far*14000:0);
+  const rec=SFXBUF[kind];
+  if(rec){
+    playBuf(b,t,rec,rand(0.95,1.05),0.95);
+    if(far<0.3)toneHit(b,t,'sine',c.thump,38,0.002,0.45*(1-far),0.12);
+    return;
+  }
   noiseHit(b,t,'highpass',c.crack,0.7,0.0005,0.9*(1-far*0.7),0.035,1.2);
   noiseHit(b,t,'lowpass',c.body,0.6,0.002,0.85,c.bd,1);
   toneHit(b,t,'sine',c.thump,38,0.002,0.95*(1-far*0.5),0.14);
@@ -958,7 +976,7 @@ function sfxReload(kind){
   if(!AC)return;const t=AC.currentTime+0.02;const b=bus(0.7,0.1,0.05,0);
   sfxClick(b,t+0.1,1800,0.12);noiseHit(b,t+0.18,'bandpass',1800,1.5,0.01,0.12,0.1,1);
   noiseHit(b,t+0.8,'lowpass',1600,1,0.002,0.3,0.05,1);sfxClick(b,t+0.82,1400,0.25);
-  if(kind>0){sfxClick(b,t+1.15,2300,0.18);noiseHit(b,t+1.18,'bandpass',2600,2,0.01,0.12,0.08,1.2);sfxClick(b,t+1.3,1600,0.25);}
+  if(kind>0){if(SFXBUF.bolt1&&SFXBUF.bolt2){playBuf(b,t+1.1,SFXBUF.bolt1,1,0.9);playBuf(b,t+1.32,SFXBUF.bolt2,1,0.9);}else{sfxClick(b,t+1.15,2300,0.18);noiseHit(b,t+1.18,'bandpass',2600,2,0.01,0.12,0.08,1.2);sfxClick(b,t+1.3,1600,0.25);}}
   else sfxClick(b,t+1.05,2200,0.22);
 }
 function sfxHeart(){if(!AC)return;const t=AC.currentTime;const b=bus(0.9,0,0,0);toneHit(b,t,'sine',62,45,0.01,0.6,0.12);toneHit(b,t+0.2,'sine',55,40,0.01,0.45,0.12);}
@@ -1038,7 +1056,7 @@ if(TOUCH){document.body.classList.add('touch');$('tkeys').hidden=false;$('kkeys'
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&state==='play'&&!paused)setPause(true);});
 
 /* ---------- touch controls ---------- */
-const joy={x:0,y:0,id:null,ox:0,oy:0};
+const joy={x:0,y:0,id:null,ox:0,oy:0};let lookFire=false;
 const JZ={w:0.32,top:0.42};
 function inJoyZone(x,y){return x<innerWidth*JZ.w&&y>innerHeight*JZ.top;}let lookId=null,lx=0,ly=0;const JR=55;
 const tcEl=$('tc'),joyEl=$('joy'),knob=joyEl.firstElementChild;
@@ -1047,7 +1065,7 @@ tcEl.addEventListener('touchstart',e=>{
   for(const t of e.changedTouches){
     if(t.target.closest&&t.target.closest('.tb'))continue;
     if(inJoyZone(t.clientX,t.clientY)&&joy.id===null){joy.id=t.identifier;joy.ox=t.clientX;joy.oy=t.clientY;joy.x=joy.y=0;joyEl.hidden=false;joyEl.style.left=t.clientX+'px';joyEl.style.top=t.clientY+'px';knob.style.transform='';$('joyhint').hidden=true;}
-    else if(lookId===null){lookId=t.identifier;lx=t.clientX;ly=t.clientY;}
+    else if(lookId===null){lookId=t.identifier;lx=t.clientX;ly=t.clientY;lookFire=t.clientX>innerWidth*0.5;if(lookFire){firing=true;if(!binoc)fire();}}
   }
 },{passive:false});
 tcEl.addEventListener('touchmove',e=>{
@@ -1057,7 +1075,7 @@ tcEl.addEventListener('touchmove',e=>{
     else if(t.identifier===lookId){look(t.clientX-lx,t.clientY-ly,binoc?0.0016:0.0058);lx=t.clientX;ly=t.clientY;}
   }
 },{passive:false});
-function touchEnd(e){for(const t of e.changedTouches){if(t.identifier===joy.id){joy.id=null;joy.x=joy.y=0;joyEl.hidden=true;}if(t.identifier===lookId)lookId=null;}}
+function touchEnd(e){for(const t of e.changedTouches){if(t.identifier===joy.id){joy.id=null;joy.x=joy.y=0;joyEl.hidden=true;}if(t.identifier===lookId){lookId=null;if(lookFire){lookFire=false;firing=false;}}}}
 tcEl.addEventListener('touchend',touchEnd);tcEl.addEventListener('touchcancel',touchEnd);
 function act(a,down){
   if(state!=='play')return;
@@ -1814,7 +1832,7 @@ function step(dt){
   }
   drawCompass();placeMarker();if(mapOpen)drawMap();
 }
-window.__dbg={score:SCORE,sfx:{sfxGun,sfxDeath,sfxHitFlesh,sfxHurt,sfxWhizz,sfxReload,sfxHeart},P,guards,camera,scene,LOW,soldier:()=>SOLDIER,renderer,setState:s=>{state=s;},get time(){return time;}};
+window.__dbg={sfxbuf:SFXBUF,weapons,score:SCORE,sfx:{sfxGun,sfxDeath,sfxHitFlesh,sfxHurt,sfxWhizz,sfxReload,sfxHeart},P,guards,camera,scene,LOW,soldier:()=>SOLDIER,renderer,setState:s=>{state=s;},get time(){return time;}};
 renderObj();
 frame();
 })();
