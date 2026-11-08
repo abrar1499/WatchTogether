@@ -428,7 +428,7 @@ const colorCache={};
 const cmat=c=>colorCache[c]||(colorCache[c]=std({color:c}));
 MAT.glass.userData.surf='glass';MAT.lampOn.userData.surf='glass';MAT.rubber.userData.surf='cloth';MAT.red.userData.metal=true;
 /* effect quality: 2 full, 1 medium, 0 minimal; it drops by itself if the frame rate falls */
-let FXQ=!renderer.capabilities.isWebGL2?0:TOUCH?1:2;const FXQMAX=FXQ;
+let FXQ=!renderer.capabilities.isWebGL2||LOW?0:TOUCH?1:2;const FXQMAX=FXQ;
 const WIND=new THREE.Vector3(1.6,0,0.7);let gust=1;const WINDU={value:0},GUSTU={value:1};
 function windMat(m,amt,mode){m.onBeforeCompile=sh=>{sh.uniforms.uWT=WINDU;sh.uniforms.uWG=GUSTU;sh.vertexShader='uniform float uWT;uniform float uWG;\n'+sh.vertexShader.replace('#include <begin_vertex>',
   mode==='net'?'#include <begin_vertex>\ntransformed.y+=sin(position.x*1.3+uWT*2.2)*cos(position.z*1.1+uWT*1.7)*'+amt.toFixed(3)+'*uWG;'
@@ -1294,8 +1294,8 @@ let lpT=0,lpI=0;
 function lightPulse(p,int,dur){if(int<lpI*(lpT>0?0.6:0))return;wLight.position.copy(p);lpI=int;lpT=dur;FX.lpMax=dur;}
 
 /* smoke and heat from the barrel */
-function muzzleSmoke(p,dir,k){const F=FLX[k];const n=FXQ===0?1:2;const hk=1+FX.heat*1.6;
-  for(let i=0;i<n;i++)emit(SMK,p.x+dir.x*0.05,p.y+dir.y*0.05,p.z+dir.z*0.05,dir.x*rand(0.4,1.1)+rand(-0.1,0.1),dir.y*0.6+rand(0.15,0.45),dir.z*rand(0.4,1.1)+rand(-0.1,0.1),rand(1.2,2.2)*hk,0.05*F.smoke,rand(0.35,0.6)*F.smoke*hk,0xb4aea4,0.2*Math.min(1.6,hk),-0.08,1.6,0.55,0);
+function muzzleSmoke(p,dir,k){const F=FLX[k];const n=FXQ===0?1:2;const hk=1+FX.heat*0.9;
+  for(let i=0;i<n;i++)emit(SMK,p.x+dir.x*0.05,p.y+dir.y*0.05,p.z+dir.z*0.05,dir.x*rand(0.4,1.1)+rand(-0.1,0.1),dir.y*0.6+rand(0.15,0.45),dir.z*rand(0.4,1.1)+rand(-0.1,0.1),rand(1.0,1.8)*hk,0.04*F.smoke,rand(0.22,0.4)*F.smoke*hk,0xb4aea4,0.13*Math.min(1.4,hk),-0.08,1.6,0.55,0);
   if(k>0)emit(ADD,p.x+dir.x*0.08,p.y+dir.y*0.08,p.z+dir.z*0.08,dir.x*2,dir.y*2,dir.z*2,0.05,F.size*1.6,F.size*2.4,0xffb060,0.35,0,0,0,1);}
 
 /* per-surface bullet impacts */
@@ -1396,8 +1396,8 @@ function explode(pos,pw,nade){
   if(AC&&MUS.buf.escape)shot('escape',clamp(1.25-d/140,0.12,1.2),20.0,4.2,clamp(panOf(pos),-0.9,0.9));
   if(d<14)ringEar(1-d/14);
   for(const g of guards){if(g.state==='dead')continue;const gd=g.group.position.distanceTo(pos);
-    if(gd<6.5){_iv.subVectors(g.group.position,pos).setY(0).normalize();g.hp=0;kill(g,false,_iv);if(g.push)g.push.multiplyScalar(2.2);g.dieClip=Math.random()<0.5?'knockout':'dying';}
-    else if(gd<11){g.hp-=(1-gd/11)*70;g.hitT=0.5;g.bigHit=true;if(g.hp<=0){_iv.subVectors(g.group.position,pos).setY(0).normalize();kill(g,false,_iv);}else alertGuard(g,pos,true);}
+    if(gd<6.5){_iv.subVectors(g.group.position,pos).setY(0).normalize();g.hp=0;FX.killKind='blast';kill(g,false,_iv);FX.killKind=null;if(g.push)g.push.multiplyScalar(2.2);g.dieClip=Math.random()<0.5?'knockout':'dying';}
+    else if(gd<11){g.hp-=(1-gd/11)*70;g.hitT=0.5;g.bigHit=true;if(g.hp<=0){_iv.subVectors(g.group.position,pos).setY(0).normalize();FX.killKind='blast';kill(g,false,_iv);FX.killKind=null;}else alertGuard(g,pos,true);}
     else if(gd<130)alertGuard(g,pos,true);}
   if(state==='play'){const pd=Math.hypot(P.pos.x-pos.x,P.pos.z-pos.z);if(pd<8.5){P.hp-=Math.round((1-pd/8.5)*95);P.lastHit=time;dmgT=0.5;showDmgDir(pos);FX.scr=Math.min(1,FX.scr+0.6);if(P.hp<=0){P.hp=0;playerDie();}}}
 }
@@ -1451,7 +1451,7 @@ function fxFire(w,tps,tg,h,dir){
   if(tps)worldFlash(mp,dir,k,1.15);
   muzzleSmoke(mp,dir,k);
   // camera kick: heavier guns kick harder
-  const kk=F.kick*(ads?0.6:1)*(P.crouch?0.75:1);CAM.kp+=0.011*kk;CAM.ky+=rand(-0.004,0.004)*kk;CAM.kr+=rand(-0.008,0.008)*kk;shake=Math.max(shake,0.025*kk);
+  const kk=F.kick*(ads?0.6:1)*(P.crouch?0.75:1);CAM.kp+=0.007*kk;CAM.ky+=rand(-0.003,0.003)*kk;CAM.kr+=rand(-0.004,0.004)*kk;
   // brass out of the right side of the receiver
   _iv.set(rand(1.3,2.1),rand(1.6,2.6),rand(0.2,0.6)).applyQuaternion(camera.quaternion);if(P.vel)_iv.add(P.vel);
   if(tps)tg.localToWorld(_fv.set(0.03,0.05,0.05));else camera.localToWorld(_fv.set(0.12,-0.09,-0.32));
@@ -1465,7 +1465,7 @@ function fxEnemyShot(g,m,target,dist){
   if(dist<55)emit(SMK,m.x,m.y,m.z,_iv.x*0.6,0.3,_iv.z*0.6,rand(1,1.8),0.06,0.5,0xb4aea4,0.2,-0.05,1.6,0.5,0);
   if(dist<28){_fv.set(-_iv.z,0,_iv.x).multiplyScalar(-rand(1.2,2)).add(_fv2.set(0,rand(1.4,2.2),0));shellOut(m,_fv,2,g.y||0);}
 }
-function fxPlayerHit(from){FX.scr=Math.min(1,FX.scr+0.28);CAM.kr+=rand(-0.035,0.035);CAM.kp+=rand(0.008,0.02);CAM.ky+=rand(-0.012,0.012);shake=Math.max(shake,0.16);FX.blur=Math.max(FX.blur,0.45);}
+function fxPlayerHit(from){FX.scr=Math.min(1,FX.scr+0.25);CAM.kr+=rand(-0.025,0.025);CAM.kp+=rand(0.006,0.014);CAM.ky+=rand(-0.008,0.008);}
 
 /* screen blood for the player */
 {const c=document.createElement('canvas');c.width=c.height=512;const x=c.getContext('2d');
@@ -1552,7 +1552,7 @@ function fxUniforms(dt){
   let mx=0,my=0;if(state==='play'&&FXQ>=2&&CAM.pyaw!=null&&dt>0){const dy=angDiff(CAM.pyaw,camera.rotation.y),dp=camera.rotation.x-CAM.ppit;const hf=2*Math.atan(Math.tan(camera.fov*Math.PI/360)*camera.aspect);
     const sp=Math.hypot(dy,dp)/dt;if(sp>1.6){const k=clamp((sp-1.6)/4,0,1)*0.35;mx=clamp(-dy/hf*k,-0.014,0.014);my=clamp(dp/(camera.fov*Math.PI/180)*k,-0.014,0.014);}}
   CAM.pyaw=camera.rotation.y;CAM.ppit=camera.rotation.x;U.uVel.value.set(mx,my);
-  const spr=state==='play'&&P.speed>3.2&&!ads?0.0035:0;U.uRad.value=spr+FX.blur*0.028;
+  U.uRad.value=FX.blur*0.028;
   // low health: colour drains, edges go red
   const lowK=state==='play'||state==='dying'?clamp((50-P.hp)/50,0,1):0;U.uSat.value=lerp(1.06,0.18,lowK);U.uLow.value=lowK;U.uDeath.value=FX.death;
   const ps=renderer.getPixelRatio()*innerHeight*camera.projectionMatrix.elements[5]*0.5;for(const s of psList)s.mat.uniforms.uScale.value=ps;
@@ -1574,7 +1574,7 @@ function fxWorld(dt){
   CAM.kp*=Math.exp(-dt*13);CAM.ky*=Math.exp(-dt*11);CAM.kr*=Math.exp(-dt*9);CAM.landT+=dt;
   FX.blur=Math.max(0,FX.blur-dt*2.6);
   FX.scr=Math.max(0,Math.min(FX.scr,clamp((100-P.hp)/70,0,1))-dt*0.02);
-  const be=$('bloodscr');if(be){const o=(FX.scr*0.8).toFixed(3);if(be.style.opacity!==o)be.style.opacity=o;}
+  const be=$('bloodscr');if(be){const o=(FX.scr*0.6).toFixed(3);if(be.style.opacity!==o)be.style.opacity=o;}
   const vg=$('vig');if(vg){const v=POST.on?'none':'block';if(vg.style.display!==v)vg.style.display=v;}
   if(PL.one&&time>=PL.one.until)PL.one=null;
   if(state==='play'){nadeUpdate(dt);kickUpdate();}
@@ -1613,7 +1613,7 @@ function tryKick(){
 function kickUpdate(){
   if(!KICK||time<KICK.t)return;const g=KICK.g;KICK=null;if(g.state==='dead')return;
   const gp=g.group.position;if(Math.hypot(gp.x-P.pos.x,gp.z-P.pos.z)>2.6)return;
-  _iv.set(gp.x-P.pos.x,0,gp.z-P.pos.z).normalize();g.hp=0;kill(g,false,_iv);g.dieClip='knockout';if(g.push)g.push.multiplyScalar(1.3);
+  _iv.set(gp.x-P.pos.x,0,gp.z-P.pos.z).normalize();g.hp=0;FX.killKind='kick';kill(g,false,_iv);FX.killKind=null;g.dieClip='knockout';if(g.push)g.push.multiplyScalar(1.3);
   shake=Math.max(shake,0.12);CAM.kp+=0.02;stepSound('concrete_run',0.9);
   for(const o of guards){if(o!==g&&o.state!=='dead'&&o.group.position.distanceTo(gp)<9)alertGuard(o,gp,true);}
 }
@@ -1641,8 +1641,29 @@ const SNDF={
   ak:'sfx/sovetsky_rastov72-ak-47-sound-effect-267042.mp3',
   m4:'sfx/foisal72-gun-fire-475286.mp3',
   pistol:'sfx/dennish18-gun-rifle-shots-146189.mp3',
-  enemy:'sfx/beetpro-machin-gun-ak47-sound-effect-6-11004.mp3'
+  enemy:'sfx/beetpro-machin-gun-ak47-sound-effect-6-11004.mp3',
+  die_scream:'sfx/universfield-male-death-scream-horror-352706.mp3',
+  die_collapse:'sfx/universfield-dramatic-death-collapse-352720.mp3',
+  die_male:'sfx/vinodadora-male-death-sound-128357.mp3',
+  die_fall:'sfx/universfield-character-fall-impact-352287.mp3',
+  die_breath:'sfx/hf_20261108_205549_c52dab3b-f33a-4334-922b-267d87c2dfc9.mp3'
 };
+function playBuf(k,gain,pan,delay,off,dur){if(!AC||!SFXBUF[k]||gain<0.01)return;const src=AC.createBufferSource();src.buffer=SFXBUF[k];const g=AC.createGain();g.gain.value=gain;src.connect(g);
+  if(pan&&AC.createStereoPanner){const p=AC.createStereoPanner();p.pan.value=clamp(pan,-1,1);g.connect(p);p.connect(master);}else g.connect(master);
+  if(dur)src.start(AC.currentTime+(delay||0),off||0,dur);else src.start(AC.currentTime+(delay||0),off||0);}
+/* a death cry (none for most headshots) and the body hitting the ground when it lands */
+function deathSfx(pos,kind){
+  const pl=kind==='player';const d=pl?0:pos.distanceTo(camera.position);if(d>70)return;const pan=pl?0:clamp(panOf(pos)*0.8,-0.8,0.8);
+  const vv=pl?1:clamp(1.15-d/50,0,1),vi=pl?1:clamp(1-d/35,0,0.9);let voice=null;
+  if(pl)voice=Math.random()<0.5?'die_male':'die_collapse';
+  else if(kind==='blast')voice='die_scream';
+  else if(kind==='head')voice=Math.random()<0.3?'die_collapse':null;
+  else if(kind==='kick')voice='die_collapse';
+  else{const r=Math.random();voice=r<0.45?'die_male':r<0.8?'die_collapse':'die_scream';}
+  if(voice)playBuf(voice,vv,pan,0.02);
+  playBuf('die_fall',vi,pan,kind==='head'?0.4:0.55);
+  if(pl)playBuf('die_breath',1.6,0,1.4);
+}
 const SNDLOOP={ak:[4.145,7.345],m4:[0.695,2.42]};
 const PISTOL_ON=[0.04,0.77,1.515,2.435,3.025,3.67];let pistolI=0;
 function loadSfx(){
@@ -1766,10 +1787,10 @@ const GUNSND={
   m4:{crack:5200,body:1900,bd:0.17,thump:135,tail:0.3,wet:0.42},
   ak:{crack:3600,body:1100,bd:0.27,thump:88,tail:0.42,wet:0.55}
 };
-function sfxGun(kind,vol){
+function sfxGun(kind,vol,pan){
   if(!AC)return;
   if(kind==='pistol'&&SFXBUF.pistol){playSeg(SFXBUF.pistol,PISTOL_ON[pistolI++%PISTOL_ON.length],0.62,vol);return;}
-  if(kind==='enemy'&&SFXBUF.enemy){const burst=Math.random()<0.3;playSeg(SFXBUF.enemy,burst?0.595:0.78,burst?0.97:0.79,vol);return;}
+  if(kind==='enemy'&&SFXBUF.enemy){const burst=Math.random()<0.15;playBuf('enemy',vol,pan||0,0,burst?0.595:0.78,burst?0.97:0.79);return;}
 }
 function sfxGunOld(kind,vol,pan,far){
   if(!AC||vol<0.01)return;const t=AC.currentTime+0.005;far=far||0;
@@ -2020,7 +2041,7 @@ function fire(){
 }
 function kill(g,head,dir){
   setTimeout(()=>{if(!scene)return;const bp=bodyPos(g,new THREE.Vector3());lowify(ammoBox(bp.x+0.6,bp.z+0.3,g.y));if(Math.random()<0.4)lowify(medkitAt(bp.x-0.5,bp.z-0.4,g.y));},1300);
-  const gp=g.group.position;sfxDeath(clamp(1.1-gp.distanceTo(camera.position)/70,0.12,1),panOf(gp));
+  const gp=g.group.position;deathSfx(gp,FX.killKind||(head?'head':'body'));
   g.state='dead';g.hp=0;stats.kills++;if(head)stats.heads++;
   const fx=-Math.sin(g.group.rotation.y),fz=-Math.cos(g.group.rotation.y);
   g.fd=(dir.x*fx+dir.z*fz)>0?-1:1;
@@ -2097,7 +2118,7 @@ function guardShoot(g,dist){
   const hit=Math.random()<chance;
   if(!hit){target.x+=rand(-1.2,1.2);target.y+=rand(-0.6,0.9);target.z+=rand(-1.2,1.2);}
   fxEnemyShot(g,m,target,dist);g.kick=1;g.muzzleT=0.05;g.shotT=0.45;
-  sfxGun('enemy',clamp(1.05-dist/110,0.06,0.9));
+  sfxGun('enemy',clamp(0.8-dist/85,0.04,0.62),clamp(panOf(m),-0.85,0.85));
   if(hit){const dmg=Math.round(rand(7,13));P.hp-=dmg;P.lastHit=time;dmgT=0.4;sfxHurt();shake=Math.max(shake,0.12);showDmgDir(m);fxPlayerHit(m);if(P.hp<=0){P.hp=0;playerDie();}}
 }
 function updateGuard(g,dt){
@@ -2192,8 +2213,8 @@ async function optimizeSoldier(sc){
     }
     after+=(g.index?g.index.count:pa.count)/3;
     g.computeBoundingSphere();if(g.boundingSphere)g.boundingSphere.radius*=2.4;
-    m.frustumCulled=true;m.castShadow=true;m.receiveShadow=false;
-    for(const mt of (Array.isArray(m.material)?m.material:[m.material])){if(mt.map){mt.map.anisotropy=MAXANI;if(!mt.emissiveMap){mt.emissiveMap=mt.map;mt.emissive=new THREE.Color(0x2a2a2a);}}if(mt.normalMap)mt.normalMap.anisotropy=MAXANI;mt.needsUpdate=true;}
+    m.frustumCulled=true;m.castShadow=false;m.receiveShadow=false;
+    for(const mt of (Array.isArray(m.material)?m.material:[m.material])){if(mt.map){mt.map.anisotropy=MAXANI;if(!mt.emissiveMap){mt.emissiveMap=mt.map;mt.emissive=new THREE.Color(0x5a5852);}}if(mt.normalMap)mt.normalMap.anisotropy=MAXANI;mt.needsUpdate=true;}
   }
   sc.userData.tris=Math.round(after);sc.userData.trisBefore=Math.round(total);
   return sc;
@@ -2204,7 +2225,7 @@ const blobGeo=new THREE.PlaneGeometry(1.3,1.3).rotateX(-Math.PI/2);
 function prepSoldier(gl){
   const sc=gl.scene;sc.updateMatrixWorld(true);
   let textured=false;sc.traverse(c=>{if(c.isMesh&&c.material&&c.material.map)textured=true;});
-  sc.traverse(c=>{if(c.isMesh){if(!textured)c.material=/joint/i.test(c.name)||/joint/i.test(c.material&&c.material.name||'')?SK.joints:SK.surface;c.castShadow=true;c.receiveShadow=true;c.frustumCulled=false;}});
+  sc.traverse(c=>{if(c.isMesh){if(!textured)c.material=/joint/i.test(c.name)||/joint/i.test(c.material&&c.material.name||'')?SK.joints:SK.surface;c.castShadow=false;c.receiveShadow=false;c.frustumCulled=false;}});
   const box=new THREE.Box3().setFromObject(sc);const h=box.max.y-box.min.y;
   const clips={};gl.animations.forEach(c=>{clips[c.name]=c;});
   if(clips.fingers){for(const t of clips.fingers.tracks){const b=sc.getObjectByName(t.name.split('.')[0]);if(b&&t.values.length>=4)b.quaternion.fromArray(t.values,0);}delete clips.fingers;}
@@ -2243,6 +2264,16 @@ function calibGrip(sd){
   sd.grip={q:ql,p:lp,s:1/ws};
   return sd.grip;
 }
+const _aq0=new THREE.Quaternion(),_aq1=new THREE.Quaternion(),_aq2=new THREE.Quaternion(),_aF=new THREE.Vector3(),_aU=new THREE.Vector3(),_aW=new THREE.Vector3(),_aX=new THREE.Vector3();
+function aimGun(gun,grip,dir,k){
+  gun.quaternion.copy(grip.q);gun.updateMatrixWorld(true);if(k<=0.002||!gun.parent)return;
+  gun.getWorldQuaternion(_aq0);_aF.set(0,0,1).applyQuaternion(_aq0);
+  _aq1.setFromUnitVectors(_aF,dir).multiply(_aq0);
+  _aU.set(0,1,0).applyQuaternion(_aq1);_aU.addScaledVector(dir,-_aU.dot(dir));_aW.set(0,1,0).addScaledVector(dir,-dir.y);
+  if(_aU.lengthSq()>1e-6&&_aW.lengthSq()>1e-6){_aU.normalize();_aW.normalize();let an=Math.acos(clamp(_aU.dot(_aW),-1,1));if(_aX.crossVectors(_aU,_aW).dot(dir)<0)an=-an;_aq1.premultiply(_aq2.setFromAxisAngle(dir,an));}
+  _aq0.slerp(_aq1,k);gun.parent.getWorldQuaternion(_aq2);gun.quaternion.copy(_aq2.invert().multiply(_aq0));gun.updateMatrixWorld(true);
+}
+const _gd=new THREE.Vector3(),_gw=new THREE.Vector3();
 function holdGun(hand,gun,grip){
   if(!hand||!grip)return false;
   hand.add(gun);gun.position.copy(grip.p);gun.quaternion.copy(grip.q);gun.scale.setScalar(grip.s);return true;
@@ -2257,12 +2288,12 @@ function makeSkinGuard(path,o={}){
   // gear (only for the standard soldier)
   if(!SOLDIER.custom&&!SOLDIER.textured){
   const helm=new THREE.Group();
-  const hs=new THREE.Mesh(new THREE.SphereGeometry(0.135,16,10,0,Math.PI*2,0,Math.PI/2),GM.helm);hs.scale.set(1.05,0.95,1.15);hs.castShadow=true;helm.add(hs);
+  const hs=new THREE.Mesh(new THREE.SphereGeometry(0.135,16,10,0,Math.PI*2,0,Math.PI/2),GM.helm);hs.scale.set(1.05,0.95,1.15);hs.castShadow=false;helm.add(hs);
   const brim=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.155,0.02,16),GM.helm);brim.scale.z=1.12;helm.add(brim);
   const gog=new THREE.Mesh(new THREE.BoxGeometry(0.16,0.045,0.04),GM.goggle);gog.position.set(0,0.055,0.13);gog.rotation.x=-0.3;helm.add(gog);
   boneAttach(m,'mixamorigHead',helm,0,0.13,0.0);
   const vest=new THREE.Group();
-  const vb=new THREE.Mesh(new THREE.BoxGeometry(0.33,0.3,0.23),GM.vest);vb.castShadow=true;vest.add(vb);
+  const vb=new THREE.Mesh(new THREE.BoxGeometry(0.33,0.3,0.23),GM.vest);vb.castShadow=false;vest.add(vb);
   boneAttach(m,'mixamorigSpine2',vest,0,0.02,0);
   }
   // hitboxes (invisible, follow bones)
@@ -2272,7 +2303,7 @@ function makeSkinGuard(path,o={}){
   hb('mixamorigHips',0.4,0.26,0.28,0,0,0,'body');
   for(const sd of ['Left','Right']){hb('mixamorig'+sd+'UpLeg',0.18,0.46,0.2,0,0.22,0,'legs');hb('mixamorig'+sd+'Leg',0.16,0.46,0.18,0,0.22,0,'legs');hb('mixamorig'+sd+'Arm',0.13,0.3,0.13,0,0.14,0,'body');hb('mixamorig'+sd+'ForeArm',0.12,0.28,0.12,0,0.13,0,'body');}
   g.rh=m.getObjectByName('mixamorigRightHand');g.lh=m.getObjectByName('mixamorigLeftHand');g.hips=m.getObjectByName('mixamorigHips');
-  g.gun=buildGun();g.gripped=holdGun(g.rh,g.gun,calibGrip(SOLDIER));if(!g.gripped)scene.add(g.gun);g.muz=g.gun.muz;
+  g.gun=buildGun();g.gun.traverse(o=>{o.castShadow=false;});g.grip=calibGrip(SOLDIER);g.gripped=holdGun(g.rh,g.gun,g.grip);if(!g.gripped)scene.add(g.gun);g.muz=g.gun.muz;
   g.mf=new THREE.Sprite(new THREE.SpriteMaterial({map:flashTex,color:0xffc070,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true}));g.mf.scale.set(0.5,0.5,0.5);g.mf.visible=false;g.muz.add(g.mf);
   g.mixer=new THREE.AnimationMixer(m);g.actions={};
   for(const k in SOLDIER.clips){const a=g.mixer.clipAction(SOLDIER.clips[k]);if(ANIM_ONCE.test(k)){a.setLoop(THREE.LoopOnce,1);a.clampWhenFinished=true;}g.actions[k]=a;}
@@ -2322,7 +2353,14 @@ function animateSkin(g,dt){
   if(g.animAcc>=(dist>100?0.2:dist>40?0.066:0)){g.mixer.update(g.animAcc);g.animAcc=0;if(g.crK>0.01&&g.state!=='dead'&&!/^(crouch|kneel|sideStep)/.test(g.cur||''))boneLayer(g,g.model,g.crK,0);
     if(g.jerk>0.01){g.headB=g.headB||g.model.getObjectByName('mixamorigHead');g.chestB=g.chestB||g.model.getObjectByName('mixamorigSpine2');if(g.headB){g.headB.rotateX(-g.jerk*0.75);g.headB.rotateZ(g.jerk*0.3*(g.jerkS||1));}if(g.chestB)g.chestB.rotateX(-g.jerk*0.2);}}
   g.group.updateMatrixWorld(true);
-  if(g.gripped){}
+  if(g.gripped&&g.grip){
+    const free=g.state==='dead'||/^(hit|reactBig|startWalk|crouchToKneel|kneelToStand|sideStep|turn)/.test(g.cur||'');
+    const aimNow=g.state==='alert'&&/^(aim|fire|crouchFire)$/.test(g.cur||'');
+    g.gunK=lerp(g.gunK||0,free?0:aimNow?1:0.8,Math.min(1,dt*10));
+    g.gun.getWorldPosition(_gw);
+    if(aimNow)_gd.set(P.pos.x,P.eye+P.jy-0.35,P.pos.z).sub(_gw).normalize();
+    else{const ry=g.group.rotation.y;_gd.set(-Math.sin(ry),-0.38,-Math.cos(ry)).normalize();}
+    if(dist<80)aimGun(g.gun,g.grip,_gd,g.gunK);}
   else if(g.state!=='dead'||g.deadT<0.35){
     g.rh.getWorldPosition(gA);g.lh.getWorldPosition(gB);
     gC.subVectors(gB,gA);const len=gC.length();
@@ -2342,14 +2380,15 @@ function makePlayerBody(){
   const R=new THREE.Group();const m=THREE.SkeletonUtils.clone(SOLDIER.scene);m.scale.multiplyScalar(SOLDIER.scale);m.rotation.y=Math.PI;R.add(m);
   if(!SOLDIER.custom&&!SOLDIER.textured)m.traverse(c=>{if(c.isMesh&&c.material===SK.surface)c.material=SK.player;});
   else m.traverse(c=>{if(c.isMesh){c.material=c.material.clone();c.material.color.setHex(0x9fb4d2);}});
-  m.traverse(c=>{if(c.isMesh){c.castShadow=true;}});
+  m.traverse(c=>{if(c.isMesh){c.castShadow=false;}});
   scene.add(R);R.updateMatrixWorld(true);
   PL.group=R;PL.model=m;PL.rh=m.getObjectByName('mixamorigRightHand');PL.lh=m.getObjectByName('mixamorigLeftHand');
   PL.mixer=new THREE.AnimationMixer(m);PL.actions={};PL.cur=null;
   for(const k in SOLDIER.clips){const a=PL.mixer.clipAction(SOLDIER.clips[k]);if(ANIM_ONCE.test(k)){a.setLoop(THREE.LoopOnce,1);a.clampWhenFinished=true;}PL.actions[k]=a;}
   setAnim(PL,'idle',0);
   PL.rifle=buildRifle();PL.pistol=buildPistol();PL.ak=buildAK();scene.add(PL.pistol);
-  const grip=calibGrip(SOLDIER);PL.gripped=holdGun(PL.rh,PL.rifle,grip)&&holdGun(PL.rh,PL.ak,grip);if(!PL.gripped)scene.add(PL.rifle,PL.ak);
+  for(const gn of [PL.rifle,PL.pistol,PL.ak])gn.traverse(o=>{o.castShadow=false;});
+  const grip=calibGrip(SOLDIER);PL.grip=grip;PL.gripped=holdGun(PL.rh,PL.rifle,grip)&&holdGun(PL.rh,PL.ak,grip);if(!PL.gripped)scene.add(PL.rifle,PL.ak);
   R.visible=false;PL.rifle.visible=false;PL.pistol.visible=false;PL.ak.visible=false;
 }
 const pA=new THREE.Vector3(),pB=new THREE.Vector3(),pC=new THREE.Vector3();
@@ -2371,7 +2410,7 @@ function updatePlayerBody(dt,tps,sprint){
   // a stopping step when we stop, a stand-up when we leave a crouch
   if(P.speed>0.3)PL.lastMove=P.prone?'prone':P.crouch?'crouch':(mvF<-0.3&&!lat&&runN)?'runBack':(lat&&mvS>0)?'strafeR':'other';
   else if(PL.lastMove&&!PL.one&&!P.dead){const lm=PL.lastMove;PL.lastMove=null;
-    if(lm==='crouch'&&P.crouch&&!P.prone)PL.one={name:'crouchStop',until:time+0.55,ts:1.3,t0:1.35,soft:true};
+    if(lm==='crouch'&&P.crouch&&!P.prone)PL.one={name:'crouchToKneel',until:time+0.6,ts:1.5,t0:1.6,soft:true};
     else if(lm==='runBack')PL.one={name:'runStopBack',until:time+0.6,ts:1.3,t0:0.7,soft:true};
     else if(lm==='strafeR')PL.one={name:'strafeStopR',until:time+0.6,ts:1.4,t0:1.0,soft:true};}
   if(PL.wasCrouch&&!P.crouch&&P.speed<0.3&&!PL.one&&!P.dead)PL.one={name:'crouchToStand',until:time+0.6,ts:1.5,t0:0.15,soft:true};
@@ -2394,7 +2433,8 @@ function updatePlayerBody(dt,tps,sprint){
     else if(mvF<0)want=runN?'runBack':'walkBack2';
     else want=runN?'run':'walk';
   }else if(reloading>0)want=crouchOn?'reload':(wi===2?'reload2':'reload');
-  else if(P.crouch&&shooting)want='crouchFire';
+  else if(P.crouch&&(shooting||ads||time-PL.lastShot<2.5))want='crouchFire';
+  else if(P.crouch)want='kneel';
   else if(time-PL.lastShot<0.3)want='fire';else if(time-PL.lastShot<2.5||firing||ads)want='aim';
   else if(!crouchOn&&Math.abs(yr0)>0.6)want=Math.abs(yr0)>2.2?'turn':'turnR';
   else if(!crouchOn&&idleFor>8)want='idle3';
@@ -2406,6 +2446,7 @@ function updatePlayerBody(dt,tps,sprint){
     crouchWalk:2.04,crouchWalk2:1.22,crouchBack:1.23,crouchBackL:2.0,crouchRun:1.3,reloadWalk:0.99,runFire:4.6,proneFwd:0.25,proneBack:0.43,proneTurn:0.3};
   if(NAT[want]&&PL.actions[want]&&PL.cur===want)PL.actions[want].timeScale=clamp(P.speed/NAT[want]*(crouchOn&&!/^crouch|^prone/.test(want)?1.25:1),0.5,1.7);
   if(PL.cur==='proneFire')PL.actions.proneFire.timeScale=shooting?1:0;
+  if(PL.cur==='crouchFire')PL.actions.crouchFire.timeScale=shooting?1:0;
   if(PL.cur==='proneReload')PL.actions.proneReload.timeScale=2.5;
   if(PL.cur==='turn'||PL.cur==='turnR')PL.actions[PL.cur].timeScale=clamp(Math.abs(yr0)/1.6,0.6,1.6);
   const realPose=P.prone||/^(crouch|prone|kneel|grenade|kick|die|dying|knock)/.test(PL.cur||'');
@@ -2422,6 +2463,14 @@ function updatePlayerBody(dt,tps,sprint){
   PL.group.updateMatrixWorld(true);
   PL.rh.getWorldPosition(pA);
   camera.getWorldDirection(pC);
+  if(PL.gripped&&PL.grip&&wi>=1){const gun=wi===2?PL.ak:PL.rifle;
+    const free=P.dead||/^(reload|putBack|grabPutBack|grenade|kick|pullOut|die|dying|knock)/.test(PL.cur||'');
+    const aimNow=P.prone||firing||ads||time-PL.lastShot<2.5||/^(aim|fire|crouchFire|runFire)$/.test(PL.cur||'');
+    PL.gunK=lerp(PL.gunK||0,free?0:aimNow?1:0.85,Math.min(1,dt*12));
+    gun.getWorldPosition(_gw);
+    if(aimNow){camera.getWorldDirection(_gd);_gd.multiplyScalar(60).add(camera.position).sub(_gw).normalize();}
+    else _gd.set(-Math.sin(P.yaw),-0.38,-Math.cos(P.yaw)).normalize();
+    aimGun(gun,PL.grip,_gd,PL.gunK);}
   if(wi>=1&&PL.gripped){}
   else if(wi>=1){
     const gun=wi===2?PL.ak:PL.rifle;
@@ -2786,7 +2835,7 @@ function scoped(){return ads&&scopeLvl===4&&wi>0;}
 function isTPS(){return view==='third'&&!binoc&&!!PL.group&&!scoped();}
 function toggleView(){view=view==='third'?'first':'third';try{localStorage.setItem('ds-view',view);}catch(e){}beep(600,0.04,0.05);}
 function playerDie(){
-  if(state!=='play')return;{const o=['die','dieFront','dying','dieLeft'].filter(k=>PL.actions&&PL.actions[k]);PL.dieClip=o[(Math.random()*o.length)|0]||'die';}musicEnd(false);state='dying';P.dead=true;P.deadT=0;firing=false;fireTouch=null;ads=false;autoStop();
+  if(state!=='play')return;{const o=['die','dieFront','dying','dieLeft'].filter(k=>PL.actions&&PL.actions[k]);PL.dieClip=o[(Math.random()*o.length)|0]||'die';}deathSfx(P.pos,'player');musicEnd(false);state='dying';P.dead=true;P.deadT=0;firing=false;fireTouch=null;ads=false;autoStop();
   $('tc').hidden=true;document.body.classList.add('dying');try{document.exitPointerLock&&document.exitPointerLock();}catch(e){}
 }
 const dyV=new THREE.Vector3();
@@ -2850,7 +2899,7 @@ function step(dt){
     const fx=-Math.sin(yawS)*Math.cos(pitS),fy=Math.sin(pitS),fz=-Math.cos(yawS)*Math.cos(pitS);
     const rx=Math.cos(yawS),rz=-Math.sin(yawS);
     adsK=lerp(adsK,ads?1:0,Math.min(1,dt*10));
-    const sx=P.pos.x+rx*(0.5-0.06*adsK+bobX*0.4),sy=P.eye+P.jy+0.12-0.06*adsK+bob*0.5+land,sz=P.pos.z+rz*(0.5-0.06*adsK+bobX*0.4);
+    const sx=P.pos.x+rx*(0.5-0.06*adsK),sy=P.eye+P.jy+0.12-0.06*adsK+land*0.6,sz=P.pos.z+rz*(0.5-0.06*adsK);
     PL.dBase=lerp(PL.dBase||1.85,P.prone?1.75:P.crouch?1.5:1.85,Math.min(1,dt*5));let d=lerp(PL.dBase,1.0,adsK);
     camRay.set(tv2.set(sx,sy,sz),tv3.set(-fx,-fy,-fz));camRay.far=d+0.3;
     const hit=camRay.intersectObjects(occluders,false)[0];if(hit)d=Math.max(0.35,hit.distance-0.3);

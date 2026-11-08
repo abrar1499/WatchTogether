@@ -64,5 +64,7 @@ Sounds in `sfx/` are unedited sound effects from [Pixabay](https://pixabay.com/s
   - alarm and firefights: "Action loop E 90 BPM" (brvhrtz)
   - escape to the helicopter: "Action trailer" (arctsound)
   - low health: "Heartbeat sound" (dragon-studio)
+  - explosions: the impact hit near the end of "Action trailer" (arctsound)
+- Deaths: "Male death scream horror", "Dramatic death collapse" and "Character fall impact" (universfield), "Male death sound" (vinodadora); the player's last breath is the player's own recording `hf_20261108_205549_….mp3`
 
-The game plays only these files (no synthesized sounds). Automatic weapons loop the steady full-auto part of their file while FIRE is held.
+The game plays only these files, apart from a short synthesized ear-ringing tone after a nearby explosion. Automatic weapons loop the steady full-auto part of their file while FIRE is held.
