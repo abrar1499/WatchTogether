@@ -948,7 +948,7 @@ let SENS=1;try{SENS=parseFloat(localStorage.getItem('ds-sens'))||1;}catch(e){}
 let wi=1,reloading=0,firing=false,switchT=0,ads=false,scopeLvl=1;
 let view='near';try{const v=localStorage.getItem('ds-view');if(v==='first'||v==='near'||v==='close')view=v;}catch(e){}
 /* each close view is the wide third-person picture zoomed in on the soldier: [zoom, centre x, centre y] of the wide picture */
-const VZ={near:[1.8,0.436,0.611],close:[2.7,0.4556,0.574]};let viewZoom=1;
+const VZ={near:[1.8,0.47,0.6],close:[2.7,0.47,0.66]};let viewZoom=1;const _av=new THREE.Vector3();const VC={x:0.5,y:0.5,init:false};
 const PL={group:null,camDist:0,lastShot:-9};
 
 /* first-person viewmodels with hands */
@@ -2469,6 +2469,7 @@ function animateSkin(g,dt){
   if(g.muzzleT>0){g.muzzleT-=dt;g.mf.visible=false;g.mf.material.rotation=Math.random()*6;}else g.mf.visible=false;
 }
 function makePlayerBody(){
+  PL.blend=null;PL.gdir=null;
   if(PL.group){scene.remove(PL.group);scene.remove(PL.rifle);scene.remove(PL.pistol);scene.remove(PL.ak);PL.group=null;}
   if(!SOLDIER)return;
   const R=new THREE.Group();const m=THREE.SkeletonUtils.clone(SOLDIER.scene);m.scale.multiplyScalar(SOLDIER.scale);m.rotation.y=Math.PI;R.add(m);
@@ -2483,7 +2484,7 @@ function makePlayerBody(){
     const UPB=/Spine|Neck|Head|Shoulder|Arm|Hand/;const split=(c,up,n)=>new THREE.AnimationClip(n,c.duration,c.tracks.filter(t=>UPB.test(t.name.split('.')[0])===up));
     for(const k of ['walk','run','walkBack','walkBack2','runBack','walkL','walkR','walkFR','sprintFR','strafeL','strafeR','runStrafeL','runStrafeR','strafeRun','strafing','strafeR2','crouchWalk','crouchWalk2','crouchBack','crouchBackL','crouchRun'])
       if(SOLDIER.clips[k])PL.actions[k+'_lo']=PL.mixer.clipAction(split(SOLDIER.clips[k],false,k+'_lo'));
-    if(SOLDIER.clips.aim){PL.upA=PL.mixer.clipAction(split(SOLDIER.clips.aim,true,'aim_up'));PL.upA.play();PL.upA.setEffectiveWeight(0);}}
+  }
   setAnim(PL,'idle',0);
   PL.rifle=buildRifle();PL.pistol=buildPistol();PL.ak=buildAK();scene.add(PL.pistol);
   for(const gn of [PL.rifle,PL.pistol,PL.ak])gn.traverse(o=>{o.castShadow=false;});
@@ -2497,79 +2498,86 @@ function updatePlayerBody(dt,tps,sprint){
   PL.group.visible=tps;const gv=tps&&switchT<0.2&&PL.cur!=='grenade';PL.pistol.visible=gv&&wi===0;PL.rifle.visible=gv&&wi===1;PL.ak.visible=gv&&wi===2;
   if(!tps)return;
   PL.group.position.set(P.pos.x,P.jy,P.pos.z);PL.group.rotation.y=P.yaw;
-  let want;
+  /* Blended locomotion: every walking/running clip keeps playing in step and only its weight changes,
+     so turning, speeding up, stopping, crouching and aiming all flow into each other with no snapping. */
   const crouchOn=P.crouch||P.sneak;
-  const mvF=P.mvF||0,mvS=P.mvS||0,runN=P.speed>2.6&&!crouchOn,lat=Math.abs(mvS)>Math.abs(mvF)*0.8;
-  const diagFR=mvF>0.25&&mvS>0.25&&mvS<mvF*1.7&&mvF<mvS*1.7;
-  const yr0=angDiff(PL.prevYaw==null?P.yaw:PL.prevYaw,P.yaw)/Math.max(dt,1e-3);
   const shooting=firing||time-PL.lastShot<0.3;
-  if(P.speed>0.3||shooting||ads||reloading>0||P.jy>0.01||Math.abs(yr0)>0.3||!PL.lastAct)PL.lastAct=time;
-  const idleFor=time-PL.lastAct;
+  const aimNow=!P.dead&&(firing||ads||time-PL.lastShot<2.5);
   if(PL.one&&(time>=PL.one.until||(PL.one.soft&&(P.speed>0.3||shooting||ads||reloading>0||P.jy>0.01))))PL.one=null;
-  // a stopping step when we stop, a stand-up when we leave a crouch
-  if(P.speed>0.3)PL.lastMove=P.prone?'prone':P.crouch?'crouch':(mvF<-0.3&&!lat&&runN)?'runBack':(lat&&mvS>0)?'strafeR':'other';
-  else if(PL.lastMove&&!PL.one&&!P.dead){const lm=PL.lastMove;PL.lastMove=null;
-    if(lm==='crouch'&&P.crouch&&!P.prone)PL.one={name:'crouchToKneel',until:time+0.6,ts:1.5,t0:1.6,soft:true};
-    else if(lm==='runBack')PL.one={name:'runStopBack',until:time+0.6,ts:1.3,t0:0.7,soft:true};
-    else if(lm==='strafeR')PL.one={name:'strafeStopR',until:time+0.6,ts:1.4,t0:1.0,soft:true};}
-  if(PL.wasCrouch&&!P.crouch&&P.speed<0.3&&!PL.one&&!P.dead)PL.one={name:'crouchToStand',until:time+0.6,ts:1.5,t0:0.15,soft:true};
-  PL.wasCrouch=P.crouch;
-  if(P.dead)want=PL.dieClip||'die';
-  else if(PL.one)want=PL.one.name;
-  else if(P.prone)want=P.speed>0.08?(mvF<-0.05&&!lat?'proneBack':lat?'proneTurn':'proneFwd'):(reloading>0?'proneReload':'proneFire');
-  else if(P.jy>0.12&&PL.actions.jump)want=(lat&&mvS<0&&PL.actions.jumpL)?'jumpL':'jump';
-  else if(near&&near.type==='term'&&keys.KeyE&&copyT>0)want='putBack';
-  else if(P.speed>0.3){
-    if(crouchOn){
-      if(lat)want=mvS>0?(P.sneak?'strafeR2':'strafeR'):(P.sneak?'strafing':'strafeL');
-      else if(mvF<0)want=mvS<-0.3?'crouchBackL':'crouchBack';
-      else want=P.sneak?'crouchWalk2':(P.speed>1.4?'crouchRun':'crouchWalk');
-    }
-    else if(reloading>0&&!lat&&mvF>0&&!runN)want='reloadWalk';
-    else if(diagFR)want=runN?'sprintFR':'walkFR';
-    else if(lat)want=mvS>0?(runN?'runStrafeR':'walkR'):(runN?'strafeRun':'walkL');
-    else if(mvF<0)want=runN?'runBack':'walkBack2';
-    else want=runN?'run':'walk';
-  }else if(reloading>0)want=crouchOn?'reload':(wi===2?'reload2':'reload');
-  else if(P.crouch&&(shooting||ads||time-PL.lastShot<2.5))want='crouchFire';
-  else if(P.crouch)want='kneel';
-  else if(time-PL.lastShot<2.5||firing||ads)want='aim';
-  else if(!crouchOn&&Math.abs(yr0)>0.6)want=Math.abs(yr0)>2.2?'turn':'turnR';
-  else if(!crouchOn&&idleFor>8)want='idle3';
-  else want='idle';
-  if(want==='idle3'&&idleFor>22&&!PL.one){PL.one={name:'grabPutBack',until:time+6,ts:1,t0:0,soft:true};PL.lastAct=time;}
-  const aimUp=!P.dead&&!P.prone&&!PL.one&&(firing||ads||time-PL.lastShot<2.5)&&P.speed>0.3&&!/^(jump|reload)/.test(want)&&PL.actions[want+'_lo'];
-  if(aimUp)want=want+'_lo';
-  if(PL.upA){PL.upW=lerp(PL.upW||0,aimUp?1:0,Math.min(1,dt*9));PL.upA.setEffectiveWeight(PL.upW);}
-  setAnim(PL,want,want==='jump'||want==='jumpL'?0.12:want==='fire'||want==='crouchFire'?0.2:/^prone/.test(want)?0.45:0.3);
-  if(PL.one&&PL.cur===PL.one.name){const ac=PL.actions[PL.cur];if(!PL.one.started){PL.one.started=true;ac.time=PL.one.t0||0;}ac.timeScale=PL.one.ts||1;}
-  const NAT={walk:1.0,run:3.2,walkBack:1.1,runBack:2.6,strafeL:1.4,strafeR:0.76,runStrafeL:2.8,runStrafeR:3.3,walkBack2:1.92,walkL:1.9,walkR:1.9,walkFR:1.92,sprintFR:7.2,strafeRun:2.83,strafing:0.6,strafeR2:0.75,
-    crouchWalk:2.04,crouchWalk2:1.22,crouchBack:1.23,crouchBackL:2.0,crouchRun:1.3,reloadWalk:0.99,runFire:4.6,proneFwd:0.25,proneBack:0.43,proneTurn:0.3};
-  {const nk=want.replace(/_lo$/,'');if(NAT[nk]&&PL.actions[want]&&PL.cur===want)PL.actions[want].timeScale=clamp(P.speed/NAT[nk]*(crouchOn&&!/^crouch|^prone/.test(nk)?1.25:1),0.5,1.7);}
-  if(PL.cur==='proneFire')PL.actions.proneFire.timeScale=shooting?1:0;
-  if(PL.cur==='crouchFire')PL.actions.crouchFire.timeScale=shooting?1:0;
-  if(PL.cur==='proneReload')PL.actions.proneReload.timeScale=2.5;
-  if(PL.cur==='turn'||PL.cur==='turnR')PL.actions[PL.cur].timeScale=clamp(Math.abs(yr0)/1.6,0.6,1.6);
-  const realPose=P.prone||/^(crouch|prone|kneel|grenade|kick|die|dying|knock)/.test(PL.cur||'');
-  PL.crK=(PL.crK||0)+((crouchOn&&!realPose?1:0)-(PL.crK||0))*Math.min(1,dt*7);
+  const BL=PL.blend||(PL.blend=initBlend());
+  // full-body moves that take over: death, grenade, kick, weapon draw, prone, jump, slinging the rifle at the terminal
+  let sp=null;
+  if(P.dead)sp=PL.dieClip||'die';
+  else if(PL.one)sp=PL.one.name;
+  else if(P.prone)sp=P.speed>0.08?((P.mvF||0)<-0.05&&Math.abs(P.mvS||0)<Math.abs(P.mvF||0)?'proneBack':Math.abs(P.mvS||0)>Math.abs(P.mvF||0)?'proneTurn':'proneFwd'):(reloading>0?'proneReload':'proneFire');
+  else if(P.jy>0.12)sp='jump';
+  else if(near&&near.type==='term'&&keys.KeyE&&copyT>0)sp='putBack';
+  if(sp&&!PL.actions[sp])sp=/^(die|dying|knock)/.test(sp)&&PL.actions.die?'die':null;
+  const k8=Math.min(1,dt*8);
+  // moving amount, direction in the body's frame, walk-to-run
+  const spd=P.speed,moving=spd>0.25;
+  BL.m=lerp(BL.m,moving?1:0,Math.min(1,dt*(moving?7:5)));
+  if(moving){const f=(P.mvF||0)/spd,sd=(P.mvS||0)/spd;const dF=Math.max(0,f),dB=Math.max(0,-f),dR=Math.max(0,sd),dL=Math.max(0,-sd),t=dF+dB+dR+dL||1;
+    BL.dF=lerp(BL.dF,dF/t,k8);BL.dB=lerp(BL.dB,dB/t,k8);BL.dR=lerp(BL.dR,dR/t,k8);BL.dL=lerp(BL.dL,dL/t,k8);}
+  BL.r=lerp(BL.r,crouchOn?clamp((spd-1.25)/0.4,0,1):clamp((spd-1.9)/1.3,0,1),Math.min(1,dt*6));
+  BL.c=lerp(BL.c,crouchOn?1:0,Math.min(1,dt*7));
+  BL.u=lerp(BL.u,(aimNow||reloading>0)&&!sp?1:0,Math.min(1,dt*9));
+  BL.rl=lerp(BL.rl,reloading>0?1:0,Math.min(1,dt*9));
+  // which clip each direction uses, standing and crouched
+  const SET=[['F','walk','run','crouchWalk','crouchRun'],['B','walkBack','runBack','crouchBack','crouchBack'],['R','walkR','runStrafeR','strafeR','strafeR'],['L','walkL','runStrafeL','strafeL','strafeL']];
+  const W={};const add=(n,w)=>{if(w>0&&PL.actions[n])W[n]=(W[n]||0)+w;};
+  let strideSum=0,strideW=0;
+  for(const [d,w0,r0,cw,cr] of SET){const dw=BL['d'+d];if(dw<0.001)continue;
+    for(const [n,cw2] of [[w0,(1-BL.c)*(1-BL.r)],[r0,(1-BL.c)*BL.r],[cw,BL.c*(1-BL.r)],[cr,BL.c*BL.r]]){const w=dw*cw2;if(w<0.001)continue;
+      add(n,w*(1-BL.u));add(n+'_lo',w*BL.u);strideSum+=w*(STRIDE[n]||1.5);strideW+=w;}}
+  const mW=BL.m;for(const n in W)W[n]*=mW;
+  add('aim_up',mW*BL.u*(1-BL.rl));add('reload_up',mW*BL.u*BL.rl);
+  // standing still: idle, aim, reload, kneel, crouched aim
+  const idleN=reloading>0?(crouchOn?'kneel':'reload'):crouchOn?(aimNow?'crouchFire':'kneel'):(aimNow?'aim':'idle');
+  for(const n of ['idle','aim','reload','kneel','crouchFire']){BL.iw[n]=lerp(BL.iw[n]||0,n===idleN?1:0,k8);add(n,(1-mW)*BL.iw[n]);}
+  // special moves fade in over everything
+  for(const n in BL.sw){BL.sw[n]=lerp(BL.sw[n],n===sp?1:0,Math.min(1,dt*(n===sp&&/^(die|dying|knock|jump|kick|grenade)/.test(n)?14:9)));}
+  if(sp&&BL.sw[sp]==null)BL.sw[sp]=0;
+  let S=0;for(const n in BL.sw)S+=BL.sw[n];S=Math.min(1,S);
+  for(const n in W)W[n]*=(1-S);
+  for(const n in BL.sw)if(BL.sw[n]>0.001)W[n]=(W[n]||0)+BL.sw[n];
+  // start a special move from its first frame when it begins
+  if(sp&&sp!==BL.spPrev){const ac=PL.actions[sp];ac.stopFading();ac.reset();ac.play();ac.time=PL.one&&PL.one.name===sp?(PL.one.t0||0):0;}
+  BL.spPrev=sp;
+  if(sp&&PL.actions[sp])PL.actions[sp].timeScale=PL.one&&PL.one.name===sp?(PL.one.ts||1):sp==='proneFire'?(shooting?1:0):sp==='proneReload'?2.5:/^prone/.test(sp)?clamp(spd/(STRIDE[sp]||0.5),0.5,1.6):/^(die|dying|knock)/.test(sp)?(PL.dieTS||1):1;
+  if(reloading>0&&!BL.wasRl){for(const n of ['reload','reload_up'])if(PL.actions[n])PL.actions[n].time=0;}BL.wasRl=reloading>0;
+  if(PL.actions.reload)PL.actions.reload.timeScale=1.5;if(PL.actions.reload_up)PL.actions.reload_up.timeScale=1.5;
+  if(PL.actions.crouchFire)PL.actions.crouchFire.timeScale=shooting?1:0;
+  // all walking clips share one stride phase so their footfalls line up
+  if(strideW>0){BL.ph=(BL.ph+dt*spd/(strideSum/strideW))%1;}
+  for(const n of BL.loco){const ac=PL.actions[n];if(ac)ac.time=BL.ph*ac.getClip().duration;}
+  // apply weights to every managed clip
+  for(const n of BL.all){const ac=PL.actions[n];if(!ac)continue;const w=W[n]||0;if(w>0.0005){if(!ac.isRunning()&&!BL.sw[n]){ac.play();}ac.setEffectiveWeight(w);}else ac.setEffectiveWeight(0);}
+  for(const n in BL.sw){const ac=PL.actions[n];if(ac&&BL.all.indexOf(n)<0)BL.all.push(n);}
+  PL.cur=sp||(reloading>0?'reload':BL.m>0.5?(BL.u>0.5?'loco_aim':'loco'):idleN);
+  // the crouch bend is only needed for sideways steps while crouched (the other crouch clips are already low)
+  PL.crK=crouchOn&&!sp?BL.c*BL.m*(BL.dL+BL.dR):0;
   // lean into turns and forward when running
   const yr=angDiff(PL.prevYaw==null?P.yaw:PL.prevYaw,P.yaw)/Math.max(dt,1e-3);PL.prevYaw=P.yaw;
   PL.roll=lerp(PL.roll||0,clamp(-yr*0.035,-0.14,0.14)*clamp(P.speed/2,0.25,1),Math.min(1,dt*6));
   PL.group.rotation.set(0,P.yaw,PL.roll);
-  const aimK=(want==='fire'||want==='aim'||firing||ads)?1:0.35;PL.aimK=lerp(PL.aimK||0,aimK,Math.min(1,dt*8));
+  PL.aimK=lerp(PL.aimK||0,aimNow?1:0.35,Math.min(1,dt*8));
   const leanF=0.14*clamp((P.speed-2)/2,0,1);
   PL.mixer.update(dt);
   if(window.__poseTest)window.__poseTest(PL);
-  if(!P.dead)boneLayer(PL,PL.model,PL.crK,(P.prone||(PL.one&&!PL.one.soft)||/^(putBack|grabPutBack)/.test(PL.cur||''))?0:-clamp(P.pitch,-0.9,0.9)*PL.aimK+leanF);
+  if(!P.dead)boneLayer(PL,PL.model,PL.crK,(P.prone||(PL.one&&!PL.one.soft)||PL.cur==='putBack')?0:-clamp(P.pitch,-0.9,0.9)*PL.aimK+leanF);
   PL.group.updateMatrixWorld(true);
   PL.rh.getWorldPosition(pA);
   camera.getWorldDirection(pC);
   if(PL.gripped&&PL.grip&&wi>=1){const gun=wi===2?PL.ak:PL.rifle;
     const free=P.dead||/^(reload|putBack|grabPutBack|grenade|kick|pullOut|die|dying|knock)/.test(PL.cur||'');
-    const aimNow=P.prone||firing||ads||time-PL.lastShot<2.5||/^(aim|fire|crouchFire|runFire)$/.test(PL.cur||'')||/_lo$/.test(PL.cur||'');
-    gun.getWorldPosition(_gw);let kT=free?0:1;
-    if(aimNow){camera.getWorldDirection(_gd);_gd.multiplyScalar(60).add(camera.position).sub(_gw).normalize();}
-    else{PL.lh.getWorldPosition(_gd);_gd.sub(_gw);const hl=_gd.length();if(hl>0.16&&hl<0.8)_gd.divideScalar(hl);else{const cy=Math.cos(P.yaw),sy=Math.sin(P.yaw);_gd.set(-sy*0.82-cy*0.45,-0.3,-cy*0.82+sy*0.45).normalize();kT=free?0:0.7;}}
+    gun.getWorldPosition(_gw);const kT=free?0:1;
+    if(aimNow||P.prone){camera.getWorldDirection(_gd);_gd.multiplyScalar(60).add(camera.position).sub(_gw).normalize();}
+    else{// along both hands, but always ahead of the body: never straight down, never off to the side
+      PL.lh.getWorldPosition(_gd);_gd.sub(_gw);if(_gd.lengthSq()<0.01)_gd.set(-Math.sin(P.yaw),0,-Math.cos(P.yaw));_gd.normalize();
+      const rel=clamp(angDiff(P.yaw,Math.atan2(-_gd.x,-_gd.z)),-0.2,0.7),pt=clamp(Math.asin(clamp(_gd.y,-1,1)),-0.55,0.2),yw=P.yaw+rel;
+      _gd.set(-Math.sin(yw)*Math.cos(pt),Math.sin(pt),-Math.cos(yw)*Math.cos(pt));}
+    if(!PL.gdir)PL.gdir=_gd.clone();PL.gdir.lerp(_gd,Math.min(1,dt*12)).normalize();_gd.copy(PL.gdir);
     PL.gunK=lerp(PL.gunK||0,kT,Math.min(1,dt*12));
     aimGun(gun,PL.grip,_gd,PL.gunK);}
   if(wi>=1&&PL.gripped){}
@@ -2583,6 +2591,22 @@ function updatePlayerBody(dt,tps,sprint){
     PL.pistol.position.copy(pA);PL.pistol.position.y-=0.01;
     PL.pistol.lookAt(pB.copy(pA).addScaledVector(pC,30));
   }
+}
+const STRIDE={walk:1.37,run:2.24,walkBack:1.54,runBack:1.38,walkR:1.92,walkL:1.9,strafeR:1.09,strafeL:1.36,runStrafeR:2.2,runStrafeL:1.48,crouchWalk:2.04,crouchRun:1.47,crouchBack:1.23,proneFwd:0.6,proneBack:0.42,proneTurn:0.4};
+function initBlend(){
+  const BL={m:0,dF:1,dB:0,dR:0,dL:0,r:0,c:0,u:0,rl:0,ph:0,iw:{idle:1},sw:{},spPrev:null,loco:[],all:[]};
+  const UPB=/Spine|Neck|Head|Shoulder|Arm|Hand/;const split=(c,up,n)=>new THREE.AnimationClip(n,c.duration,c.tracks.filter(t=>UPB.test(t.name.split('.')[0])===up));
+  for(const k of ['walk','run','walkBack','runBack','walkR','walkL','runStrafeR','runStrafeL','strafeR','strafeL','crouchWalk','crouchRun','crouchBack']){
+    if(!SOLDIER.clips[k])continue;if(!PL.actions[k+'_lo'])PL.actions[k+'_lo']=PL.mixer.clipAction(split(SOLDIER.clips[k],false,k+'_lo'));
+    BL.loco.push(k,k+'_lo');}
+  if(SOLDIER.clips.aim&&!PL.actions.aim_up)PL.actions.aim_up=PL.upA||PL.mixer.clipAction(split(SOLDIER.clips.aim,true,'aim_up'));
+  if(SOLDIER.clips.reload&&!PL.actions.reload_up)PL.actions.reload_up=PL.mixer.clipAction(split(SOLDIER.clips.reload,true,'reload_up'));
+  BL.all=BL.loco.concat(['aim_up','reload_up','idle','aim','reload','kneel','crouchFire']);
+  for(const n in PL.actions){const ac=PL.actions[n];ac.stopFading();ac.stopWarping();ac.setEffectiveTimeScale(1);ac.setEffectiveWeight(0);}
+  for(const n of BL.all){const ac=PL.actions[n];if(!ac)continue;ac.enabled=true;ac.setLoop(THREE.LoopRepeat);ac.play();ac.setEffectiveWeight(0);}
+  for(const n of BL.loco){const ac=PL.actions[n];if(ac)ac.timeScale=0;}
+  if(PL.actions.reload){PL.actions.reload.setLoop(THREE.LoopRepeat);}
+  PL.upA=null;return BL;
 }
 /* Procedural layer on top of the Mixamo clips (no crouch-walk clip exists):
    bend hips/knees/ankles and drop the pelvis for crouching, and bend the spine to follow aim pitch / lean. */
@@ -2939,7 +2963,13 @@ function toggleView(){view=view==='near'?'close':view==='close'?'first':'near';t
 const xhEl=document.getElementById('xhair'),hitEl=document.getElementById('hit');
 function applyView(tps){
   const cfg=tps&&state==='play'?VZ[view]:null;let z=1,cx=0.5,cy=0.5;
-  if(cfg){z=lerp(cfg[0],1,adsK);cx=lerp(cfg[1],0.5,adsK);cy=lerp(cfg[2],0.5,adsK);}
+  if(cfg){const zz=cfg[0];camera.updateMatrixWorld();_av.set(P.pos.x,P.jy+(P.prone?0.35:P.crouch?0.95:1.3),P.pos.z).applyMatrix4(camera.matrixWorldInverse);
+    const t=Math.tan(camera.fov*Math.PI/360);let sx=0.5,sy=0.5;if(_av.z<-0.1){sx=0.5+0.5*(_av.x/-_av.z)/(t*camera.aspect);sy=0.5-0.5*(_av.y/-_av.z)/t;}
+    let ccx=sx-(cfg[1]-0.5)/zz,ccy=sy-(cfg[2]-0.5)/zz;
+    ccx=clamp(ccx,0.5-0.25/zz,0.5+0.2/zz);ccy=clamp(ccy,0.5-0.25/zz,0.5+0.28/zz);
+    if(!VC.init){VC.x=ccx;VC.y=ccy;VC.init=true;}VC.x=lerp(VC.x,ccx,0.25);VC.y=lerp(VC.y,ccy,0.25);
+    z=lerp(zz,1,adsK);cx=lerp(VC.x,0.5,adsK);cy=lerp(VC.y,0.5,adsK);}
+  else VC.init=false;
   viewZoom=z;
   if(z<1.002){if(camera.view&&camera.view.enabled)camera.clearViewOffset();}
   else{const W=innerWidth,H=innerHeight;camera.setViewOffset(W*z,H*z,cx*W*z-W/2,cy*H*z-H/2,W,H);}
@@ -2947,7 +2977,7 @@ function applyView(tps){
   if(xhEl.style.left!==px){xhEl.style.left=hitEl.style.left=px;}if(xhEl.style.top!==py){xhEl.style.top=hitEl.style.top=py;}
 }
 function playerDie(){
-  if(state!=='play')return;{const o=['die','dieFront','dying','dieLeft'].filter(k=>PL.actions&&PL.actions[k]);PL.dieClip=o[(Math.random()*o.length)|0]||'die';}deathSfx(P.pos,'player');musicEnd(false);state='dying';P.dead=true;P.deadT=0;firing=false;fireTouch=null;ads=false;autoStop();
+  if(state!=='play')return;{const o=['die','dieFront','dying','dieLeft'].filter(k=>PL.actions&&PL.actions[k]);PL.dieClip=o[(Math.random()*o.length)|0]||'die';PL.dieTS=rand(0.92,1.08);}deathSfx(P.pos,'player');musicEnd(false);state='dying';P.dead=true;P.deadT=0;firing=false;fireTouch=null;ads=false;autoStop();
   $('tc').hidden=true;document.body.classList.add('dying');try{document.exitPointerLock&&document.exitPointerLock();}catch(e){}
 }
 const dyV=new THREE.Vector3();
