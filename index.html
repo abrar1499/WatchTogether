@@ -614,7 +614,7 @@ const flag={};
 }
 
 // rocks
-function rockGeo(){const g=new THREE.DodecahedronGeometry(1,1);const p=g.attributes.position;for(let i=0;i<p.count;i++){const k=0.78+Math.random()*0.35;p.setXYZ(i,p.getX(i)*k,p.getY(i)*k,p.getZ(i)*k);}g.computeVertexNormals();
+function rockGeo(){const g=new THREE.DodecahedronGeometry(1,1);const p=g.attributes.position;const ks=new Map();for(let i=0;i<p.count;i++){const key=Math.round(p.getX(i)*1e3)+','+Math.round(p.getY(i)*1e3)+','+Math.round(p.getZ(i)*1e3);let k=ks.get(key);if(k===undefined){k=0.8+Math.random()*0.28;ks.set(key,k);}p.setXYZ(i,p.getX(i)*k,p.getY(i)*k,p.getZ(i)*k);}g.computeVertexNormals();
   const uv=g.attributes.uv;for(let i=0;i<uv.count;i++)uv.setXY(i,p.getX(i)+p.getZ(i),p.getY(i));return g;}
 const rockGeos=[rockGeo(),rockGeo(),rockGeo(),rockGeo()];
 function rock(x,z,s){
@@ -2359,7 +2359,7 @@ function animateSkin(g,dt){
     g.gunK=lerp(g.gunK||0,free?0:aimNow?1:0.8,Math.min(1,dt*10));
     g.gun.getWorldPosition(_gw);
     if(aimNow)_gd.set(P.pos.x,P.eye+P.jy-0.35,P.pos.z).sub(_gw).normalize();
-    else{const ry=g.group.rotation.y;_gd.set(-Math.sin(ry),-0.38,-Math.cos(ry)).normalize();}
+    else{const ry=g.group.rotation.y,cy=Math.cos(ry),sy=Math.sin(ry);_gd.set(-sy*0.82-cy*0.45,-0.3,-cy*0.82+sy*0.45).normalize();}
     if(dist<80)aimGun(g.gun,g.grip,_gd,g.gunK);}
   else if(g.state!=='dead'||g.deadT<0.35){
     g.rh.getWorldPosition(gA);g.lh.getWorldPosition(gB);
@@ -2469,7 +2469,7 @@ function updatePlayerBody(dt,tps,sprint){
     PL.gunK=lerp(PL.gunK||0,free?0:aimNow?1:0.85,Math.min(1,dt*12));
     gun.getWorldPosition(_gw);
     if(aimNow){camera.getWorldDirection(_gd);_gd.multiplyScalar(60).add(camera.position).sub(_gw).normalize();}
-    else _gd.set(-Math.sin(P.yaw),-0.38,-Math.cos(P.yaw)).normalize();
+    else{const cy=Math.cos(P.yaw),sy=Math.sin(P.yaw);_gd.set(-sy*0.82-cy*0.45,-0.3,-cy*0.82+sy*0.45).normalize();}
     aimGun(gun,PL.grip,_gd,PL.gunK);}
   if(wi>=1&&PL.gripped){}
   else if(wi>=1){
