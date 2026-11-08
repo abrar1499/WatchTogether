@@ -47,7 +47,7 @@ class MainActivity : Activity() {
         }
 
         // window.DustApp.saveFile(...) for the "Save soldier file" button
-        web.addJavascriptInterface(FileBridge(applicationContext), "DustApp")
+        web.addJavascriptInterface(FileBridge(applicationContext, this), "DustApp")
 
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =

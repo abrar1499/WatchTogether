@@ -31,7 +31,8 @@ object Updater {
         "https://api.github.com/repos/abrar1499/WatchTogether/releases/latest"
 
     private val main = Handler(Looper.getMainLooper())
-    private var checked = false
+    private var lastCheck = 0L
+    private var checking = false
     private var resumed = false
     private var asking = false
     private var waitingForPermission = false
@@ -42,16 +43,30 @@ object Updater {
 
     private data class Release(val version: Int, val apkUrl: String)
 
-    fun checkOnStart(activity: Activity) {
-        if (checked) return
-        checked = true
+    fun checkOnStart(activity: Activity) = check(activity, manual = false)
+
+    /**
+     * Looks for a newer release. Automatic checks run at most every 5 minutes (on start and
+     * whenever the game comes back to the front); a manual check always runs and reports back.
+     */
+    fun check(activity: Activity, manual: Boolean) {
+        val now = System.currentTimeMillis()
+        if (checking) return
+        if (!manual && now - lastCheck < 5 * 60 * 1000) return
+        if (readyFile != null) { if (manual) ask(activity); return }
+        lastCheck = now
+        checking = true
         val app = activity.applicationContext
+        if (manual) toast(app, R.string.update_checking)
         thread {
-            val release = try { fetchLatest() } catch (e: Exception) { null } ?: return@thread
-            if (release.version <= currentVersion(app)) return@thread
+            val release = try { fetchLatest() } catch (e: Exception) { null }
+            if (release == null) { checking = false; if (manual) main.post { toast(app, R.string.update_check_failed) }; return@thread }
+            if (release.version <= currentVersion(app)) { checking = false; if (manual) main.post { toast(app, R.string.update_none) }; return@thread }
+            if (manual) main.post { toast(app, R.string.update_downloading) }
             val file = File(app.getExternalFilesDir("updates"), "update-${release.version}.apk")
             val ok = file.length() > 0 || download(release.apkUrl, file)
-            if (!ok) return@thread
+            checking = false
+            if (!ok) { if (manual) main.post { toast(app, R.string.update_download_failed) }; return@thread }
             main.post {
                 readyFile = file
                 readyVersion = release.version
@@ -60,9 +75,15 @@ object Updater {
         }
     }
 
+    fun versionName(context: Context): String = try {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+    } catch (e: Exception) { "" }
+
+    private fun toast(context: Context, res: Int) = Toast.makeText(context, res, Toast.LENGTH_LONG).show()
+
     fun onResumed(activity: Activity) {
         resumed = true
-        if (readyFile == null) return
+        if (readyFile == null) { check(activity, manual = false); return }
         if (waitingForPermission) {
             if (!canInstall(activity)) return
             waitingForPermission = false

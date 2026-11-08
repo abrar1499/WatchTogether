@@ -92,6 +92,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hi
 .btn2.sel{background:var(--amber);color:#1a1408}
 .btn2[aria-disabled=true]{opacity:.5;pointer-events:none}
 #soldierNote{font-size:12.5px;color:var(--ink)}
+#appRow{align-items:center}
 #soldierNote.err{color:var(--red)}
 .btn:disabled{opacity:.6;cursor:wait}
 @media (max-height:560px){
@@ -113,7 +114,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hi
   #start .card{display:block;columns:2 300px;column-gap:28px}
   #start .card>*{break-inside:avoid;margin:0 0 9px}
   #start .card>.stamp{display:inline-block}
-  #start .card>p:nth-of-type(2),#start .note,#qNote{display:none}
+  #start .card>p:nth-of-type(2),#start .note:not(#verNote),#qNote{display:none}
   #start .keys{grid-template-columns:repeat(2,minmax(0,1fr))}
   #start .card h1 br{display:none}
 }
@@ -226,6 +227,7 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
         <button class="btn2" id="qHigh">High · clouds and lighting</button>
       </div>
       <span class="note" id="qNote"></span>
+      <div class="row" id="appRow" hidden><button class="btn2" id="updBtn">Check for update</button><span class="note" id="verNote"></span></div>
     </div>
     <div class="upload">
       <span class="lbl">Soldier model</span>
@@ -1093,6 +1095,7 @@ $('again').onclick=()=>location.reload();
 $(LOW?'qLow':'qHigh').classList.add('sel');
 $('qNote').textContent=LOW?'Low is on: sharp image and shadows with simpler lighting and sky. Best for phones.':'High is on: clouds and detailed lighting. Switch to Low if the game stutters.';
 function setQuality(q){if(q===QUALITY)return;try{localStorage.setItem('ds-quality',q);}catch(e){}location.reload();}
+if(window.DustApp&&window.DustApp.checkUpdate){$('appRow').hidden=false;try{$('verNote').textContent='Installed: v'+String(window.DustApp.version()).split('.').pop();}catch(e){}$('updBtn').onclick=()=>{try{window.DustApp.checkUpdate();}catch(e){}};}
 $('qLow').onclick=()=>setQuality('low');$('qHigh').onclick=()=>setQuality('high');
 if(TOUCH){document.body.classList.add('touch');$('tkeys').hidden=false;$('kkeys').hidden=true;}
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&state==='play'&&!paused)setPause(true);});

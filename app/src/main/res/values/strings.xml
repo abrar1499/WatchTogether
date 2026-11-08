@@ -6,6 +6,11 @@
     <string name="update_now">Update now</string>
     <string name="update_later">Later</string>
     <string name="update_installing">Updating…</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_none">You have the latest version</string>
+    <string name="update_check_failed">Could not check for updates. Check the internet connection.</string>
+    <string name="update_downloading">Update found. Downloading…</string>
+    <string name="update_download_failed">The update could not be downloaded. Try again.</string>
     <string name="update_permission_title">Allow updates</string>
     <string name="update_permission_message">To install updates, allow installs from this app once in the next screen, then come back.</string>
     <string name="update_permission_ok">Open settings</string>

@@ -13,7 +13,19 @@ import java.io.File
  * Lets the game save a file (the converted soldier) where the player can find it.
  * Exposed to the page as window.DustApp.
  */
-class FileBridge(private val context: Context) {
+class FileBridge(private val context: Context, private val activity: android.app.Activity? = null) {
+
+    /** The installed app version, shown on the start screen. */
+    @JavascriptInterface
+    fun version(): String = Updater.versionName(context)
+
+    /** "Check for update" on the start screen. */
+    @JavascriptInterface
+    fun checkUpdate() {
+        val a = activity ?: return
+        a.runOnUiThread { Updater.check(a, manual = true) }
+    }
+
 
     /** Saves base64 data under [name]. Returns where it went, or "" if it failed. */
     @JavascriptInterface
