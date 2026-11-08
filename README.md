@@ -10,7 +10,7 @@ The game works **offline**: three.js, its loaders and meshoptimizer are bundled 
 
 **Computer:** WASD move, mouse look, click fire, Shift sprint, C crouch, 1/2/3 pistol, M4A1, AK-47, R reload, B binoculars, M map, V first/third person, E use, Space jump, Esc pause.
 
-**Phone:** hold the phone sideways. Drag in the bottom-left corner to move. On the right half of the screen, tap to fire, or hold and drag to aim while firing. On the left half, drag to aim without firing. The on-screen buttons do the rest. VIEW switches between third person (your soldier on screen, the default) and first person.
+**Phone:** hold the phone sideways. Drag in the bottom-left corner to move: a small push sneaks, half a push walks, the edge sprints. Drag anywhere else on the screen to aim. Only the FIRE button shoots; keep the finger down and slide it to aim while firing, lift it to stop. VIEW switches between third person (your soldier on screen, the default) and first person.
 
 ## Android app
 
@@ -30,14 +30,12 @@ On the start screen, tap **Upload soldier file** and choose a Mixamo character d
 
 ## Music
 
-The game has its own synthesized soundtrack: a tense drone, dark chords and low drums while sneaking, with bass, snare and horn stabs once the alarm goes off. **Built-in music** turns it on or off.
-
 **Upload music** picks a song from the device instead. It is saved on that device only and plays on a loop during the mission. **Remove music** turns it off.
 
 ## Files
 
 - `index.html`: the whole game (three.js r128 from cdnjs)
-- `sfx/`: recorded gun sounds (AK-47 and M4 shots, bolt sounds for reloads)
+- `sfx/`: the gun sounds, unedited original files
 - `models/soldier.b64.txt`: the standard soldier (Mixamo "Swat Guy", merged into 2 meshes and simplified to about 16k triangles) with its animations, as a base64 GLB
 - `vendor/`: bundled libraries (three.js r128 and r160 modules, meshoptimizer), MIT licensed, with their licenses
 - `app/`: the Android wrapper (a full-screen WebView)
@@ -47,4 +45,10 @@ The game has its own synthesized soundtrack: a tense drone, dark chords and low 
 
 Soldier character and animations from [Mixamo](https://www.mixamo.com) (Adobe).
 
-Gun sounds in `sfx/` are cut from sound effects by freesound_community on [Pixabay](https://pixabay.com/sound-effects/) ("M4 assault rifle long burst", "Dry assault rifle automatic", "Lever action rifle"), used under the Pixabay Content License. All other sounds and the music are synthesized in the browser.
+Sounds in `sfx/` are unedited sound effects from [Pixabay](https://pixabay.com/sound-effects/), used under the Pixabay Content License:
+- AK-47: "AK-47 sound effect" by sovetsky_rastov72
+- M4A1: "Gun fire" by foisal72 (475286)
+- Pistol: "Gun rifle shots" by dennish18
+- Enemy rifles: "Machin gun AK47 sound effect 6" by beetpro
+
+The game plays only these files (no synthesized sounds). Automatic weapons loop the steady full-auto part of their file while FIRE is held.
