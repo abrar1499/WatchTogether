@@ -6,9 +6,9 @@ A first-person stealth shooter that runs in the browser. Mission 1: get into the
 
 Open `index.html` through any web server (for example GitHub Pages). It does not work when opened straight from the file system, because the soldier model is loaded with `fetch`.
 
-**Computer:** WASD move, mouse look, click fire, Shift sprint, C crouch, 1/2 weapons, R reload, B binoculars, M map, E use, Space jump, Esc pause.
+**Computer:** WASD move, mouse look, click fire, Shift sprint, C crouch, 1/2 weapons, R reload, B binoculars, M map, V first/third person, E use, Space jump, Esc pause.
 
-**Phone:** hold the phone sideways. Left thumb moves, right thumb looks, and the on-screen buttons do the rest.
+**Phone:** hold the phone sideways. Drag in the bottom-left corner to move, drag anywhere else to aim, and use the on-screen buttons for the rest. VIEW switches between third person (your soldier on screen, the default) and first person.
 
 ## Android app
 
