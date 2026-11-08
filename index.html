@@ -101,7 +101,21 @@ body.dying .hud:not(#dmg){opacity:0!important;transition:opacity .6s}
 .btn2{pointer-events:auto;font:600 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;background:transparent;color:var(--amber);border:1px solid var(--amber);padding:10px 14px;cursor:pointer}
 .btn2:hover{background:rgba(242,181,68,.12)}
 .btn2:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-#sens{width:100%;accent-color:var(--amber)}
+#sens,#bsize{width:100%;accent-color:var(--amber)}
+.mm{max-width:440px;align-items:flex-start}
+.mmb{display:flex;flex-direction:column;gap:10px;align-self:stretch}
+.mmb .btn{align-self:stretch;text-align:left}
+.btn3{background:transparent;color:var(--amber);border:1px solid var(--amber)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{font:600 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;background:transparent;color:var(--dim);border:1px solid var(--line);padding:9px 12px;cursor:pointer}
+.tab.sel{color:#1a1408;background:var(--amber);border-color:var(--amber)}
+.pane{display:flex;flex-direction:column;gap:12px}
+#editbar{position:fixed;left:50%;top:calc(8px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:12;display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--amber);padding:6px 10px;font-size:11px;color:var(--ink);white-space:nowrap}
+#editbar label{display:flex;align-items:center;gap:6px}#editbar #bsize{width:90px}
+#editbar .btn{font-size:14px;padding:6px 14px}
+body.editing .tb{opacity:1;outline:1px dashed var(--amber);outline-offset:3px}
+body.editing #joyhint,body.editing #joyzone{display:none}
+.tb{transform:scale(var(--bs,1))}
 .btn2.sel{background:var(--amber);color:#1a1408}
 .btn2[aria-disabled=true]{opacity:.5;pointer-events:none}
 #soldierNote{font-size:12.5px;color:var(--ink)}
@@ -124,12 +138,8 @@ body.dying .hud:not(#dmg){opacity:0!important;transition:opacity .6s}
   #soldierNote,#musicNote{font-size:11px}
   .stats{gap:6px;grid-template-columns:repeat(5,minmax(0,1fr))}
   .stats b{font-size:18px}
-  #start .card{display:block;columns:2 300px;column-gap:28px}
-  #start .card>*{break-inside:avoid;margin:0 0 9px}
-  #start .card>.stamp{display:inline-block}
-  #start .card>p:nth-of-type(2),#start .note:not(#verNote),#qNote{display:none}
-  #start .keys{grid-template-columns:repeat(2,minmax(0,1fr))}
-  #start .card h1 br{display:none}
+  #settings .keys{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mm{max-width:400px}.mmb{gap:7px}
 }
 @media (max-width:520px){#obj{max-width:200px;font-size:11px}#radio{max-width:calc(100vw - 32px)}#ammo{font-size:28px}#hpbar{width:150px}}
 /* touch controls */
@@ -155,7 +165,7 @@ body.dying .hud:not(#dmg){opacity:0!important;transition:opacity .6s}
 .tb[data-act=bino]{width:52px;height:52px;right:calc(150px + env(safe-area-inset-right,0px));bottom:calc(244px + env(safe-area-inset-bottom,0px))}
 .tb[data-act=map]{right:calc(76px + env(safe-area-inset-right,0px));top:calc(10px + env(safe-area-inset-top,0px));width:46px;height:46px}
 .tb[data-act=view]{right:calc(76px + env(safe-area-inset-right,0px));top:calc(60px + env(safe-area-inset-top,0px));width:46px;height:46px}
-.tb[data-act=pause]{right:calc(16px + env(safe-area-inset-right,0px));top:calc(10px + env(safe-area-inset-top,0px));width:46px;height:46px;font-size:14px}
+.tb[data-act=pause]{right:calc(16px + env(safe-area-inset-right,0px));top:calc(10px + env(safe-area-inset-top,0px));width:50px;height:46px;font-size:10px;border-radius:12px}
 body.touch #obj{padding:6px 10px;max-width:46vw;font-size:11px}
 body.touch #obj li.done,body.touch #obj li.later{display:none}
 body.touch #obj ol{padding-left:0;list-style:none}
@@ -211,15 +221,53 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
   <button class="tb" data-act="bino" aria-label="Binoculars">BINO</button>
   <button class="tb" data-act="map" aria-label="Map">MAP</button>
   <button class="tb" data-act="view" aria-label="Switch view">VIEW</button>
-  <button class="tb" data-act="pause" aria-label="Pause">II</button>
+  <button class="tb" data-act="pause" aria-label="Menu">MENU</button>
 </div>
 <div class="screen" id="start">
-  <div class="card">
+  <div class="card mm">
     <span class="stamp">TOP SECRET · MISSION 01</span>
     <h1>Operation Dust Signal</h1>
-    <p>Agent Kestrel, an enemy relay station at Hadra Flats is broadcasting stolen satellite codes. You go in alone. Get inside the base, copy the codes from the terminal in the command bunker, and walk out to helicopter landing zone Raven, north-west of the base.</p>
-    <p>The guards carry rifles and they shoot well. If one of them sees you, the alarm goes off and soldiers come out of the barracks. The fence on the west side is broken. Use your binoculars before you move, and stay low.</p>
-    <div class="keys" id="tkeys" hidden>
+    <p>Get into the Hadra relay base, copy the codes from the bunker terminal and reach helicopter landing zone Raven.</p>
+    <div class="mmb">
+      <button class="btn" id="go">Play</button>
+      <button class="btn btn3" id="setBtn">Settings</button>
+      <button class="btn btn3" id="exitBtn">Exit</button>
+    </div>
+    <span class="note" id="exitNote" hidden>Close this tab to leave the game.</span>
+  </div>
+</div>
+<div class="screen" id="pause" hidden>
+  <div class="card mm"><h2>Paused</h2>
+    <div class="mmb">
+      <button class="btn" id="resume">Resume</button>
+      <button class="btn btn3" id="restartBtn">Restart</button>
+      <button class="btn btn3" id="pSetBtn">Settings</button>
+      <button class="btn btn3" id="quitBtn">Main menu</button>
+    </div>
+  </div>
+</div>
+<div class="screen" id="settings" hidden>
+  <div class="card">
+    <h2>Settings</h2>
+    <div class="tabs"><button class="tab sel" data-tab="g">Graphics</button><button class="tab" data-tab="c">Controls</button><button class="tab" data-tab="o">Soldier &amp; music</button></div>
+    <div class="pane" data-pane="g">
+      <div class="upload">
+      <span class="lbl">Graphics</span>
+      <div class="row">
+        <button class="btn2" id="qLow">Low · smooth</button>
+        <button class="btn2" id="qHigh">High · clouds and lighting</button>
+      </div>
+      <span class="note" id="qNote"></span>
+      <div class="row" id="appRow" hidden><button class="btn2" id="updBtn">Check for update</button><span class="note" id="verNote"></span></div>
+      </div>
+    </div>
+    <div class="pane" data-pane="c" hidden>
+      <div class="upload">
+        <label class="lbl" for="sens">Camera sensitivity <span id="sensv"></span></label><input type="range" id="sens" min="0.3" max="2.5" step="0.1">
+        <div class="row" id="layoutRow"><button class="btn2" id="editBtns">Move buttons</button><button class="btn2" id="resetBtns">Reset buttons</button></div>
+        <span class="note" id="layoutNote">Drag each on-screen button to where your thumbs want it, and change their size.</span>
+      </div>
+      <div class="keys" id="tkeys" hidden>
       <span><kbd>Left thumb</kbd>Small push sneaks, half walks, edge sprints</span>
       <span><kbd>Screen</kbd>Drag to aim</span>
       <span><kbd>FIRE</kbd>Hold to shoot; slide the finger to aim while firing</span>
@@ -234,7 +282,7 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
       <span><kbd>NADE</kbd>Throw a grenade</span>
       <span><kbd>USE</kbd>Next to a guard: kick him down</span>
     </div>
-    <div class="keys" id="kkeys">
+      <div class="keys" id="kkeys">
       <span><kbd>W A S D</kbd>Move</span>
       <span><kbd>Mouse</kbd>Look · Click to fire</span>
       <span><kbd>Shift</kbd>Sprint</span>
@@ -249,16 +297,8 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
       <span><kbd>Space</kbd>Jump</span>
       <span><kbd>Esc</kbd>Pause</span>
     </div>
-    <button class="btn" id="go">Go in</button>
-    <div class="upload">
-      <span class="lbl">Graphics</span>
-      <div class="row">
-        <button class="btn2" id="qLow">Low · smooth</button>
-        <button class="btn2" id="qHigh">High · clouds and lighting</button>
-      </div>
-      <span class="note" id="qNote"></span>
-      <div class="row" id="appRow" hidden><button class="btn2" id="updBtn">Check for update</button><span class="note" id="verNote"></span></div>
     </div>
+    <div class="pane" data-pane="o" hidden>
     <div class="upload">
       <span class="lbl">Soldier model</span>
       <p id="soldierNote">Loading the standard soldier…</p>
@@ -282,11 +322,11 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
       <span class="note">An uploaded song plays during the mission. It is saved on this device only.</span>
     </div>
     <span class="note" id="note">On a computer, use the keyboard and mouse. If the mouse does not lock, hold the right button and drag to look. On a phone, play with the phone held sideways.</span>
+    </div>
+    <button class="btn" id="setBack">Back</button>
   </div>
 </div>
-<div class="screen" id="pause" hidden>
-  <div class="card"><h2>Paused</h2><label class="lbl" for="sens">Camera sensitivity <span id="sensv"></span></label><input type="range" id="sens" min="0.3" max="2.5" step="0.1"><button class="btn" id="resume">Resume</button></div>
-</div>
+<div id="editbar" hidden><span>Drag the buttons where you want them</span><label>Size <input type="range" id="bsize" min="0.75" max="1.4" step="0.05"></label><button class="btn2" id="editReset">Reset</button><button class="btn" id="editDone">Done</button></div>
 <div class="screen" id="end" hidden>
   <div class="card">
     <span class="stamp" id="endstamp">MISSION COMPLETE</span>
@@ -619,7 +659,7 @@ function rockGeo(){const g=new THREE.DodecahedronGeometry(1,1);const p=g.attribu
 const rockGeos=[rockGeo(),rockGeo(),rockGeo(),rockGeo()];
 function rock(x,z,s){
   const m=new THREE.Mesh(rockGeos[(srand()*4)|0],MAT.rock);m.scale.set(s*1.4,s*0.95,s*1.2);m.position.set(x,s*0.42,z);m.rotation.y=srand()*6;m.castShadow=m.receiveShadow=true;scene.add(m);occluders.push(m);
-  colliders.push({x0:x-s*1.1,x1:x+s*1.1,z0:z-s*0.95,z1:z+s*0.95});mapRects.push({x,z,w:s*2.4,d:s*2,c:'#7b6346',round:true});
+  colliders.push({x0:x-s*1.25,x1:x+s*1.25,z0:z-s*1.25,z1:z+s*1.25,cx:x,cz:z,r:s*1.25});mapRects.push({x,z,w:s*2.4,d:s*2,c:'#7b6346',round:true});
 }
 for(let i=0;i<70;i++){
   const x=(srand()-0.5)*330,z=(srand()-0.5)*330;const s=0.8+srand()*2.4;
@@ -1248,7 +1288,7 @@ function decUpdate(dt){let ch=false;
 /* contact shadows ("ambient occlusion") on the ground around and under every solid object, one mesh */
 (function aoRings(){
   const pos=[],al=[],idx=[];
-  for(const c of colliders){const w=c.x1-c.x0,d=c.z1-c.z0;if(w>40||d>40)continue;const m=clamp(Math.min(w,d)*0.55+0.25,0.3,0.9),y=0.036;const b=pos.length/3;
+  for(const c of colliders){if(c.r)continue;const w=c.x1-c.x0,d=c.z1-c.z0;if(w>40||d>40)continue;const m=clamp(Math.min(w,d)*0.55+0.25,0.3,0.9),y=0.036;const b=pos.length/3;
     const ins=[[c.x0,c.z0],[c.x1,c.z0],[c.x1,c.z1],[c.x0,c.z1]],out=[[c.x0-m,c.z0-m],[c.x1+m,c.z0-m],[c.x1+m,c.z1+m],[c.x0-m,c.z1+m]];
     for(const [x,z] of ins){pos.push(x,y,z);al.push(1);}for(const [x,z] of out){pos.push(x,y,z);al.push(0);}
     for(let k=0;k<4;k++){const k1=(k+1)%4;idx.push(b+k,b+4+k,b+4+k1,b+k,b+4+k1,b+k1);}
@@ -1735,7 +1775,7 @@ function shot(k,vol,off,dur,pan){
 function musicStart(){MUS.started=true;MUS.t0=time;MUS.whooshDone=false;}
 function musicTick(dt){
   if(!AC||!MUS.started)return;
-  if(!MUS.whooshDone&&MUS.buf.whoosh&&MUS.buf.intro){MUS.whooshDone=true;shot('whoosh',0.85);MUS.intro=shot('intro',0.42);}
+  if(!MUS.whooshDone&&MUS.buf.whoosh&&MUS.buf.intro){MUS.whooshDone=true;shot('whoosh',0.55);MUS.intro=shot('intro',0.26);}
   MUS.next-=dt;if(MUS.next>0)return;MUS.next=0.25;
   const custom=!!musicSrc,dead=state!=='play';
   let contact=false;for(const g of guards)if(g.state==='alert'&&g.los){contact=true;break;}
@@ -1743,17 +1783,21 @@ function musicTick(dt){
   const fight=alarm&&time-MUS.contactT<20;
   const since=time-(MUS.t0||0);
   // stealth bed, combat loop, escape track, heartbeat
-  layer('amb',dead||custom?0:fight?0.1:since<14?0.14:0.3,fight?1.5:4);
-  layer('drone',dead||custom?0:fight?0.1:0.2,4);
-  layer('night',dead?0:fight?0.25:0.7,3);
-  layer('combat',dead||custom?0:fight?0.42:0,fight?1.2:5);
-  layer('heart',dead?0:P.hp<35?0.25+clamp((35-P.hp)/35,0,1)*0.75:0,1);
-  if(objI>=2&&!MUS.escapeOn&&!custom){MUS.escapeOn=true;shot('whoosh',0.7);shot('escape',0.5);}
+  layer('amb',dead||custom?0:fight?0.05:since<14?0.08:0.16,fight?1.5:4);
+  layer('night',dead?0:fight?0.12:0.38,3);
+  layer('heart',dead?0:P.hp<30?0.12+clamp((30-P.hp)/30,0,1)*0.4:0,1);
+  // fights get one piece at a time (action loop, then the two trailers), each faded in and out, with a rest between them
+  const fightOn=fight&&!dead&&!custom&&!MUS.escapeOn;
+  if(fightOn&&!MUS.cTrack&&time>=(MUS.cRest||0)){const order=['combat','intro','escape'];const k=order[(MUS.cI||0)%3];MUS.cI=(MUS.cI||0)+1;const b=MUS.buf[k];
+    if(b){const dur=k==='escape'?19.5:Math.min(b.duration,36);const sh=shot(k,0,0,dur);if(sh){const t=AC.currentTime;sh.g.gain.setValueAtTime(0,t);sh.g.gain.linearRampToValueAtTime(0.2,t+1.5);sh.g.gain.setValueAtTime(0.2,t+dur-3);sh.g.gain.linearRampToValueAtTime(0,t+dur);MUS.cTrack={sh,end:time+dur};}}}
+  if(MUS.cTrack){if(time>=MUS.cTrack.end){MUS.cTrack=null;MUS.cRest=time+rand(20,32);}
+    else if(!fightOn&&!MUS.cTrack.fading){MUS.cTrack.fading=true;const t=AC.currentTime,g=MUS.cTrack.sh.g.gain;g.cancelScheduledValues(t);g.setValueAtTime(g.value,t);g.linearRampToValueAtTime(0,t+3);MUS.cTrack.end=Math.min(MUS.cTrack.end,time+3);}}
+  if(objI>=2&&!MUS.escapeOn&&!custom){MUS.escapeOn=true;shot('whoosh',0.5);shot('escape',0.3);}
   // the odd raven call, off to one side
   MUS.ravenT-=0.25;if(MUS.ravenT<=0&&!fight&&!dead){MUS.ravenT=rand(35,80);const b=MUS.buf.raven;if(b){const off=rand(0,Math.max(0,b.duration-6));shot('raven',0.9,off,5.5,rand(-0.8,0.8));}}
 }
-function musicSpotted(){if(time-MUS.spottedT<15)return;MUS.spottedT=time;shot('spotted',1.6);}
-function musicEnd(win){if(!AC)return;for(const k in MUS.layers)layer(k,0,win?3:2);if(!win)shot('whoosh',0.6);}
+function musicSpotted(){if(time-MUS.spottedT<15)return;MUS.spottedT=time;shot('spotted',0.9);}
+function musicEnd(win){if(!AC)return;for(const k in MUS.layers)layer(k,0,win?3:2);if(MUS.cTrack){const t=AC.currentTime,g=MUS.cTrack.sh.g.gain;g.cancelScheduledValues(t);g.setValueAtTime(g.value,t);g.linearRampToValueAtTime(0,t+2);MUS.cTrack=null;}if(!win)shot('whoosh',0.45);}
 let autoSrc=null,autoKind=null,autoGain=null;
 function autoStart(kind){
   if(!AC||!SFXBUF[kind]||(autoSrc&&autoKind===kind))return;
@@ -1920,6 +1964,7 @@ function setPause(v){paused=v;if(v)autoStop();$('pause').hidden=!v;try{if(AC){if
 $('sens').value=SENS;$('sensv').textContent=SENS.toFixed(1)+'×';
 $('sens').addEventListener('input',e=>{SENS=parseFloat(e.target.value)||1;$('sensv').textContent=SENS.toFixed(1)+'×';try{localStorage.setItem('ds-sens',SENS);}catch(err){}});
 $('resume').onclick=()=>{setPause(false);tryLock();};
+
 $('go').onclick=()=>{initAudio();startMusic();musicStart();$('start').hidden=true;state='play';document.body.classList.add('playing');
   if(TOUCH){$('tc').hidden=false;try{const r=document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();if(r&&r.then)r.then(()=>{try{screen.orientation.lock('landscape').catch(()=>{});}catch(e){}}).catch(()=>{});}catch(e){}}
   stats.start=performance.now();tryLock();renderObj();
@@ -1990,6 +2035,38 @@ tcEl.querySelectorAll('.tb').forEach(b=>{
   b.addEventListener('touchcancel',()=>act(a,false));
   b.addEventListener('click',e=>e.preventDefault());
 });
+
+/* menus */
+const RESTART=(()=>{try{const r=sessionStorage.getItem('ds-restart');sessionStorage.removeItem('ds-restart');return !!r;}catch(e){return false;}})();
+let setFrom=null;
+function openSettings(from){setFrom=from;$(from).hidden=true;$('settings').hidden=false;}
+$('setBtn').onclick=()=>openSettings('start');$('pSetBtn').onclick=()=>openSettings('pause');
+$('setBack').onclick=()=>{$('settings').hidden=true;$(setFrom||'start').hidden=false;};
+document.querySelectorAll('#settings .tab').forEach(t=>t.onclick=()=>{document.querySelectorAll('#settings .tab').forEach(o=>o.classList.toggle('sel',o===t));document.querySelectorAll('#settings .pane').forEach(p=>{p.hidden=p.dataset.pane!==t.dataset.tab;});});
+$('exitBtn').onclick=()=>{if(window.DustApp&&window.DustApp.exit){try{window.DustApp.exit();return;}catch(e){}}try{window.close();}catch(e){}$('exitNote').hidden=false;};
+$('restartBtn').onclick=()=>{try{sessionStorage.setItem('ds-restart','1');}catch(e){}location.reload();};
+$('quitBtn').onclick=()=>location.reload();
+if(RESTART)$('start').querySelector('p').textContent='Restarting the mission.';
+/* on-screen buttons: drag them anywhere, and resize them; saved on this device */
+let BL={},BS=1;try{BL=JSON.parse(localStorage.getItem('ds-layout')||'{}')||{};BS=parseFloat(localStorage.getItem('ds-bsize'))||1;}catch(e){}
+function placeBtn(b,x,y){const cs=getComputedStyle(b);const w=parseFloat(cs.width)||56,h=parseFloat(cs.height)||56;b.style.left='calc('+(x*100).toFixed(2)+'% - '+(w/2)+'px)';b.style.top='calc('+(y*100).toFixed(2)+'% - '+(h/2)+'px)';b.style.right='auto';b.style.bottom='auto';}
+function applyLayout(){tcEl.style.setProperty('--bs',BS);tcEl.querySelectorAll('.tb').forEach(b=>{const p=BL[b.dataset.act];if(p)placeBtn(b,p.x,p.y);else{b.style.left=b.style.top=b.style.right=b.style.bottom='';}});$('bsize').value=BS;}
+function saveLayout(){try{localStorage.setItem('ds-layout',JSON.stringify(BL));localStorage.setItem('ds-bsize',String(BS));}catch(e){}}
+let editing=false;
+function startEdit(){editing=true;$('settings').hidden=true;tcEl.hidden=false;document.body.classList.add('editing');$('editbar').hidden=false;applyLayout();}
+function endEdit(){editing=false;saveLayout();document.body.classList.remove('editing');$('editbar').hidden=true;if(state!=='play')tcEl.hidden=true;$('settings').hidden=false;}
+$('editBtns').onclick=startEdit;$('editDone').onclick=endEdit;
+$('resetBtns').onclick=()=>{BL={};BS=1;saveLayout();applyLayout();$('layoutNote').textContent='Buttons are back where they started.';};
+$('editReset').onclick=()=>{BL={};BS=1;applyLayout();};
+$('bsize').addEventListener('input',e=>{BS=parseFloat(e.target.value)||1;tcEl.style.setProperty('--bs',BS);});
+tcEl.querySelectorAll('.tb').forEach(b=>{
+  b.addEventListener('pointerdown',e=>{if(!editing)return;e.preventDefault();e.stopPropagation();try{b.setPointerCapture(e.pointerId);}catch(err){}const r=b.getBoundingClientRect();b._d={dx:e.clientX-(r.left+r.width/2),dy:e.clientY-(r.top+r.height/2)};});
+  b.addEventListener('pointermove',e=>{if(!editing||!b._d)return;e.preventDefault();const x=clamp((e.clientX-b._d.dx)/innerWidth,0.03,0.97),y=clamp((e.clientY-b._d.dy)/innerHeight,0.05,0.95);BL[b.dataset.act]={x,y};placeBtn(b,x,y);});
+  b.addEventListener('pointerup',()=>{if(b._d){b._d=null;saveLayout();}});
+  b.addEventListener('pointercancel',()=>{b._d=null;});
+});
+applyLayout();
+if(!TOUCH){$('layoutRow').hidden=true;$('layoutNote').hidden=true;}
 
 /* ---------- weapons ---------- */
 function scopeUI(){const b=$('tc').querySelector('[data-act=scope]');if(b){b.textContent=(wi===0?1:scopeLvl)+'×';b.classList.toggle('on',scopeLvl===4&&wi>0);}}
@@ -2110,6 +2187,7 @@ function raiseAlarm(g){
 const ge=new THREE.Vector3(),pe=new THREE.Vector3();
 function collide(p,r){
   for(const c of colliders){
+    if(c.r){const dx=p.x-c.cx,dz=p.z-c.cz,d2=dx*dx+dz*dz,rr=c.r+r;if(d2<rr*rr){const d=Math.sqrt(d2)||1e-4;p.x=c.cx+dx/d*rr;p.z=c.cz+dz/d*rr;}continue;}
     const nx=clamp(p.x,c.x0,c.x1),nz=clamp(p.z,c.z0,c.z1);const dx=p.x-nx,dz=p.z-nz;const d2=dx*dx+dz*dz;
     if(d2<r*r){
       if(d2>1e-8){const d=Math.sqrt(d2);p.x+=dx/d*(r-d);p.z+=dz/d*(r-d);}
@@ -2370,10 +2448,10 @@ function animateSkin(g,dt){
   if(g.gripped&&g.grip){
     const free=g.state==='dead'||/^(hit|reactBig|startWalk|crouchToKneel|kneelToStand|sideStep|turn)/.test(g.cur||'');
     const aimNow=g.state==='alert'&&/^(aim|fire|crouchFire)$/.test(g.cur||'');
-    g.gunK=lerp(g.gunK||0,free?0:aimNow?1:0.8,Math.min(1,dt*10));
-    g.gun.getWorldPosition(_gw);
+    g.gun.getWorldPosition(_gw);let kT=free?0:1;
     if(aimNow)_gd.set(P.pos.x,P.eye+P.jy-0.35,P.pos.z).sub(_gw).normalize();
-    else{const ry=g.group.rotation.y,cy=Math.cos(ry),sy=Math.sin(ry);_gd.set(-sy*0.82-cy*0.45,-0.3,-cy*0.82+sy*0.45).normalize();}
+    else{g.lh.getWorldPosition(_gd);_gd.sub(_gw);const hl=_gd.length();if(hl>0.16&&hl<0.8)_gd.divideScalar(hl);else{const ry=g.group.rotation.y,cy=Math.cos(ry),sy=Math.sin(ry);_gd.set(-sy*0.82-cy*0.45,-0.3,-cy*0.82+sy*0.45).normalize();kT=free?0:0.7;}}
+    g.gunK=lerp(g.gunK||0,kT,Math.min(1,dt*10));
     if(dist<80)aimGun(g.gun,g.grip,_gd,g.gunK);}
   else if(g.state!=='dead'||g.deadT<0.35){
     g.rh.getWorldPosition(gA);g.lh.getWorldPosition(gB);
@@ -2399,6 +2477,11 @@ function makePlayerBody(){
   PL.group=R;PL.model=m;PL.rh=m.getObjectByName('mixamorigRightHand');PL.lh=m.getObjectByName('mixamorigLeftHand');
   PL.mixer=new THREE.AnimationMixer(m);PL.actions={};PL.cur=null;
   for(const k in SOLDIER.clips){const a=PL.mixer.clipAction(SOLDIER.clips[k]);if(ANIM_ONCE.test(k)){a.setLoop(THREE.LoopOnce,1);a.clampWhenFinished=true;}PL.actions[k]=a;}
+  {// legs-only copies of the walking clips and an arms-and-chest copy of the aim pose, so you can walk and aim from the shoulder at once
+    const UPB=/Spine|Neck|Head|Shoulder|Arm|Hand/;const split=(c,up,n)=>new THREE.AnimationClip(n,c.duration,c.tracks.filter(t=>UPB.test(t.name.split('.')[0])===up));
+    for(const k of ['walk','run','walkBack','walkBack2','runBack','walkL','walkR','walkFR','sprintFR','strafeL','strafeR','runStrafeL','runStrafeR','strafeRun','strafing','strafeR2','crouchWalk','crouchWalk2','crouchBack','crouchBackL','crouchRun'])
+      if(SOLDIER.clips[k])PL.actions[k+'_lo']=PL.mixer.clipAction(split(SOLDIER.clips[k],false,k+'_lo'));
+    if(SOLDIER.clips.aim){PL.upA=PL.mixer.clipAction(split(SOLDIER.clips.aim,true,'aim_up'));PL.upA.play();PL.upA.setEffectiveWeight(0);}}
   setAnim(PL,'idle',0);
   PL.rifle=buildRifle();PL.pistol=buildPistol();PL.ak=buildAK();scene.add(PL.pistol);
   for(const gn of [PL.rifle,PL.pistol,PL.ak])gn.traverse(o=>{o.castShadow=false;});
@@ -2441,7 +2524,6 @@ function updatePlayerBody(dt,tps,sprint){
       else want=P.sneak?'crouchWalk2':(P.speed>1.4?'crouchRun':'crouchWalk');
     }
     else if(reloading>0&&!lat&&mvF>0&&!runN)want='reloadWalk';
-    else if(runN&&shooting&&!lat&&mvF>0)want='runFire';
     else if(diagFR)want=runN?'sprintFR':'walkFR';
     else if(lat)want=mvS>0?(runN?'runStrafeR':'walkR'):(runN?'strafeRun':'walkL');
     else if(mvF<0)want=runN?'runBack':'walkBack2';
@@ -2449,16 +2531,19 @@ function updatePlayerBody(dt,tps,sprint){
   }else if(reloading>0)want=crouchOn?'reload':(wi===2?'reload2':'reload');
   else if(P.crouch&&(shooting||ads||time-PL.lastShot<2.5))want='crouchFire';
   else if(P.crouch)want='kneel';
-  else if(time-PL.lastShot<0.3)want='fire';else if(time-PL.lastShot<2.5||firing||ads)want='aim';
+  else if(time-PL.lastShot<2.5||firing||ads)want='aim';
   else if(!crouchOn&&Math.abs(yr0)>0.6)want=Math.abs(yr0)>2.2?'turn':'turnR';
   else if(!crouchOn&&idleFor>8)want='idle3';
   else want='idle';
   if(want==='idle3'&&idleFor>22&&!PL.one){PL.one={name:'grabPutBack',until:time+6,ts:1,t0:0,soft:true};PL.lastAct=time;}
+  const aimUp=!P.dead&&!P.prone&&!PL.one&&(firing||ads||time-PL.lastShot<2.5)&&P.speed>0.3&&!/^(jump|reload)/.test(want)&&PL.actions[want+'_lo'];
+  if(aimUp)want=want+'_lo';
+  if(PL.upA){PL.upW=lerp(PL.upW||0,aimUp?1:0,Math.min(1,dt*9));PL.upA.setEffectiveWeight(PL.upW);}
   setAnim(PL,want,want==='jump'||want==='jumpL'?0.12:want==='fire'||want==='crouchFire'?0.2:/^prone/.test(want)?0.45:0.3);
   if(PL.one&&PL.cur===PL.one.name){const ac=PL.actions[PL.cur];if(!PL.one.started){PL.one.started=true;ac.time=PL.one.t0||0;}ac.timeScale=PL.one.ts||1;}
   const NAT={walk:1.0,run:3.2,walkBack:1.1,runBack:2.6,strafeL:1.4,strafeR:0.76,runStrafeL:2.8,runStrafeR:3.3,walkBack2:1.92,walkL:1.9,walkR:1.9,walkFR:1.92,sprintFR:7.2,strafeRun:2.83,strafing:0.6,strafeR2:0.75,
     crouchWalk:2.04,crouchWalk2:1.22,crouchBack:1.23,crouchBackL:2.0,crouchRun:1.3,reloadWalk:0.99,runFire:4.6,proneFwd:0.25,proneBack:0.43,proneTurn:0.3};
-  if(NAT[want]&&PL.actions[want]&&PL.cur===want)PL.actions[want].timeScale=clamp(P.speed/NAT[want]*(crouchOn&&!/^crouch|^prone/.test(want)?1.25:1),0.5,1.7);
+  {const nk=want.replace(/_lo$/,'');if(NAT[nk]&&PL.actions[want]&&PL.cur===want)PL.actions[want].timeScale=clamp(P.speed/NAT[nk]*(crouchOn&&!/^crouch|^prone/.test(nk)?1.25:1),0.5,1.7);}
   if(PL.cur==='proneFire')PL.actions.proneFire.timeScale=shooting?1:0;
   if(PL.cur==='crouchFire')PL.actions.crouchFire.timeScale=shooting?1:0;
   if(PL.cur==='proneReload')PL.actions.proneReload.timeScale=2.5;
@@ -2479,11 +2564,11 @@ function updatePlayerBody(dt,tps,sprint){
   camera.getWorldDirection(pC);
   if(PL.gripped&&PL.grip&&wi>=1){const gun=wi===2?PL.ak:PL.rifle;
     const free=P.dead||/^(reload|putBack|grabPutBack|grenade|kick|pullOut|die|dying|knock)/.test(PL.cur||'');
-    const aimNow=P.prone||firing||ads||time-PL.lastShot<2.5||/^(aim|fire|crouchFire|runFire)$/.test(PL.cur||'');
-    PL.gunK=lerp(PL.gunK||0,free?0:aimNow?1:0.85,Math.min(1,dt*12));
-    gun.getWorldPosition(_gw);
+    const aimNow=P.prone||firing||ads||time-PL.lastShot<2.5||/^(aim|fire|crouchFire|runFire)$/.test(PL.cur||'')||/_lo$/.test(PL.cur||'');
+    gun.getWorldPosition(_gw);let kT=free?0:1;
     if(aimNow){camera.getWorldDirection(_gd);_gd.multiplyScalar(60).add(camera.position).sub(_gw).normalize();}
-    else{const cy=Math.cos(P.yaw),sy=Math.sin(P.yaw);_gd.set(-sy*0.82-cy*0.45,-0.3,-cy*0.82+sy*0.45).normalize();}
+    else{PL.lh.getWorldPosition(_gd);_gd.sub(_gw);const hl=_gd.length();if(hl>0.16&&hl<0.8)_gd.divideScalar(hl);else{const cy=Math.cos(P.yaw),sy=Math.sin(P.yaw);_gd.set(-sy*0.82-cy*0.45,-0.3,-cy*0.82+sy*0.45).normalize();kT=free?0:0.7;}}
+    PL.gunK=lerp(PL.gunK||0,kT,Math.min(1,dt*12));
     aimGun(gun,PL.grip,_gd,PL.gunK);}
   if(wi>=1&&PL.gripped){}
   else if(wi>=1){
@@ -2719,7 +2804,7 @@ $('go').disabled=true;$('go').textContent='Loading soldiers…';
 loadSoldier().then(async sd=>{
   BASE=sd;SOLDIER=sd;
   if(sd){const buf=await IDB.get('customSoldier');if(buf){const c=await customFrom(buf);if(c)SOLDIER=c;}}
-  spawnGuards();lowify(scene);soldierUI();$('go').disabled=false;$('go').textContent='Go in';
+  spawnGuards();lowify(scene);soldierUI();$('go').disabled=false;$('go').textContent=RESTART?'Restart mission':'Play';
 });
 
 /* ---------- interaction ---------- */
@@ -2913,8 +2998,8 @@ function step(dt){
     const fx=-Math.sin(yawS)*Math.cos(pitS),fy=Math.sin(pitS),fz=-Math.cos(yawS)*Math.cos(pitS);
     const rx=Math.cos(yawS),rz=-Math.sin(yawS);
     adsK=lerp(adsK,ads?1:0,Math.min(1,dt*10));
-    const sx=P.pos.x+rx*(0.5+0.16*adsK),sy=P.eye+P.jy+0.12-0.04*adsK+land*0.6,sz=P.pos.z+rz*(0.5+0.16*adsK);
-    PL.dBase=lerp(PL.dBase||1.85,P.prone?1.75:P.crouch?1.5:1.85,Math.min(1,dt*5));let d=lerp(PL.dBase,1.0,adsK);
+    const sx=P.pos.x+rx*(0.55+0.12*adsK),sy=P.eye+P.jy+0.3-0.18*adsK+land*0.6,sz=P.pos.z+rz*(0.55+0.12*adsK);
+    PL.dBase=lerp(PL.dBase||2.45,P.prone?2.3:P.crouch?2.1:2.45,Math.min(1,dt*5));let d=lerp(PL.dBase,1.0,adsK);
     camRay.set(tv2.set(sx,sy,sz),tv3.set(-fx,-fy,-fz));camRay.far=d+0.3;
     const hit=camRay.intersectObjects(occluders,false)[0];if(hit)d=Math.max(0.35,hit.distance-0.3);
     PL.camDist=d;

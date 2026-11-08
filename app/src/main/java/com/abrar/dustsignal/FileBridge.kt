@@ -19,6 +19,13 @@ class FileBridge(private val context: Context, private val activity: android.app
     @JavascriptInterface
     fun version(): String = Updater.versionName(context)
 
+    /** "Exit" on the main menu closes the app. */
+    @JavascriptInterface
+    fun exit() {
+        val a = activity ?: return
+        a.runOnUiThread { a.finishAndRemoveTask() }
+    }
+
     /** "Check for update" on the start screen. */
     @JavascriptInterface
     fun checkUpdate() {
