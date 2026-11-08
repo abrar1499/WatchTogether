@@ -12,9 +12,11 @@ Open `index.html` through any web server (for example GitHub Pages). It does not
 
 ## Android app
 
-Every push builds an APK with GitHub Actions and publishes it under **Releases** as `Dust Signal v<number>` (file `DustSignal.apk`). It installs as its own app (`com.abrar.dustsignal`), next to WatchTogether, and is not marked as the latest release, so the WatchTogether updater ignores it. Install a newer APK over the old one to update.
+Every push builds an APK with GitHub Actions and publishes it under **Releases** as `v<number>` (file `DustSignal.apk`), marked as the latest release.
 
-The app shows the same `index.html` full screen in landscape. It needs internet the first time, to load three.js from the CDN.
+The app uses the same app id (`com.abrar.watchtogether`) and signing key as the old WatchTogether app, so it installs as an update over it. The app checks for newer releases when it starts, downloads them in the background, and asks **Update now / Later** before installing.
+
+It shows the same `index.html` full screen in landscape, and needs internet the first time to load three.js from the CDN.
 
 ## Your own soldier
 

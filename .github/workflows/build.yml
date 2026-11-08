@@ -41,15 +41,15 @@ jobs:
           name: DustSignal-${{ github.run_number }}
           path: app/build/outputs/apk/debug/*.apk
 
-      # --latest=false keeps the WatchTogether app's auto-updater pointed at its own releases.
-      - name: Publish release
+      # Tag "v<number>" = versionCode; the in-app updater installs the latest release.
+      - name: Publish release for in-app updates
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk DustSignal.apk
-          gh release create "dust-signal-v${{ github.run_number }}" DustSignal.apk \
+          gh release create "v${{ github.run_number }}" DustSignal.apk \
             --target "${{ github.sha }}" \
             --title "Dust Signal v${{ github.run_number }}" \
             --notes "$NOTES" \
-            --latest=false
+            --latest
         env:
           GH_TOKEN: ${{ github.token }}
           NOTES: ${{ github.event.head_commit.message || 'Manual build' }}

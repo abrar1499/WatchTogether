@@ -1,4 +1,12 @@
 <resources>
     <string name="app_name">Dust Signal</string>
     <string name="choose_soldier">Choose soldier file</string>
+    <string name="update_title">Update ready (v%1$d)</string>
+    <string name="update_message">A new version of Dust Signal is downloaded. Install it now? The game will close and reopen.</string>
+    <string name="update_now">Update now</string>
+    <string name="update_later">Later</string>
+    <string name="update_installing">Updating…</string>
+    <string name="update_permission_title">Allow updates</string>
+    <string name="update_permission_message">To install updates, allow installs from this app once in the next screen, then come back.</string>
+    <string name="update_permission_ok">Open settings</string>
 </resources>

@@ -18,7 +18,8 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.abrar.dustsignal"
+        // Same id and signing key as the old WatchTogether app, so the game installs as its update
+        applicationId = "com.abrar.watchtogether"
         minSdk = 24
         targetSdk = 34
         // CI sets VERSION_CODE to the run number so every build installs as an update
@@ -67,4 +68,5 @@ tasks.named("preBuild") {
 
 dependencies {
     implementation("androidx.webkit:webkit:1.11.0")
+    implementation("androidx.core:core-ktx:1.13.1")
 }

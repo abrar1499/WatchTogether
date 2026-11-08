@@ -87,6 +87,8 @@ class MainActivity : Activity() {
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState)
         else web.loadUrl("https://$ASSET_HOST/assets/index.html")
+
+        Updater.checkOnStart(this)
     }
 
     @Deprecated("Deprecated in Java")
@@ -108,10 +110,12 @@ class MainActivity : Activity() {
         super.onResume()
         web.onResume()
         hideSystemBars()
+        Updater.onResumed(this)
     }
 
     override fun onPause() {
         web.onPause()
+        Updater.onPaused()
         super.onPause()
     }
 
