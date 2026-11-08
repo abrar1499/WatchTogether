@@ -26,9 +26,11 @@ The start screen has **Low** and **High**. Phones start on Low: no real-time sha
 
 On the start screen, tap **Upload soldier file** and choose a Mixamo character downloaded as **FBX Binary, T-pose**. The game converts it in the browser, shrinks the textures, and saves it on that device. **Use standard soldier** switches back.
 
-## Your own music
+## Music
 
-On the start screen, **Upload music** picks a song from the device. It is saved on that device only and plays on a loop during the mission. **Remove music** turns it off.
+The game has its own synthesized soundtrack: a tense drone, dark chords and low drums while sneaking, with bass, snare and horn stabs once the alarm goes off. **Built-in music** turns it on or off.
+
+**Upload music** picks a song from the device instead. It is saved on that device only and plays on a loop during the mission. **Remove music** turns it off.
 
 ## Files
 

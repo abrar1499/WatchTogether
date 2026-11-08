@@ -220,8 +220,9 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
         <label class="btn2" for="musicFile" id="musicPick">Upload music</label>
         <input type="file" id="musicFile" accept="audio/*" hidden>
         <button class="btn2" id="musicOff" hidden>Remove music</button>
+        <button class="btn2" id="scoreBtn">Built-in music: On</button>
       </div>
-      <span class="note">The song is saved on this device only and is not uploaded anywhere.</span>
+      <span class="note">The game has its own soundtrack that gets intense when the alarm goes off. An uploaded song plays instead of it, and is saved on this device only.</span>
     </div>
     <span class="note" id="note">On a computer, use the keyboard and mouse. If the mouse does not lock, hold the right button and drag to look. On a phone, play with the phone held sideways.</span>
   </div>
@@ -1149,7 +1150,7 @@ function alertGuard(g,pos,heard){
   if(!was&&heard&&!alarm&&weapons[wi].loud)raiseAlarm(g);
 }
 function raiseAlarm(g){
-  if(alarm)return;alarm=true;stats.alarm=true;alarmT=4;$('alarm').hidden=false;siren();
+  if(alarm)return;alarm=true;stats.alarm=true;alarmT=4;$('alarm').hidden=false;siren();SCORE.target=1;
   radio("They've seen you and the alarm is on. More soldiers are coming out of the barracks.");
   for(const o of guards){if(o!==g&&o.state!=='dead'&&o.group.position.distanceTo(g.group.position)<50){o.state='alert';o.lostT=0;o.lastKnown.copy(P.pos);o.lastKnown.y=0;}}
 }
@@ -1372,11 +1373,17 @@ function updatePlayerBody(dt,tps,sprint){
   if(!tps)return;
   PL.group.position.set(P.pos.x,P.jy,P.pos.z);PL.group.rotation.y=P.yaw;
   let want;
-  if(P.speed>5)want='run';else if(P.speed>0.3)want='walk';else if(reloading>0)want='reload';
+  const mvF=P.mvF||0,mvS=P.mvS||0,runN=P.speed>5;
+  if(P.speed>0.3){
+    if(Math.abs(mvS)>Math.abs(mvF)*0.8)want=mvS>0?(runN?'runStrafeR':'strafeR'):(runN?'runStrafeL':'strafeL');
+    else if(mvF<0)want=runN?'runBack':'walkBack';
+    else want=runN?'run':'walk';
+    if(!PL.actions[want])want=runN?'run':'walk';
+  }else if(reloading>0)want='reload';
   else if(P.crouch)want='kneel';else if(time-PL.lastShot<0.3)want='fire';else if(time-PL.lastShot<2.5||firing)want='aim';else want='idle';
   setAnim(PL,want,0.2);
-  if(want==='walk')PL.actions.walk.timeScale=clamp(P.speed/1.4,0.7,2.2);
-  if(want==='run')PL.actions.run.timeScale=clamp(P.speed/3.1,0.8,1.4);
+  const NAT={walk:1.4,run:3.1,walkBack:1.1,runBack:2.6,strafeL:1.4,strafeR:0.8,runStrafeL:2.8,runStrafeR:3.3};
+  if(NAT[want]&&PL.actions[want])PL.actions[want].timeScale=clamp(P.speed/NAT[want],0.6,2);
   PL.mixer.update(dt);PL.group.updateMatrixWorld(true);
   PL.rh.getWorldPosition(pA);
   camera.getWorldDirection(pC);
@@ -1540,9 +1547,55 @@ $('musicFile').addEventListener('change',async e=>{
   musicUI(ok?null:'The song could not be saved on this device.');
 });
 $('musicOff').addEventListener('click',async()=>{await IDB.del('customMusic');await IDB.del('customMusicName');stopMusic();musicUI();});
+/* Original background score: a tense drone with dark chords and low drums while sneaking,
+   which picks up bass, snare and horn stabs once the alarm goes off. */
+const SCORE={on:true,node:null,osc:null,timer:null,next:0,step:0,inten:0,target:0};
+try{SCORE.on=localStorage.getItem('ds-score')!=='off';}catch(e){}
+const midiF=n=>440*Math.pow(2,(n-69)/12);
+const PROG=[[50,53,57],[46,50,53],[48,52,55],[45,48,52]];
+const STEP16=60/92/4;
+function scoreStart(){
+  if(!AC||!SCORE.on||SCORE.node)return;
+  const out=AC.createGain();out.gain.setValueAtTime(0,AC.currentTime);out.gain.linearRampToValueAtTime(0.34,AC.currentTime+4);out.connect(master);
+  if(reverbIn){const w=AC.createGain();w.gain.value=0.3;out.connect(w);w.connect(reverbIn);}
+  SCORE.node=out;SCORE.osc=[];
+  const dr=AC.createGain();dr.gain.value=0.08;const lp=filt('lowpass',360,1.2);dr.connect(lp);lp.connect(out);
+  for(const [n,det] of [[38,-7],[38,6],[45,0]]){const o=AC.createOscillator();o.type='sawtooth';o.frequency.value=midiF(n);o.detune.value=det;o.connect(dr);o.start();SCORE.osc.push(o);}
+  const lfo=AC.createOscillator();lfo.frequency.value=0.06;const lg=AC.createGain();lg.gain.value=170;lfo.connect(lg);lg.connect(lp.frequency);lfo.start();SCORE.osc.push(lfo);
+  SCORE.next=AC.currentTime+0.15;SCORE.step=0;SCORE.timer=setInterval(scoreTick,90);
+}
+function scoreStop(){
+  if(!SCORE.node)return;const n=SCORE.node,os=SCORE.osc,t=AC.currentTime;
+  n.gain.cancelScheduledValues(t);n.gain.setValueAtTime(n.gain.value,t);n.gain.linearRampToValueAtTime(0,t+2.5);
+  clearInterval(SCORE.timer);SCORE.node=null;SCORE.osc=null;
+  setTimeout(()=>{(os||[]).forEach(o=>{try{o.stop();}catch(e){}});try{n.disconnect();}catch(e){}},2800);
+}
+function scoreTick(){
+  if(!SCORE.node||!AC)return;SCORE.inten+=(SCORE.target-SCORE.inten)*0.2;
+  while(SCORE.next<AC.currentTime+0.3){scoreStep(SCORE.step,SCORE.next);SCORE.step=(SCORE.step+1)%64;SCORE.next+=STEP16;}
+}
+function padNote(dst,t,f,dur,v){
+  const g=AC.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(v,t+1.1);g.gain.setValueAtTime(v,t+dur-0.8);g.gain.linearRampToValueAtTime(0.0001,t+dur);
+  const lp=filt('lowpass',850,0.7);lp.connect(g);g.connect(dst);
+  for(const det of [-8,7]){const o=AC.createOscillator();o.type='sawtooth';o.frequency.value=f;o.detune.value=det;o.connect(lp);o.start(t);o.stop(t+dur+0.05);}
+}
+function hornStab(dst,t,f,v){
+  const g=envG(t,0.07,v,1.1);const lp=filt('lowpass',300,2);lp.frequency.setValueAtTime(300,t);lp.frequency.linearRampToValueAtTime(1500,t+0.12);lp.frequency.exponentialRampToValueAtTime(450,t+1.0);
+  lp.connect(g);g.connect(dst);for(const [w,m] of [['sawtooth',1],['square',2]]){const o=AC.createOscillator();o.type=w;o.frequency.value=f*m;o.connect(lp);o.start(t);o.stop(t+1.3);}
+}
+function scoreStep(i,t){
+  const out=SCORE.node,bar=Math.floor(i/16),st=i%16,ch=PROG[bar],hi=SCORE.inten>0.5;
+  if(st===0){for(const n of ch)padNote(out,t,midiF(n),STEP16*16,hi?0.03:0.026);if(bar===0||(hi&&bar===2))hornStab(out,t,midiF(ch[0]-12),hi?0.07:0.035);}
+  if(st===0||st===10||(hi&&(st===6||st===14))){toneHit(out,t,'sine',st===0?68:82,36,0.003,hi?0.5:0.3,0.38);noiseHit(out,t,'lowpass',300,1,0.002,hi?0.2:0.1,0.08,0.6);}
+  if(hi?st%2===0:st%4===2)noiseHit(out,t,'highpass',7200,0.7,0.001,hi?0.06:0.025,0.04,1.4);
+  if(hi&&(st===4||st===12)){noiseHit(out,t,'bandpass',1800,0.8,0.002,0.22,0.16,1);toneHit(out,t,'triangle',190,150,0.002,0.12,0.08);}
+  if(hi&&st%2===0){const n=ch[0]-12+((st===6||st===14)?7:0);const g=envG(t,0.01,0.11,STEP16*1.6);const lp=filt('lowpass',480,1);const o=AC.createOscillator();o.type='sawtooth';o.frequency.value=midiF(n);o.connect(lp);lp.connect(g);g.connect(out);o.start(t);o.stop(t+STEP16*2);}
+  if(!hi&&(st===3||st===11)&&Math.random()<0.55){const n=ch[(Math.random()*3)|0]+12;const g=envG(t,0.005,0.035,0.6);const o=AC.createOscillator();o.type='triangle';o.frequency.value=midiF(n);o.connect(g);g.connect(out);o.start(t);o.stop(t+0.7);}
+}
+function scoreUI(){$('scoreBtn').textContent='Built-in music: '+(SCORE.on?'On':'Off');$('scoreBtn').classList.toggle('sel',SCORE.on);}
 function stopMusic(){try{if(musicSrc)musicSrc.stop();}catch(e){}musicSrc=null;if(windGain)windGain.gain.value=0.07;}
 async function startMusic(){
-  if(!AC)return;const buf=await IDB.get('customMusic');if(!buf)return;
+  if(!AC)return;const buf=await IDB.get('customMusic');if(!buf){scoreStart();return;}
   try{
     const ab=await new Promise((res,rej)=>{const r=AC.decodeAudioData(buf.slice(0),res,rej);if(r&&r.then)r.then(res,rej);});
     stopMusic();musicSrc=AC.createBufferSource();musicSrc.buffer=ab;musicSrc.loop=true;
@@ -1550,7 +1603,8 @@ async function startMusic(){
     if(windGain)windGain.gain.value=0.025;
   }catch(e){}
 }
-musicUI();
+musicUI();scoreUI();
+$('scoreBtn').addEventListener('click',()=>{SCORE.on=!SCORE.on;try{localStorage.setItem('ds-score',SCORE.on?'on':'off');}catch(e){}if(!SCORE.on)scoreStop();scoreUI();});
 $('soldierReset').addEventListener('click',async()=>{await IDB.del('customSoldier');SOLDIER=BASE;respawnGuards();soldierUI();});
 $('go').disabled=true;$('go').textContent='Loading soldiers…';
 loadSoldier().then(async sd=>{
@@ -1573,6 +1627,7 @@ function findNear(){
 
 /* ---------- end ---------- */
 function endGame(win){
+  scoreStop();stopMusic();
   if(state!=='play')return;state='end';firing=false;try{document.exitPointerLock&&document.exitPointerLock();}catch(e){}
   const secs=Math.round((performance.now()-stats.start)/1000);const mm=Math.floor(secs/60),ss=String(secs%60).padStart(2,'0');
   $('endstamp').textContent=win?'MISSION COMPLETE':'MISSION FAILED';
@@ -1684,7 +1739,7 @@ function step(dt){
   if(mv.lengthSq()>0)mv.normalize().multiplyScalar(spd*(jm?Math.max(0.45,jm):1));
   P.pos.x+=mv.x*dt;P.pos.z+=mv.z*dt;collide(P.pos,0.42);
   const rr=Math.hypot(P.pos.x,P.pos.z);if(rr>195){P.pos.x*=195/rr;P.pos.z*=195/rr;}
-  P.speed=mv.length();
+  P.speed=mv.length();P.mvF=mv.x*f.x+mv.z*f.z;P.mvS=mv.x*r.x+mv.z*r.z;
   P.vy-=12*dt;P.jy+=P.vy*dt;if(P.jy<0){if(P.vy<-3)sfxStep(0.25);P.jy=0;P.vy=0;}
   P.eye+=((P.crouch?1.05:1.7)-P.eye)*Math.min(1,dt*10);
   if(P.speed>0.1&&P.jy===0)P.bob+=dt*(4+P.speed*1.3);
@@ -1759,7 +1814,7 @@ function step(dt){
   }
   drawCompass();placeMarker();if(mapOpen)drawMap();
 }
-window.__dbg={sfx:{sfxGun,sfxDeath,sfxHitFlesh,sfxHurt,sfxWhizz,sfxReload,sfxHeart},P,guards,camera,scene,LOW,soldier:()=>SOLDIER,renderer,setState:s=>{state=s;},get time(){return time;}};
+window.__dbg={score:SCORE,sfx:{sfxGun,sfxDeath,sfxHitFlesh,sfxHurt,sfxWhizz,sfxReload,sfxHeart},P,guards,camera,scene,LOW,soldier:()=>SOLDIER,renderer,setState:s=>{state=s;},get time(){return time;}};
 renderObj();
 frame();
 })();
