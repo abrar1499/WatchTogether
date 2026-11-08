@@ -92,6 +92,29 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hi
 #soldierNote{font-size:12.5px;color:var(--ink)}
 #soldierNote.err{color:var(--red)}
 .btn:disabled{opacity:.6;cursor:wait}
+@media (max-height:560px){
+  .screen{place-items:start center;padding-block:10px}
+  .card{max-width:min(980px,100%);padding:14px 20px;gap:8px}
+  .card h1{font-size:clamp(24px,5vh,34px)}
+  .card h2{font-size:22px}
+  .card p{font-size:12px;line-height:1.45}
+  .stamp{font-size:9px;padding:1px 6px}
+  .keys{font-size:10.5px;gap:3px 12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .keys kbd{padding:0 4px}
+  .btn{font-size:16px;padding:8px 20px}
+  .btn2{font-size:10px;padding:7px 10px}
+  .upload{gap:5px;padding-top:8px}
+  .note{font-size:10px}
+  #soldierNote,#musicNote{font-size:11px}
+  .stats{gap:6px;grid-template-columns:repeat(5,minmax(0,1fr))}
+  .stats b{font-size:18px}
+  #start .card{display:block;columns:2 300px;column-gap:28px}
+  #start .card>*{break-inside:avoid;margin:0 0 9px}
+  #start .card>.stamp{display:inline-block}
+  #start .card>p:nth-of-type(2),#start .note,#qNote{display:none}
+  #start .keys{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #start .card h1 br{display:none}
+}
 @media (max-width:520px){#obj{max-width:200px;font-size:11px}#radio{max-width:calc(100vw - 32px)}#ammo{font-size:28px}#hpbar{width:150px}}
 /* touch controls */
 #tc{position:fixed;inset:0;z-index:6;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
@@ -169,7 +192,7 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
     <p>Agent Kestrel, an enemy relay station at Hadra Flats is broadcasting stolen satellite codes. You go in alone. Get inside the base, copy the codes from the terminal in the command bunker, and walk out to helicopter landing zone Raven, north-west of the base.</p>
     <p>The guards carry rifles and they shoot well. If one of them sees you, the alarm goes off and soldiers come out of the barracks. The fence on the west side is broken. Use your binoculars before you move, and stay low.</p>
     <div class="keys" id="tkeys" hidden>
-      <span><kbd>Left thumb</kbd>Move (push to edge to sprint)</span>
+      <span><kbd>Left thumb</kbd>Move (small push walks, edge runs)</span>
       <span><kbd>Right side</kbd>Tap to fire, hold and drag to aim and fire</span>
       <span><kbd>Left side</kbd>Drag to aim without firing</span>
       <span><kbd>FIRE</kbd>Shoot (hold for rifle)</span>
@@ -1130,7 +1153,7 @@ function fire(){
   const sh=shells[shellI++%shells.length];sh.m.visible=true;sh.t=2;
   if(tps)tg.localToWorld(sh.m.position.set(0.03,0.05,0.05));else camera.localToWorld(sh.m.position.set(0.14,-0.1,-0.35));
   tv3.set(rand(1.2,2),rand(1.5,2.5),rand(-0.3,0.3)).applyQuaternion(camera.quaternion);sh.v.copy(tv3);sh.spin.set(rand(-20,20),rand(-20,20),rand(-20,20));clink();
-  const sp=w.spread*(P.speed>5?1.5:P.speed>0.5?1.25:1)*(P.crouch?0.6:1);
+  const sp=w.spread*(P.speed>2.6?1.5:P.speed>0.5?1.2:1)*(P.crouch?0.6:1);
   camera.getWorldDirection(tv);tv.x+=rand(-sp,sp);tv.y+=rand(-sp,sp);tv.z+=rand(-sp,sp);tv.normalize();
   const h=castFromCamera(tv,500,true);
   if(tps&&w.loud)tracer(wFlash.position,h?h.point:tv3.copy(camera.position).addScaledVector(tv,150));
@@ -1190,7 +1213,7 @@ function moveTo(g,x,z,spd,dt){
 function guardShoot(g,dist){
   const m=g.muz.getWorldPosition(new THREE.Vector3());
   const target=P.pos.clone();target.y=P.eye+P.jy-0.4;
-  let chance=0.72-dist/85-(P.crouch?0.12:0)-(P.speed>5?0.18:P.speed>1?0.08:0);
+  let chance=0.72-dist/85-(P.crouch?0.12:0)-(P.speed>2.6?0.18:P.speed>1?0.08:0);
   if(TOUCH)chance-=0.1;chance=clamp(chance,0.05,0.75);
   const hit=Math.random()<chance;
   if(!hit){target.x+=rand(-1.2,1.2);target.y+=rand(-0.6,0.9);target.z+=rand(-1.2,1.2);}
@@ -1207,7 +1230,7 @@ function updateGuard(g,dt){
   g.losT-=dt;
   if(g.losT<=0){
     g.losT=LOW?0.2:0.12;g.los=false;
-    const view=g.state==='alert'?95:52*(P.crouch?0.6:1)*(P.speed>5.5?1.25:1);
+    const view=g.state==='alert'?95:52*(P.crouch?0.6:1)*(P.speed>2.6?1.25:1);
     if(dist<view){
       const fx=-Math.sin(g.group.rotation.y),fz=-Math.cos(g.group.rotation.y);
       const dot=(fx*dx+fz*dz)/Math.max(hd,0.001);
@@ -1215,9 +1238,9 @@ function updateGuard(g,dt){
     }
   }
   if(g.state!=='alert'){
-    if(P.speed>5.5&&hd<9&&g.seeT<0.5)g.seeT=Math.min(0.5,g.seeT+dt*0.6);
+    if(P.speed>2.6&&hd<9&&g.seeT<0.5)g.seeT=Math.min(0.5,g.seeT+dt*0.6);
     if(g.los){
-      const rate=(0.6+20/Math.max(dist,2))*0.6*(P.crouch?0.65:1)*(P.speed>5.5?1.4:1);
+      const rate=(0.6+20/Math.max(dist,2))*0.6*(P.crouch?0.65:1)*(P.speed>2.6?1.4:1);
       g.seeT+=dt*rate;
       if(g.seeT>=1){alertGuard(g,pe);animateGuard(g,dt);return;}
     }else g.seeT=Math.max(0,g.seeT-dt*0.22);
@@ -1391,7 +1414,7 @@ function updatePlayerBody(dt,tps,sprint){
   if(!tps)return;
   PL.group.position.set(P.pos.x,P.jy,P.pos.z);PL.group.rotation.y=P.yaw;
   let want;
-  const mvF=P.mvF||0,mvS=P.mvS||0,runN=P.speed>5;
+  const mvF=P.mvF||0,mvS=P.mvS||0,runN=P.speed>2.6;
   if(P.speed>0.3){
     if(Math.abs(mvS)>Math.abs(mvF)*0.8)want=mvS>0?(runN?'runStrafeR':'strafeR'):(runN?'runStrafeL':'strafeL');
     else if(mvF<0)want=runN?'runBack':'walkBack';
@@ -1400,8 +1423,8 @@ function updatePlayerBody(dt,tps,sprint){
   }else if(reloading>0)want='reload';
   else if(P.crouch)want='kneel';else if(time-PL.lastShot<0.3)want='fire';else if(time-PL.lastShot<2.5||firing)want='aim';else want='idle';
   setAnim(PL,want,0.2);
-  const NAT={walk:1.4,run:3.1,walkBack:1.1,runBack:2.6,strafeL:1.4,strafeR:0.8,runStrafeL:2.8,runStrafeR:3.3};
-  if(NAT[want]&&PL.actions[want])PL.actions[want].timeScale=clamp(P.speed/NAT[want],0.6,2);
+  const NAT={walk:1.0,run:3.2,walkBack:1.1,runBack:2.6,strafeL:1.4,strafeR:0.76,runStrafeL:2.8,runStrafeR:3.3};
+  if(NAT[want]&&PL.actions[want])PL.actions[want].timeScale=clamp(P.speed/NAT[want],0.5,1.6);
   PL.mixer.update(dt);PL.group.updateMatrixWorld(true);
   PL.rh.getWorldPosition(pA);
   camera.getWorldDirection(pC);
@@ -1752,12 +1775,22 @@ function step(dt){
   if(keys.KeyW||keys.ArrowUp)mv.add(f);if(keys.KeyS||keys.ArrowDown)mv.sub(f);if(keys.KeyD||keys.ArrowRight)mv.add(r);if(keys.KeyA||keys.ArrowLeft)mv.sub(r);
   let jm=0;
   if(mv.lengthSq()===0&&joy.id!==null){jm=Math.min(1,Math.hypot(joy.x,joy.y));if(jm>0.15){mv.addScaledVector(f,-joy.y).addScaledVector(r,joy.x);}else jm=0;}
-  const sprint=((keys.ShiftLeft||keys.ShiftRight)||jm>0.93)&&!P.crouch&&!binoc;
-  const spd=P.crouch?2.3:sprint?7.4:4.3;
-  if(mv.lengthSq()>0)mv.normalize().multiplyScalar(spd*(jm?Math.max(0.45,jm):1));
-  P.pos.x+=mv.x*dt;P.pos.z+=mv.z*dt;collide(P.pos,0.42);
+  // human speeds: walk 1.6 m/s, run 4.2 (slower backwards and sideways), crouch 1.1
+  const wantRun=((keys.ShiftLeft||keys.ShiftRight)||jm>0.9)&&!P.crouch&&!binoc;
+  let tgt=0;
+  if(mv.lengthSq()>0){
+    mv.normalize();const fw=mv.x*f.x+mv.z*f.z;
+    tgt=P.crouch?1.1:wantRun?(fw<-0.3?2.8:fw<0.5?3.4:4.2):1.6;
+    if(jm&&!wantRun)tgt*=clamp(jm/0.7,0.4,1);
+  }
+  const sprint=wantRun&&tgt>2.5;
+  if(!P.vel)P.vel=new THREE.Vector3();
+  const want=mv.multiplyScalar(tgt);
+  P.vel.lerp(want,Math.min(1,dt*(want.lengthSq()>P.vel.lengthSq()?5:9)));
+  if(P.vel.lengthSq()<0.0004)P.vel.set(0,0,0);
+  P.pos.x+=P.vel.x*dt;P.pos.z+=P.vel.z*dt;collide(P.pos,0.42);
   const rr=Math.hypot(P.pos.x,P.pos.z);if(rr>195){P.pos.x*=195/rr;P.pos.z*=195/rr;}
-  P.speed=mv.length();P.mvF=mv.x*f.x+mv.z*f.z;P.mvS=mv.x*r.x+mv.z*r.z;
+  P.speed=P.vel.length();P.mvF=P.vel.x*f.x+P.vel.z*f.z;P.mvS=P.vel.x*r.x+P.vel.z*r.z;
   P.vy-=12*dt;P.jy+=P.vy*dt;if(P.jy<0){if(P.vy<-3)sfxStep(0.25);P.jy=0;P.vy=0;}
   P.eye+=((P.crouch?1.05:1.7)-P.eye)*Math.min(1,dt*10);
   if(P.speed>0.1&&P.jy===0)P.bob+=dt*(4+P.speed*1.3);
@@ -1832,7 +1865,7 @@ function step(dt){
   }
   drawCompass();placeMarker();if(mapOpen)drawMap();
 }
-window.__dbg={sfxbuf:SFXBUF,weapons,score:SCORE,sfx:{sfxGun,sfxDeath,sfxHitFlesh,sfxHurt,sfxWhizz,sfxReload,sfxHeart},P,guards,camera,scene,LOW,soldier:()=>SOLDIER,renderer,setState:s=>{state=s;},get time(){return time;}};
+window.__dbg={endGame,sfxbuf:SFXBUF,weapons,score:SCORE,sfx:{sfxGun,sfxDeath,sfxHitFlesh,sfxHurt,sfxWhizz,sfxReload,sfxHeart},P,guards,camera,scene,LOW,soldier:()=>SOLDIER,renderer,setState:s=>{state=s;},get time(){return time;}};
 renderObj();
 frame();
 })();
