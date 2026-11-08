@@ -36,7 +36,7 @@ On the start screen, tap **Upload soldier file** and choose a Mixamo character d
 
 - `index.html`: the whole game (three.js r128 from cdnjs)
 - `sfx/`: the gun sounds, unedited original files
-- `models/soldier.b64.txt`: the standard soldier (Mixamo "Swat Guy", merged into 2 meshes and simplified to about 16k triangles) with its animations, as a base64 GLB
+- `models/soldier.b64.txt`: the standard soldier (Mixamo "Swat Guy", merged into 2 meshes and simplified to about 16k triangles) with 66 Mixamo animations (walk, run, strafe, crouch, prone, grenade throw, kick, hit reactions and several deaths), as a base64 GLB
 - `vendor/`: bundled libraries (three.js r128 and r160 modules, meshoptimizer), MIT licensed, with their licenses
 - `app/`: the Android wrapper (a full-screen WebView)
 - `.github/workflows/build.yml`: builds and releases the APK
