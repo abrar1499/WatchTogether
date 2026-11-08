@@ -1321,8 +1321,8 @@ tcEl.querySelectorAll('.tb').forEach(b=>{
 
 /* ---------- weapons ---------- */
 function switchW(i){autoStop();if(i===wi||reloading>0||switchT>0)return;switchT=0.4;setTimeout(()=>{wi=i;wm.forEach((m,k)=>{m.visible=k===i;});},200);beep(300,0.05,0.05);}
-const RELOADF={}; // e.g. {ak:'sfx/....mp3', m4:'sfx/....mp3', pistol:'sfx/....mp3'} once the files are supplied
-function startReload(){autoStop();const w=weapons[wi];if(reloading>0||w.mag===w.size||w.res<=0)return;reloading=1.6;{const rk=['pistol','m4','ak'][wi];const rb=AC&&(SFXBUF['reload_'+rk]||SFXBUF.reload_all);if(rb){const src=AC.createBufferSource();src.buffer=rb;src.playbackRate.value=clamp(rb.duration/1.6,1,1.5);src.connect(master);src.start();}}}
+const RELOADF={pistol:'sfx/freesound_community-1911-reload-6248.mp3',m4:'sfx/melbeebelbee-gun-full-reload-384507.mp3',ak:'sfx/melbeebelbee-gun-full-reload-384507.mp3'};
+function startReload(){autoStop();const w=weapons[wi];if(reloading>0||w.mag===w.size||w.res<=0)return;reloading=1.6;{const rk=['pistol','m4','ak'][wi];const rb=AC&&(SFXBUF['reload_'+rk]||SFXBUF.reload_all);if(rb){const src=AC.createBufferSource();src.buffer=rb;src.playbackRate.value=clamp(rb.duration/1.6,1,1.5);src.connect(master);src.start(AC.currentTime+(rb.duration<1.4?clamp(1.6*0.25-0.2,0,0.4):0));}}}
 const ray=new THREE.Raycaster();const tv=new THREE.Vector3(),tv2=new THREE.Vector3(),tv3=new THREE.Vector3();
 function aliveParts(){const a=[];for(const g of guards)if(g.state!=='dead')a.push(...g.parts);return a;}
 function castFromCamera(dir,far,withGuards){

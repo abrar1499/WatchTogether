@@ -50,5 +50,7 @@ Sounds in `sfx/` are unedited sound effects from [Pixabay](https://pixabay.com/s
 - M4A1: "Gun fire" by foisal72 (475286)
 - Pistol: "Gun rifle shots" by dennish18
 - Enemy rifles: "Machin gun AK47 sound effect 6" by beetpro
+- Pistol reload: "1911 reload" by freesound_community
+- M4 and AK-47 reload: "Gun full reload" by melbeebelbee
 
 The game plays only these files (no synthesized sounds). Automatic weapons loop the steady full-auto part of their file while FIRE is held.
