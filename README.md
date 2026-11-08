@@ -8,9 +8,9 @@ Open `index.html` through any web server (for example GitHub Pages). It does not
 
 The game works **offline**: three.js, its loaders and meshoptimizer are bundled in `vendor/` (the Android app ships them in its assets), so no internet connection is needed to start or play. Only the Google web fonts need a connection; without one, system fonts are used. An uploaded soldier or song is stored on the device, so it also plays offline.
 
-**Computer:** WASD move, mouse look, click fire, Shift sprint, C crouch, 1/2/3 pistol, M4A1, AK-47, R reload, B binoculars, M map, V first/third person, E use, Space jump, Esc pause.
+**Computer:** WASD move, mouse look, click fire, hold right mouse or Q to aim, Z to switch the 1×/4× scope, Shift sprint, C crouch, 1/2/3 pistol, M4A1, AK-47, R reload, B binoculars, M map, V first/third person, E use, Space jump, Esc pause.
 
-**Phone:** hold the phone sideways. Drag in the bottom-left corner to move: a small push sneaks, half a push walks, the edge sprints. Drag anywhere else on the screen to aim. Only the FIRE button shoots; keep the finger down and slide it to aim while firing, lift it to stop. VIEW switches between third person (your soldier on screen, the default) and first person.
+**Phone:** hold the phone sideways. Drag in the bottom-left corner to move: a small push sneaks, half a push walks, the edge sprints. Drag anywhere else on the screen to aim. Only the FIRE button shoots; keep the finger down and slide it to aim while firing, lift it to stop. Hold AIM (left side) to aim with the red dot; the 1×/4× button switches the rifle scope. VIEW switches between third person (your soldier on screen, the default) and first person.
 
 ## Android app
 
@@ -57,5 +57,12 @@ Sounds in `sfx/` are unedited sound effects from [Pixabay](https://pixabay.com/s
   - base concrete: "Concrete footsteps" 6752 (freesound_community); running: "Running on the floor" (thumblegray); crouched: "Concrete footsteps 2" (freesound_community)
   - inside the bunker: "Footsteps walking boots parquet" (soundreality)
   - guards near you: "Heavy footsteps walking" (freesound_community)
+- Music and atmosphere, mixed by what is happening:
+  - mission start: "Descent whoosh" (viralaudio) and "Cinematic action epic trailer: Iron Vanguard" (openmindaudio)
+  - sneaking: "Tense suspense ambience" (absolutesound), "Spacecraft orbiting between meteor strikes" (liecio) as a low rumble, "Mid nights sound" (ncprime), and the odd "Raven call" (freesound_community)
+  - spotted: "Scary sound effect" (dragon-studio)
+  - alarm and firefights: "Action loop E 90 BPM" (brvhrtz)
+  - escape to the helicopter: "Action trailer" (arctsound)
+  - low health: "Heartbeat sound" (dragon-studio)
 
 The game plays only these files (no synthesized sounds). Automatic weapons loop the steady full-auto part of their file while FIRE is held.
