@@ -1323,6 +1323,33 @@ function loadSoldier(){return new Promise(res=>{
 });}
 function buildGun(){return buildAK();}
 function boneAttach(model,boneName,obj,x,y,z){const b=model.getObjectByName(boneName);if(!b)return null;const ws=b.getWorldScale(new THREE.Vector3()).x;obj.scale.setScalar(1/ws);obj.position.set(x/ws,y/ws,z/ws);b.add(obj);return b;}
+/* Rifles are parented to the right hand. The hand-local offset is measured once from the
+   "aim" pose: barrel along the line from the right hand to the left hand, stock upright. */
+function calibGrip(sd){
+  if(sd.grip)return sd.grip;
+  const V=THREE.Vector3;
+  const m=THREE.SkeletonUtils.clone(sd.scene);m.scale.multiplyScalar(sd.scale);m.rotation.y=Math.PI;
+  const holder=new THREE.Group();holder.add(m);holder.updateMatrixWorld(true);
+  const mix=new THREE.AnimationMixer(m);const clip=sd.clips.aim||sd.clips.idle;
+  if(clip){mix.clipAction(clip).play();mix.update(0.6);}
+  holder.updateMatrixWorld(true);
+  const rh=m.getObjectByName('mixamorigRightHand'),lh=m.getObjectByName('mixamorigLeftHand');
+  if(!rh||!lh){sd.grip=null;return null;}
+  const pr=rh.getWorldPosition(new V()),pl=lh.getWorldPosition(new V());
+  const barrel=pl.clone().sub(pr);if(barrel.length()<0.05)barrel.set(0,0,-1);barrel.normalize();
+  const up=new V(0,1,0);
+  const qg=new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(barrel,new V(),up));
+  const qh=rh.getWorldQuaternion(new THREE.Quaternion());
+  const ql=qh.clone().invert().multiply(qg);
+  const gp=pr.clone().addScaledVector(barrel,-0.02);gp.y-=0.025;
+  const lp=rh.worldToLocal(gp.clone());const ws=rh.getWorldScale(new V()).x;
+  sd.grip={q:ql,p:lp,s:1/ws};
+  return sd.grip;
+}
+function holdGun(hand,gun,grip){
+  if(!hand||!grip)return false;
+  hand.add(gun);gun.position.copy(grip.p);gun.quaternion.copy(grip.q);gun.scale.setScalar(grip.s);return true;
+}
 function makeSkinGuard(path,o={}){
   const g={kind:'skin',group:new THREE.Group(),parts:[],path,wp:0,hp:100,state:'patrol',seeT:0,cool:rand(0.6,1.2),lastKnown:new THREE.Vector3(),lostT:0,
     static:!!o.static,y:o.y||0,face:o.face||0,phase:rand(0,6),los:false,losT:rand(0,0.12),wait:0,speed:Math.min(o.speed||1.4,1.6),searched:false,
@@ -1348,7 +1375,7 @@ function makeSkinGuard(path,o={}){
   hb('mixamorigHips',0.4,0.26,0.28,0,0,0,'body');
   for(const sd of ['Left','Right']){hb('mixamorig'+sd+'UpLeg',0.18,0.46,0.2,0,0.22,0,'legs');hb('mixamorig'+sd+'Leg',0.16,0.46,0.18,0,0.22,0,'legs');hb('mixamorig'+sd+'Arm',0.13,0.3,0.13,0,0.14,0,'body');hb('mixamorig'+sd+'ForeArm',0.12,0.28,0.12,0,0.13,0,'body');}
   g.rh=m.getObjectByName('mixamorigRightHand');g.lh=m.getObjectByName('mixamorigLeftHand');g.hips=m.getObjectByName('mixamorigHips');
-  g.gun=buildGun();scene.add(g.gun);g.muz=g.gun.muz;
+  g.gun=buildGun();g.gripped=holdGun(g.rh,g.gun,calibGrip(SOLDIER));if(!g.gripped)scene.add(g.gun);g.muz=g.gun.muz;
   g.mf=new THREE.Sprite(new THREE.SpriteMaterial({map:flashTex,color:0xffc070,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true}));g.mf.scale.set(0.5,0.5,0.5);g.mf.visible=false;g.muz.add(g.mf);
   if(TOUCH||LOW){const b=new THREE.Mesh(blobGeo,blobMat);b.position.y=0.03;b.renderOrder=1;R.add(b);}
   g.mixer=new THREE.AnimationMixer(m);g.actions={};
@@ -1375,12 +1402,13 @@ function animateSkin(g,dt){
   if(want==='walk')g.actions.walk.timeScale=clamp(g.mv/1.0,0.6,1.7);
   if(want==='run')g.actions.run.timeScale=clamp(g.mv/3.1,0.7,1.3);
   const dist=camera.position.distanceTo(g.group.position);
-  const show=dist<(TOUCH?150:220);g.group.visible=show;g.gun.visible=show;
+  const show=dist<(TOUCH?150:220);g.group.visible=show;if(!g.gripped)g.gun.visible=show;
   g.animAcc=(g.animAcc||0)+dt;
   if(!show)return;
   if(g.animAcc>=(dist>100?0.2:dist>40?0.066:0)){g.mixer.update(g.animAcc);g.animAcc=0;}
   g.group.updateMatrixWorld(true);
-  if(g.state!=='dead'||g.deadT<0.35){
+  if(g.gripped){}
+  else if(g.state!=='dead'||g.deadT<0.35){
     g.rh.getWorldPosition(gA);g.lh.getWorldPosition(gB);
     gC.subVectors(gB,gA);const len=gC.length();
     if(len<0.08||len>0.9){gC.set(-Math.sin(g.group.rotation.y),0,-Math.cos(g.group.rotation.y));}else gC.divideScalar(len);
@@ -1405,7 +1433,8 @@ function makePlayerBody(){
   PL.mixer=new THREE.AnimationMixer(m);PL.actions={};PL.cur=null;
   for(const k in SOLDIER.clips){const a=PL.mixer.clipAction(SOLDIER.clips[k]);PL.actions[k]=a;}
   setAnim(PL,'idle',0);
-  PL.rifle=buildRifle();PL.pistol=buildPistol();PL.ak=buildAK();scene.add(PL.rifle,PL.pistol,PL.ak);
+  PL.rifle=buildRifle();PL.pistol=buildPistol();PL.ak=buildAK();scene.add(PL.pistol);
+  const grip=calibGrip(SOLDIER);PL.gripped=holdGun(PL.rh,PL.rifle,grip)&&holdGun(PL.rh,PL.ak,grip);if(!PL.gripped)scene.add(PL.rifle,PL.ak);
   if(LOW||TOUCH){const b=new THREE.Mesh(blobGeo,blobMat);b.position.y=0.03;R.add(b);}
   R.visible=false;PL.rifle.visible=false;PL.pistol.visible=false;PL.ak.visible=false;
 }
@@ -1430,7 +1459,8 @@ function updatePlayerBody(dt,tps,sprint){
   PL.mixer.update(dt);PL.group.updateMatrixWorld(true);
   PL.rh.getWorldPosition(pA);
   camera.getWorldDirection(pC);
-  if(wi>=1){
+  if(wi>=1&&PL.gripped){}
+  else if(wi>=1){
     const gun=wi===2?PL.ak:PL.rifle;
     PL.lh.getWorldPosition(pB);const d=pB.sub(pA);const len=d.length();
     if(len>0.08&&len<0.9)d.divideScalar(len);else d.set(-Math.sin(P.yaw),0,-Math.cos(P.yaw));
