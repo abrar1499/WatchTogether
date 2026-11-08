@@ -1554,7 +1554,7 @@ function fxUniforms(dt){
   CAM.pyaw=camera.rotation.y;CAM.ppit=camera.rotation.x;U.uVel.value.set(mx,my);
   U.uRad.value=FX.blur*0.028;
   // low health: colour drains, edges go red
-  const lowK=state==='play'||state==='dying'?clamp((50-P.hp)/50,0,1):0;U.uSat.value=lerp(1.06,0.18,lowK);U.uLow.value=lowK;U.uDeath.value=FX.death;
+  const lowK=state==='play'||state==='dying'?clamp((40-P.hp)/40,0,1):0;U.uSat.value=lerp(1.06,0.18,lowK);U.uLow.value=lowK;U.uDeath.value=FX.death;
   const ps=renderer.getPixelRatio()*innerHeight*camera.projectionMatrix.elements[5]*0.5;for(const s of psList)s.mat.uniforms.uScale.value=ps;
 }
 function fxWorld(dt){
@@ -1573,8 +1573,8 @@ function fxWorld(dt){
   if(FX.heat>0.35&&state==='play'&&Math.random()<dt*FX.heat*10){const tg=isTPS()?[PL.pistol,PL.rifle,PL.ak][wi]:null;if(tg&&tg.muz)tg.muz.getWorldPosition(_fv);else flash.getWorldPosition(_fv);emit(SMK,_fv.x,_fv.y,_fv.z,rand(-0.05,0.05),rand(0.25,0.5),rand(-0.05,0.05),rand(1.2,2),0.03,rand(0.18,0.3),0xc8c2b8,0.16*FX.heat,-0.05,0.8,0.5,0);}
   CAM.kp*=Math.exp(-dt*13);CAM.ky*=Math.exp(-dt*11);CAM.kr*=Math.exp(-dt*9);CAM.landT+=dt;
   FX.blur=Math.max(0,FX.blur-dt*2.6);
-  FX.scr=Math.max(0,Math.min(FX.scr,clamp((100-P.hp)/70,0,1))-dt*0.02);
-  const be=$('bloodscr');if(be){const o=(FX.scr*0.6).toFixed(3);if(be.style.opacity!==o)be.style.opacity=o;}
+  FX.scr=Math.max(0,Math.min(FX.scr,clamp((100-P.hp)/90,0,1))-dt*0.03);
+  const be=$('bloodscr');if(be){const o=(FX.scr*0.5).toFixed(3);if(be.style.opacity!==o)be.style.opacity=o;}
   const vg=$('vig');if(vg){const v=POST.on?'none':'block';if(vg.style.display!==v)vg.style.display=v;}
   if(PL.one&&time>=PL.one.until)PL.one=null;
   if(state==='play'){nadeUpdate(dt);kickUpdate();}
@@ -2021,7 +2021,7 @@ function fire(){
   const tps=isTPS();const tg=tps?[PL.pistol,PL.rifle,PL.ak][wi]:null;
   if(tps){tg.muz.getWorldPosition(wFlash.position);wFlash.scale.setScalar(w.loud?rand(0.35,0.5):0.18);wLight.position.copy(wFlash.position);}
   const sp=w.spread*(P.speed>2.6?1.5:P.speed>0.5?1.2:1)*(P.prone?0.42:P.crouch?0.6:1)*(ads?(scoped()?0.15:0.35):1)*(1+recoil*0.6);
-  camera.getWorldDirection(tv);tv.x+=rand(-sp,sp);tv.y+=rand(-sp,sp);tv.z+=rand(-sp,sp);tv.normalize();
+  camera.getWorldDirection(tv);const sp2=(TOUCH&&aimAssist(tv))?sp*0.6:sp;tv.x+=rand(-sp2,sp2);tv.y+=rand(-sp2,sp2);tv.z+=rand(-sp2,sp2);tv.normalize();
   const h=castFromCamera(tv,500,true);
   fxFire(w,tps,tg,h,tv);
   if(h){
@@ -2038,6 +2038,19 @@ function fire(){
   }
   const hear=w.loud?85:9;
   for(const g of guards){if(g.state==='dead')continue;const d=g.group.position.distanceTo(P.pos);if(d<hear)alertGuard(g,P.pos,true);}
+}
+const _aa=new THREE.Vector3(),_ab=new THREE.Vector3(),_ac=new THREE.Vector3();
+function aimAssist(dir){
+  let best=null,bestA=1e9;
+  for(const g of guards){if(g.state==='dead'||!g.group.visible)continue;
+    if(g.kind==='skin'&&g.hips){g.hips.getWorldPosition(_aa);_aa.y+=0.22;}else _aa.copy(g.group.position).setY((g.y||0)+1.25);
+    _ab.subVectors(_aa,camera.position);const d=_ab.length();if(d>90||d<1)continue;_ab.divideScalar(d);
+    const a=Math.acos(clamp(_ab.dot(dir),-1,1));const lim=Math.min(0.09,Math.max(ads?0.045:0.03,0.5/d));
+    if(a<lim&&a<bestA){bestA=a;best=g;_ac.copy(_ab);}}
+  if(!best)return false;
+  if(best.kind==='skin'&&best.hips){best.hips.getWorldPosition(_aa);_aa.y+=0.22;}else _aa.copy(best.group.position).setY((best.y||0)+1.25);
+  if(!clearLine(camera.position,_aa))return false;
+  dir.lerp(_ac,0.85).normalize();return true;
 }
 function kill(g,head,dir){
   setTimeout(()=>{if(!scene)return;const bp=bodyPos(g,new THREE.Vector3());lowify(ammoBox(bp.x+0.6,bp.z+0.3,g.y));if(Math.random()<0.4)lowify(medkitAt(bp.x-0.5,bp.z-0.4,g.y));},1300);
@@ -2113,13 +2126,14 @@ function guardShoot(g,dist){
   if(state!=='play')return;
   const m=g.muz.getWorldPosition(new THREE.Vector3());
   const target=P.pos.clone();target.y=P.eye+P.jy-0.4;
-  let chance=0.72-dist/85-(P.prone?0.24:P.crouch?0.12:0)-(P.speed>2.6?0.18:P.speed>1?0.08:0);
-  if(TOUCH)chance-=0.1;chance=clamp(chance,0.05,0.75);
-  const hit=Math.random()<chance;
+  let chance=0.66-dist/70-(P.prone?0.24:P.crouch?0.12:0)-(P.speed>2.6?0.18:P.speed>1?0.08:0);
+  if(TOUCH)chance-=0.15;chance=clamp(chance,0.04,0.6);
+  if(time-(g.lastShotT==null?-99:g.lastShotT)>4)g.burstN=0;g.lastShotT=time;g.burstN=(g.burstN||0)+1;
+  const hit=g.burstN>2&&Math.random()<chance;
   if(!hit){target.x+=rand(-1.2,1.2);target.y+=rand(-0.6,0.9);target.z+=rand(-1.2,1.2);}
   fxEnemyShot(g,m,target,dist);g.kick=1;g.muzzleT=0.05;g.shotT=0.45;
   sfxGun('enemy',clamp(0.8-dist/85,0.04,0.62),clamp(panOf(m),-0.85,0.85));
-  if(hit){const dmg=Math.round(rand(7,13));P.hp-=dmg;P.lastHit=time;dmgT=0.4;sfxHurt();shake=Math.max(shake,0.12);showDmgDir(m);fxPlayerHit(m);if(P.hp<=0){P.hp=0;playerDie();}}
+  if(hit){const dmg=Math.round(rand(6,10));P.hp-=dmg;P.lastHit=time;dmgT=0.4;sfxHurt();shake=Math.max(shake,0.12);showDmgDir(m);fxPlayerHit(m);if(P.hp<=0){P.hp=0;playerDie();}}
 }
 function updateGuard(g,dt){
   g.mv=0;
@@ -2214,7 +2228,7 @@ async function optimizeSoldier(sc){
     after+=(g.index?g.index.count:pa.count)/3;
     g.computeBoundingSphere();if(g.boundingSphere)g.boundingSphere.radius*=2.4;
     m.frustumCulled=true;m.castShadow=false;m.receiveShadow=false;
-    for(const mt of (Array.isArray(m.material)?m.material:[m.material])){if(mt.map){mt.map.anisotropy=MAXANI;if(!mt.emissiveMap){mt.emissiveMap=mt.map;mt.emissive=new THREE.Color(0x5a5852);}}if(mt.normalMap)mt.normalMap.anisotropy=MAXANI;mt.needsUpdate=true;}
+    for(const mt of (Array.isArray(m.material)?m.material:[m.material])){if(mt.map){if(mt.color)mt.color.setScalar(Math.max(mt.color.r,0.92));mt.map.anisotropy=MAXANI;if(!mt.emissiveMap){mt.emissiveMap=mt.map;mt.emissive=new THREE.Color(0x5a5852);}}if(mt.normalMap)mt.normalMap.anisotropy=MAXANI;mt.needsUpdate=true;}
   }
   sc.userData.tris=Math.round(after);sc.userData.trisBefore=Math.round(total);
   return sc;
@@ -2899,7 +2913,7 @@ function step(dt){
     const fx=-Math.sin(yawS)*Math.cos(pitS),fy=Math.sin(pitS),fz=-Math.cos(yawS)*Math.cos(pitS);
     const rx=Math.cos(yawS),rz=-Math.sin(yawS);
     adsK=lerp(adsK,ads?1:0,Math.min(1,dt*10));
-    const sx=P.pos.x+rx*(0.5-0.06*adsK),sy=P.eye+P.jy+0.12-0.06*adsK+land*0.6,sz=P.pos.z+rz*(0.5-0.06*adsK);
+    const sx=P.pos.x+rx*(0.5+0.16*adsK),sy=P.eye+P.jy+0.12-0.04*adsK+land*0.6,sz=P.pos.z+rz*(0.5+0.16*adsK);
     PL.dBase=lerp(PL.dBase||1.85,P.prone?1.75:P.crouch?1.5:1.85,Math.min(1,dt*5));let d=lerp(PL.dBase,1.0,adsK);
     camRay.set(tv2.set(sx,sy,sz),tv3.set(-fx,-fy,-fz));camRay.far=d+0.3;
     const hit=camRay.intersectObjects(occluders,false)[0];if(hit)d=Math.max(0.35,hit.distance-0.3);
@@ -2950,7 +2964,7 @@ function step(dt){
   if(P.hp<30){P.heartT=(P.heartT||0)-dt;if(P.heartT<=0){P.heartT=P.hp<15?0.65:0.9;sfxHeart();}}
   hitT=Math.max(0,hitT-dt);$('hit').style.opacity=hitT>0?1:0;
   if(time-(P.lastHit==null?-99:P.lastHit)>5&&P.hp<100)P.hp=Math.min(100,P.hp+5*dt);
-  dmgT=Math.max(0,dmgT-dt);{const low=clamp((60-P.hp)/60,0,1)*0.75;$('dmg').style.opacity=Math.max(dmgT>0?Math.min(1,dmgT*2.2):0,low);}
+  dmgT=Math.max(0,dmgT-dt);{const low=clamp((45-P.hp)/45,0,1)*0.6;$('dmg').style.opacity=Math.max(dmgT>0?Math.min(1,dmgT*2.2):0,low);}
   if(pickT>0){pickT-=dt;if(pickT<=0)$('pick').style.opacity=0;}
   dirT=Math.max(0,dirT-dt);$('dmgdir').style.opacity=dirT>0?Math.min(1,dirT*1.5):0;
   {const spr=(P.speed>2.6?1.5:P.speed>0.5?1.2:1)*(P.crouch?0.75:1)*(ads?0.5:1)+recoil*0.8;$('xhair').style.transform='translate(-50%,-50%) scale('+(0.7+spr*0.45).toFixed(3)+')';}
