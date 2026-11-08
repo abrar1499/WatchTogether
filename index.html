@@ -1158,10 +1158,11 @@ const blobMat=new THREE.MeshBasicMaterial({map:blobTex,transparent:true,depthWri
 const blobGeo=new THREE.PlaneGeometry(1.3,1.3).rotateX(-Math.PI/2);
 function prepSoldier(gl){
   const sc=gl.scene;sc.updateMatrixWorld(true);
-  sc.traverse(c=>{if(c.isMesh){c.material=/joint/i.test(c.name)||/joint/i.test(c.material&&c.material.name||'')?SK.joints:SK.surface;c.castShadow=true;c.receiveShadow=true;c.frustumCulled=false;}});
+  let textured=false;sc.traverse(c=>{if(c.isMesh&&c.material&&c.material.map)textured=true;});
+  sc.traverse(c=>{if(c.isMesh){if(!textured)c.material=/joint/i.test(c.name)||/joint/i.test(c.material&&c.material.name||'')?SK.joints:SK.surface;c.castShadow=true;c.receiveShadow=true;c.frustumCulled=false;}});
   const box=new THREE.Box3().setFromObject(sc);const h=box.max.y-box.min.y;
   const clips={};gl.animations.forEach(c=>{clips[c.name]=c;});
-  return {scene:sc,scale:1.8/h,clips};
+  return {scene:sc,scale:1.8/h,clips,textured};
 }
 function loadSoldier(){return new Promise(res=>{
   if(!THREE.GLTFLoader||!THREE.SkeletonUtils)return res(null);
@@ -1181,7 +1182,7 @@ function makeSkinGuard(path,o={}){
   const m=THREE.SkeletonUtils.clone(SOLDIER.scene);m.scale.multiplyScalar(SOLDIER.scale);m.rotation.y=Math.PI;R.add(m);g.model=m;
   R.position.set(path[0][0],g.y,path[0][1]);R.rotation.y=g.face;scene.add(R);R.updateMatrixWorld(true);
   // gear (only for the standard soldier)
-  if(!SOLDIER.custom){
+  if(!SOLDIER.custom&&!SOLDIER.textured){
   const helm=new THREE.Group();
   const hs=new THREE.Mesh(new THREE.SphereGeometry(0.135,16,10,0,Math.PI*2,0,Math.PI/2),GM.helm);hs.scale.set(1.05,0.95,1.15);hs.castShadow=true;helm.add(hs);
   const brim=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.155,0.02,16),GM.helm);brim.scale.z=1.12;helm.add(brim);
@@ -1247,7 +1248,8 @@ function makePlayerBody(){
   if(PL.group){scene.remove(PL.group);scene.remove(PL.rifle);scene.remove(PL.pistol);scene.remove(PL.ak);PL.group=null;}
   if(!SOLDIER)return;
   const R=new THREE.Group();const m=THREE.SkeletonUtils.clone(SOLDIER.scene);m.scale.multiplyScalar(SOLDIER.scale);m.rotation.y=Math.PI;R.add(m);
-  if(!SOLDIER.custom)m.traverse(c=>{if(c.isMesh&&c.material===SK.surface)c.material=SK.player;});
+  if(!SOLDIER.custom&&!SOLDIER.textured)m.traverse(c=>{if(c.isMesh&&c.material===SK.surface)c.material=SK.player;});
+  else m.traverse(c=>{if(c.isMesh){c.material=c.material.clone();c.material.color.setHex(0x9fb4d2);}});
   m.traverse(c=>{if(c.isMesh){c.castShadow=true;}});
   scene.add(R);R.updateMatrixWorld(true);
   PL.group=R;PL.model=m;PL.rh=m.getObjectByName('mixamorigRightHand');PL.lh=m.getObjectByName('mixamorigLeftHand');

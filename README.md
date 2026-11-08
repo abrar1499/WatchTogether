@@ -29,7 +29,7 @@ On the start screen, **Upload music** picks a song from the device. It is saved 
 ## Files
 
 - `index.html`: the whole game (three.js r128 from cdnjs)
-- `models/soldier.b64.txt`: the standard soldier with its animations, as a base64 GLB
+- `models/soldier.b64.txt`: the standard soldier (Mixamo "Swat Guy", merged into 2 meshes and simplified to about 16k triangles) with its animations, as a base64 GLB
 - `app/`: the Android wrapper (a full-screen WebView)
 - `.github/workflows/build.yml`: builds and releases the APK
 
