@@ -18,6 +18,10 @@ The app uses the same app id (`com.abrar.watchtogether`) and signing key as the 
 
 It shows the same `index.html` full screen in landscape, and needs internet the first time to load three.js from the CDN.
 
+## Graphics
+
+The start screen has **Low** and **High**. Phones start on Low: no real-time shadows, simpler lighting, no clouds, render scale 1x, fewer shrubs and lighter soldiers. High turns those on. Both modes merge the static scenery and each gun into a few meshes to keep draw calls down.
+
 ## Your own soldier
 
 On the start screen, tap **Upload soldier file** and choose a Mixamo character downloaded as **FBX Binary, T-pose**. The game converts it in the browser, shrinks the textures, and saves it on that device. **Use standard soldier** switches back.
