@@ -8,7 +8,7 @@ plugins {
 val webAssetsDir = layout.buildDirectory.dir("generated/webassets")
 val copyWebAssets by tasks.registering(Copy::class) {
     from(rootProject.projectDir) {
-        include("index.html", "models/**", "sfx/**")
+        include("index.html", "models/**", "sfx/**", "vendor/**")
     }
     into(webAssetsDir)
 }

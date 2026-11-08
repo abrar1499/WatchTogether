@@ -264,11 +264,11 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
   </div>
 </div>
 
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
+<script type="importmap">{"imports":{"three":"./vendor/three160/build/three.module.js"}}</script>
+<script src="vendor/three128/three.min.js"></script>
+<script src="vendor/three128/examples/js/loaders/GLTFLoader.js"></script>
+<script src="vendor/three128/examples/js/utils/SkeletonUtils.js"></script>
+<script src="vendor/three128/examples/js/utils/BufferGeometryUtils.js"></script>
 <script>
 (function(){
 const $=id=>document.getElementById(id);
@@ -1270,7 +1270,7 @@ let SOLDIER=null;
 const SK={surface:std({map:TX.camo,color:0xa7a184,roughness:0.85,skinning:true}),player:std({map:TX.camo,color:0x5f6a52,roughness:0.85,skinning:true}),joints:std({color:0x2e2f2a,roughness:0.6,metalness:0.2,skinning:true}),
   hitMat:new THREE.MeshBasicMaterial({color:0xff0000})};
 /* ---------- soldier performance ---------- */
-const MESHOPT='https://cdn.jsdelivr.net/npm/meshoptimizer@0.20.0/meshopt_simplifier.module.js';
+const MESHOPT='./vendor/meshoptimizer/meshopt_simplifier.module.js';
 const TRI_TARGET=LOW?4500:TOUCH?6000:16000;
 async function optimizeSoldier(sc){
   let S=null;
@@ -1538,7 +1538,7 @@ const IDB={
 };
 let BASE=null;
 function note(t,err){const n=$('soldierNote');n.textContent=t;n.classList.toggle('err',!!err);}
-const J='https://cdn.jsdelivr.net/npm/three@0.160.0/';
+const J='./vendor/three160/';
 async function fbxToGlb(file,status){
   const buf=await file.arrayBuffer();
   const magic=String.fromCharCode.apply(null,new Uint8Array(buf,0,Math.min(20,buf.byteLength)));

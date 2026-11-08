@@ -6,6 +6,8 @@ A first-person stealth shooter that runs in the browser. Mission 1: get into the
 
 Open `index.html` through any web server (for example GitHub Pages). It does not work when opened straight from the file system, because the soldier model is loaded with `fetch`.
 
+The game works **offline**: three.js, its loaders and meshoptimizer are bundled in `vendor/` (the Android app ships them in its assets), so no internet connection is needed to start or play. Only the Google web fonts need a connection; without one, system fonts are used. An uploaded soldier or song is stored on the device, so it also plays offline.
+
 **Computer:** WASD move, mouse look, click fire, Shift sprint, C crouch, 1/2/3 pistol, M4A1, AK-47, R reload, B binoculars, M map, V first/third person, E use, Space jump, Esc pause.
 
 **Phone:** hold the phone sideways. Drag in the bottom-left corner to move. On the right half of the screen, tap to fire, or hold and drag to aim while firing. On the left half, drag to aim without firing. The on-screen buttons do the rest. VIEW switches between third person (your soldier on screen, the default) and first person.
@@ -37,6 +39,7 @@ The game has its own synthesized soundtrack: a tense drone, dark chords and low 
 - `index.html`: the whole game (three.js r128 from cdnjs)
 - `sfx/`: recorded gun sounds (AK-47 and M4 shots, bolt sounds for reloads)
 - `models/soldier.b64.txt`: the standard soldier (Mixamo "Swat Guy", merged into 2 meshes and simplified to about 16k triangles) with its animations, as a base64 GLB
+- `vendor/`: bundled libraries (three.js r128 and r160 modules, meshoptimizer), MIT licensed, with their licenses
 - `app/`: the Android wrapper (a full-screen WebView)
 - `.github/workflows/build.yml`: builds and releases the APK
 
