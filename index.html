@@ -903,7 +903,9 @@ function impact(pt,n,blood){
 
 /* ---------- audio ---------- */
 let AC=null,master=null,noiseBuf=null,whiteBuf=null,reverbIn=null,windGain=null,musicSrc=null;
-function initAudio(){try{AC=new (window.AudioContext||window.webkitAudioContext)();master=AC.createGain();master.gain.value=0.55;master.connect(AC.destination);
+function initAudio(){try{AC=new (window.AudioContext||window.webkitAudioContext)();master=AC.createGain();master.gain.value=0.9;
+  const comp=AC.createDynamicsCompressor();comp.threshold.value=-14;comp.knee.value=8;comp.ratio.value=5;comp.attack.value=0.002;comp.release.value=0.18;
+  const makeup=AC.createGain();makeup.gain.value=1.6;master.connect(comp);comp.connect(makeup);makeup.connect(AC.destination);
   whiteBuf=AC.createBuffer(1,AC.sampleRate,AC.sampleRate);{const d=whiteBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;}
   // desert outdoor space: short diffuse tail plus two slap-backs off the hills
   const len=Math.floor(AC.sampleRate*1.8);const ir=AC.createBuffer(2,len,AC.sampleRate);
@@ -967,7 +969,7 @@ function sfxGun(kind,vol,pan,far){
   const b=bus(vol,pan,c.wet*(0.6+far*0.9),far>0.05?16000-far*14000:0);
   const rec=SFXBUF[kind];
   if(rec){
-    playBuf(b,t,rec,rand(0.95,1.05),0.95);
+    playBuf(b,t,rec,rand(0.95,1.05),2.4);
     if(far<0.3)toneHit(b,t,'sine',c.thump,38,0.002,0.45*(1-far),0.12);
     return;
   }
@@ -1145,7 +1147,7 @@ function fire(){
   if(w.loud)shake=Math.max(shake,0.06);
   const mz=wm[wi].userData.muzzle;
   flashT=w.loud?0.055:0.035;flash.scale.setScalar(w.loud?rand(0.2,0.3):0.1);flash.position.set(wm[wi].userData.pos[0],wm[wi].userData.pos[1]+wm[wi].userData.muzY,wm[wi].userData.pos[2]+mz);flashLight.position.copy(flash.position);
-  sfxGun(w.loud?w.snd:'sd',0.9,0,0);
+  sfxGun(w.loud?w.snd:'sd',1,0,0);
   // shell
   PL.lastShot=time;
   const tps=isTPS();const tg=tps?[PL.pistol,PL.rifle,PL.ak][wi]:null;
@@ -1597,7 +1599,7 @@ const PROG=[[50,53,57],[46,50,53],[48,52,55],[45,48,52]];
 const STEP16=60/92/4;
 function scoreStart(){
   if(!AC||!SCORE.on||SCORE.node)return;
-  const out=AC.createGain();out.gain.setValueAtTime(0,AC.currentTime);out.gain.linearRampToValueAtTime(0.34,AC.currentTime+4);out.connect(master);
+  const out=AC.createGain();out.gain.setValueAtTime(0,AC.currentTime);out.gain.linearRampToValueAtTime(0.2,AC.currentTime+4);out.connect(master);
   if(reverbIn){const w=AC.createGain();w.gain.value=0.3;out.connect(w);w.connect(reverbIn);}
   SCORE.node=out;SCORE.osc=[];
   const dr=AC.createGain();dr.gain.value=0.08;const lp=filt('lowpass',360,1.2);dr.connect(lp);lp.connect(out);
@@ -1640,7 +1642,7 @@ async function startMusic(){
   try{
     const ab=await new Promise((res,rej)=>{const r=AC.decodeAudioData(buf.slice(0),res,rej);if(r&&r.then)r.then(res,rej);});
     stopMusic();musicSrc=AC.createBufferSource();musicSrc.buffer=ab;musicSrc.loop=true;
-    const mg=AC.createGain();mg.gain.value=0.4;musicSrc.connect(mg);mg.connect(master);musicSrc.start();
+    const mg=AC.createGain();mg.gain.value=0.28;musicSrc.connect(mg);mg.connect(master);musicSrc.start();
     if(windGain)windGain.gain.value=0.025;
   }catch(e){}
 }
