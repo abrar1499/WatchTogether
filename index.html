@@ -307,7 +307,7 @@ const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-per
 renderer.setPixelRatio(Math.min(devicePixelRatio,TOUCH?1.75:2));
 renderer.setSize(innerWidth,innerHeight);
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=0.92;
-renderer.shadowMap.enabled=true;renderer.shadowMap.type=TOUCH?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
 $('stage').appendChild(renderer.domElement);
 const scene=new THREE.Scene();
 const HORIZON=new THREE.Color(0.93,0.68,0.48);
@@ -319,11 +319,11 @@ addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight);camera.a
 const MAXANI=Math.min(8,renderer.capabilities.getMaxAnisotropy());
 
 const SUNDIR=new THREE.Vector3(-0.62,0.48,0.62).normalize();
-scene.add(new THREE.HemisphereLight(0xbcd2ff,0x8a6a45,0.75));
-const sun=new THREE.DirectionalLight(0xffcf98,2.0);
+scene.add(new THREE.HemisphereLight(0xbcd2ff,0x8a6a45,0.92));
+const sun=new THREE.DirectionalLight(0xffcf98,1.85);
 sun.castShadow=true;const SM=TOUCH?1024:2048;sun.shadow.mapSize.set(SM,SM);
 const SHR=TOUCH?28:45;Object.assign(sun.shadow.camera,{left:-SHR,right:SHR,top:SHR,bottom:-SHR,near:1,far:400});
-sun.shadow.bias=-0.0004;sun.shadow.normalBias=0.04;
+sun.shadow.bias=-0.0004;sun.shadow.normalBias=0.04;sun.shadow.radius=2.5;
 scene.add(sun);scene.add(sun.target);
 
 const skyU={uT:{value:0},uClouds:{value:LOW?0:1}};
@@ -1060,7 +1060,7 @@ function impact(pt,n,blood,obj){
 
 /* ---------- audio ---------- */
 let AC=null,master=null,noiseBuf=null,whiteBuf=null,reverbIn=null,windGain=null,musicSrc=null;
-function initAudio(){try{AC=new (window.AudioContext||window.webkitAudioContext)();master=AC.createGain();master.gain.value=1;master.connect(AC.destination);loadSfx();}catch(e){AC=null;}}
+function initAudio(){try{AC=new (window.AudioContext||window.webkitAudioContext)();master=AC.createGain();master.gain.value=1;master.connect(AC.destination);loadSfx();loadSteps();}catch(e){AC=null;}}
 function sfxShot(kind,vol){
   if(!AC||vol<0.01)return;const t=AC.currentTime;const s=AC.createBufferSource();s.buffer=noiseBuf;
   const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=kind==='sd'?800:kind==='m4'?5600:kind==='ak'?3000:2600;
@@ -1088,6 +1088,33 @@ function loadSfx(){
       .then(b=>new Promise((res,rej)=>{const q=AC.decodeAudioData(b,res,rej);if(q&&q.then)q.then(res,rej);}))
       .then(buf=>{SFXBUF[k]=buf;}).catch(()=>{});
   }
+}
+/* Footsteps: each pool is one of the player's files with the times of its individual steps.
+   A random step (never the same one twice in a row) plays per footfall; files are not edited. */
+const FSTEP={"sand_walk":{"file":"sfx/freesound_community-footsteps-in-wet-coarse-sand-63970.mp3","steps":[[1.34,0.45],[1.925,0.45],[2.605,0.45],[3.845,0.45],[4.435,0.45],[6.37,0.1],[6.955,0.17],[7.13,0.29],[7.455,0.175],[8.2,0.12],[8.8,0.16],[9.555,0.45],[10.615,0.35],[11.485,0.45],[11.945,0.235],[12.185,0.45],[13.295,0.175],[13.475,0.14],[13.62,0.45],[16.51,0.45],[17.37,0.45],[23.095,0.45],[26.74,0.165],[26.91,0.32]]},"sand_crouch":{"file":"sfx/freesound_community-footsteps-dirt-gravel-6823.mp3","steps":[[5.075,0.55],[5.69,0.55],[7.48,0.55],[8.825,0.265],[9.155,0.55],[9.82,0.55],[10.48,0.55],[14.595,0.55],[16.16,0.55],[16.975,0.55],[18.595,0.55],[22.585,0.55],[32.84,0.55]]},"gravel_walk":{"file":"sfx/freesound_community-footsteps-dirt-gravel-6823.mp3","steps":[[5.075,0.5],[5.69,0.5],[7.48,0.5],[8.825,0.265],[9.155,0.5],[9.82,0.5],[10.48,0.5],[14.595,0.5],[16.16,0.5],[16.975,0.5],[18.595,0.5],[22.585,0.5],[32.84,0.5]]},"concrete_walk":{"file":"sfx/freesound_community-concrete-footsteps-6752.mp3","steps":[[0.015,0.38],[0.44,0.38],[0.875,0.38],[1.275,0.38],[1.695,0.38],[2.555,0.38],[3.395,0.38],[3.81,0.38],[4.24,0.38],[5.075,0.38],[5.925,0.38],[6.775,0.38],[7.185,0.38],[7.605,0.38],[8.0,0.38],[8.43,0.38],[8.84,0.085],[10.16,0.38],[11.07,0.38],[11.98,0.38],[12.425,0.38],[12.875,0.38],[13.28,0.38],[13.71,0.38]]},"concrete_crouch":{"file":"sfx/freesound_community-concrete-footsteps-2wav-14794.mp3","steps":[[0.575,0.5],[4.885,0.26],[5.15,0.41],[8.655,0.5],[14.47,0.5],[15.42,0.5],[17.08,0.5],[19.155,0.5],[20.31,0.5]]},"concrete_run":{"file":"sfx/thumblegray-running-on-the-floor-359909.mp3","steps":[[0.1,0.28],[0.4,0.26],[0.665,0.28],[1.21,0.28],[1.515,0.28],[1.82,0.28],[2.11,0.28],[2.42,0.28],[3.04,0.28],[3.36,0.28],[3.685,0.28],[4.01,0.27],[4.285,0.28],[4.575,0.28]]},"floor_walk":{"file":"sfx/soundreality-footsteps-walking-boots-parquet-1-420135.mp3","steps":[[0.295,0.45],[2.665,0.45],[3.31,0.45],[4.79,0.45],[5.555,0.45],[6.225,0.45],[7.0,0.45],[7.66,0.45],[8.385,0.45],[9.105,0.45],[9.87,0.45],[10.625,0.45],[11.35,0.45],[12.065,0.45],[12.775,0.45],[13.515,0.45],[14.185,0.45],[14.945,0.45],[15.64,0.45],[16.375,0.45],[17.08,0.45],[17.815,0.45],[19.2,0.45],[19.97,0.45]]},"guard":{"file":"sfx/freesound_community-heavy-footsteps-walking-35722.mp3","steps":[[2.18,0.6],[2.83,0.6],[3.47,0.6],[4.095,0.6],[6.64,0.6],[17.925,0.6],[19.19,0.6]]}};
+const FSBUF={};
+function loadSteps(){
+  const files=[...new Set(Object.values(FSTEP).map(v=>v.file))];
+  for(const f of files)fetch(f).then(r=>{if(!r.ok)throw 0;return r.arrayBuffer();})
+    .then(b=>new Promise((res,rej)=>{const q=AC.decodeAudioData(b,res,rej);if(q&&q.then)q.then(res,rej);})).then(buf=>{FSBUF[f]=buf;}).catch(()=>{});
+}
+function stepSound(kind,gain){
+  const pool=FSTEP[kind];if(!AC||!pool)return;const buf=FSBUF[pool.file];if(!buf)return;
+  let i=(Math.random()*pool.steps.length)|0;if(i===pool.last)i=(i+1)%pool.steps.length;pool.last=i;
+  const [off,dur]=pool.steps[i];playSeg(buf,off,dur,gain);
+}
+function surfaceAt(x,z){
+  if(x>BK.x-BK.w/2&&x<BK.x+BK.w/2&&z>BK.z-BK.d/2&&z<BK.z+BK.d/2)return 'floor';
+  if(Math.abs(x)<50&&Math.abs(z)<40)return 'concrete';
+  if((Math.abs(x)<4.5&&z>40)||Math.hypot(x-LZ.x,z-LZ.z)<9)return 'gravel';
+  return 'sand';
+}
+function playerStep(land){
+  const sf=surfaceAt(P.pos.x,P.pos.z),cr=P.crouch||P.sneak,run=P.speed>2.6;
+  const kind=cr?{sand:'sand_crouch',gravel:'sand_crouch',concrete:'concrete_crouch',floor:'floor_walk'}[sf]
+    :run?{sand:'sand_walk',gravel:'gravel_walk',concrete:'concrete_run',floor:'concrete_run'}[sf]
+    :{sand:'sand_walk',gravel:'gravel_walk',concrete:'concrete_walk',floor:'floor_walk'}[sf];
+  stepSound(kind,land?0.85:cr?0.3:run?0.85:0.6);
 }
 let autoSrc=null,autoKind=null,autoGain=null;
 function autoStart(kind){
@@ -1542,7 +1569,8 @@ async function optimizeSoldier(sc){
     }
     after+=(g.index?g.index.count:pa.count)/3;
     g.computeBoundingSphere();if(g.boundingSphere)g.boundingSphere.radius*=2.4;
-    m.frustumCulled=true;m.castShadow=true;m.receiveShadow=!LOW;
+    m.frustumCulled=true;m.castShadow=true;m.receiveShadow=false;
+    for(const mt of (Array.isArray(m.material)?m.material:[m.material])){if(mt.map){mt.map.anisotropy=MAXANI;if(!mt.emissiveMap){mt.emissiveMap=mt.map;mt.emissive=new THREE.Color(0x2a2a2a);}}if(mt.normalMap)mt.normalMap.anisotropy=MAXANI;mt.needsUpdate=true;}
   }
   sc.userData.tris=Math.round(after);sc.userData.trisBefore=Math.round(total);
   return sc;
@@ -1650,6 +1678,7 @@ function animateSkin(g,dt){
   g.animAcc=(g.animAcc||0)+dt;
   if(!show)return;
   g.crK=(g.crK||0)+((g.crouchT||0)-(g.crK||0))*Math.min(1,dt*6);
+  if(g.mv>0.3&&g.state!=='dead'&&dist<15){g.stepAcc=(g.stepAcc||0)+dt*(1.1+g.mv*0.75);if(g.stepAcc>=1){g.stepAcc=0;stepSound('guard',clamp(1-dist/15,0,1)*(g.mv>2.3?0.7:0.45));}}
   if(g.animAcc>=(dist>100?0.2:dist>40?0.066:0)){g.mixer.update(g.animAcc);g.animAcc=0;if(g.crK>0.01&&g.state!=='dead')boneLayer(g,g.model,g.crK,0);}
   g.group.updateMatrixWorld(true);
   if(g.gripped){}
@@ -1745,7 +1774,7 @@ function bodyPos(g,out){if(g.kind==='skin'){g.hips.getWorldPosition(out);out.y=g
 /* ---------- performance: cheap materials on Low, fewer draw calls everywhere ---------- */
 const lowCache=new Map();
 function lowMat(m){
-  if(!m||!m.isMeshStandardMaterial)return m;
+  if(!m||!m.isMeshStandardMaterial||m.skinning)return m;
   let l=lowCache.get(m.uuid);if(l)return l;
   l=new THREE.MeshLambertMaterial({map:m.map||null,color:m.color,vertexColors:m.vertexColors,transparent:m.transparent,opacity:m.opacity,alphaTest:m.alphaTest,side:m.side,depthWrite:m.depthWrite,skinning:!!m.skinning});
   if(m.skinning&&m.map)l.color=m.color.clone().multiplyScalar(1.6);
@@ -2119,10 +2148,10 @@ function step(dt){
   P.pos.x+=P.vel.x*dt;P.pos.z+=P.vel.z*dt;collide(P.pos,0.42);
   const rr=Math.hypot(P.pos.x,P.pos.z);if(rr>195){P.pos.x*=195/rr;P.pos.z*=195/rr;}
   P.speed=P.vel.length();P.mvF=P.vel.x*f.x+P.vel.z*f.z;P.mvS=P.vel.x*r.x+P.vel.z*r.z;
-  P.vy-=12*dt;P.jy+=P.vy*dt;if(P.jy<0){if(P.vy<-3)sfxStep(0.25);P.jy=0;P.vy=0;}
+  P.vy-=12*dt;P.jy+=P.vy*dt;if(P.jy<0){if(P.vy<-3)playerStep(true);P.jy=0;P.vy=0;}
   P.eye+=((P.crouch?1.05:P.sneak?1.3:1.7)-P.eye)*Math.min(1,dt*10);
   if(P.speed>0.1&&P.jy===0)P.bob+=dt*(4+P.speed*1.3);
-  const stepN=Math.floor(P.bob/Math.PI);if(stepN!==P.lastStep){P.lastStep=stepN;if(P.speed>0.1&&P.jy===0)sfxStep(P.crouch?0.05:sprint?0.22:0.13);}
+  const stepN=Math.floor(P.bob/Math.PI);if(stepN!==P.lastStep){P.lastStep=stepN;if(P.speed>0.3&&P.jy===0)playerStep(false);}
   const moving=P.speed>0.1?1:0;
   const bob=Math.sin(P.bob*2)*0.03*moving*(sprint?1.6:1);
   shake=Math.max(0,shake-dt*0.6);
@@ -2204,7 +2233,7 @@ function step(dt){
   }
   drawCompass();placeMarker();if(mapOpen)drawMap();
 }
-window.__dbg={playerDie,PL,endGame,sfxbuf:SFXBUF,weapons,score:SCORE,sfx:{sfxGun,sfxDeath,sfxHitFlesh,sfxHurt,sfxWhizz,sfxReload,sfxHeart},P,guards,camera,scene,LOW,soldier:()=>SOLDIER,renderer,setState:s=>{state=s;},get time(){return time;}};
+window.__dbg={fsbuf:FSBUF,surfaceAt,playerDie,PL,endGame,sfxbuf:SFXBUF,weapons,score:SCORE,sfx:{sfxGun,sfxDeath,sfxHitFlesh,sfxHurt,sfxWhizz,sfxReload,sfxHeart},P,guards,camera,scene,LOW,soldier:()=>SOLDIER,renderer,setState:s=>{state=s;},get time(){return time;}};
 renderObj();
 frame();
 })();

@@ -52,5 +52,10 @@ Sounds in `sfx/` are unedited sound effects from [Pixabay](https://pixabay.com/s
 - Enemy rifles: "Machin gun AK47 sound effect 6" by beetpro
 - Pistol reload: "1911 reload" by freesound_community
 - M4 and AK-47 reload: "Gun full reload" by melbeebelbee
+- Footsteps, chosen by surface and movement (one recorded step per footfall):
+  - sand: "Footsteps in wet coarse sand" (freesound_community); crouched on sand/dirt and on the road: "Footsteps dirt gravel" (freesound_community)
+  - base concrete: "Concrete footsteps" 6752 (freesound_community); running: "Running on the floor" (thumblegray); crouched: "Concrete footsteps 2" (freesound_community)
+  - inside the bunker: "Footsteps walking boots parquet" (soundreality)
+  - guards near you: "Heavy footsteps walking" (freesound_community)
 
 The game plays only these files (no synthesized sounds). Automatic weapons loop the steady full-auto part of their file while FIRE is held.
