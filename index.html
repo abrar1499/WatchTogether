@@ -254,8 +254,6 @@ body.touch #compass{width:260px;max-width:40vw;height:24px}
       <div class="upload">
       <span class="lbl">Graphics</span>
       <div class="row">
-        <button class="btn2" id="qLow">Low · smooth</button>
-        <button class="btn2" id="qHigh">High · clouds and lighting</button>
       </div>
       <span class="note" id="qNote"></span>
       <div class="row" id="appRow" hidden><button class="btn2" id="updBtn">Check for update</button><span class="note" id="verNote"></span></div>
@@ -355,7 +353,7 @@ if(typeof THREE==='undefined'){ $('go').textContent='3D engine failed to load'; 
 
 const TOUCH=matchMedia('(pointer: coarse)').matches;
 let QUALITY=null;try{QUALITY=localStorage.getItem('ds-quality');}catch(e){}
-if(QUALITY!=='low'&&QUALITY!=='high')QUALITY=TOUCH?'low':'high';
+QUALITY='low';
 const LOW=QUALITY==='low';
 /* ---------- renderer / scene ---------- */
 const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
@@ -1972,11 +1970,10 @@ $('go').onclick=()=>{initAudio();startMusic();musicStart();$('start').hidden=tru
   stats.start=performance.now();tryLock();renderObj();
   radio('Kestrel, the base is 150 meters north. Check it with binoculars first. The broken fence is on the west side.');setTimeout(()=>{if(TOUCH)$('joyhint').hidden=true;},3000);};
 $('again').onclick=()=>location.reload();
-$(LOW?'qLow':'qHigh').classList.add('sel');
-$('qNote').textContent=LOW?'Low is on: sharp image and shadows with simpler lighting and sky. Best for phones.':'High is on: clouds and detailed lighting. Switch to Low if the game stutters.';
+$('qNote').textContent='';
 function setQuality(q){if(q===QUALITY)return;try{localStorage.setItem('ds-quality',q);}catch(e){}location.reload();}
 if(window.DustApp&&window.DustApp.checkUpdate){$('appRow').hidden=false;try{$('verNote').textContent='Installed: v'+String(window.DustApp.version()).split('.').pop();}catch(e){}$('updBtn').onclick=()=>{try{window.DustApp.checkUpdate();}catch(e){}};}
-$('qLow').onclick=()=>setQuality('low');$('qHigh').onclick=()=>setQuality('high');
+
 if(TOUCH){document.body.classList.add('touch');$('tkeys').hidden=false;$('kkeys').hidden=true;}
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&state==='play'&&!paused)setPause(true);});
 
@@ -2355,7 +2352,8 @@ function calibGrip(sd){
   const ql=qh.clone().invert().multiply(qg);
   const gp=pr.clone().addScaledVector(barrel,-0.02);gp.y-=0.025;
   const lp=rh.worldToLocal(gp.clone());const ws=rh.getWorldScale(new V()).x;
-  sd.grip={q:ql,p:lp,s:1/ws};
+  const lhW=lh.getWorldQuaternion(new THREE.Quaternion());const qgi=qg.clone().invert();
+  sd.grip={q:ql,p:lp,s:1/ws,lh:pl.clone().sub(gp).applyQuaternion(qgi),lhq:qgi.clone().multiply(lhW)};
   return sd.grip;
 }
 const _aq0=new THREE.Quaternion(),_aq1=new THREE.Quaternion(),_aq2=new THREE.Quaternion(),_aF=new THREE.Vector3(),_aU=new THREE.Vector3(),_aW=new THREE.Vector3(),_aX=new THREE.Vector3();
@@ -2368,6 +2366,26 @@ function aimGun(gun,grip,dir,k){
   _aq0.slerp(_aq1,k);gun.parent.getWorldQuaternion(_aq2);gun.quaternion.copy(_aq2.invert().multiply(_aq0));gun.updateMatrixWorld(true);
 }
 const _gd=new THREE.Vector3(),_gw=new THREE.Vector3();
+const _iS=new THREE.Vector3(),_iE=new THREE.Vector3(),_iH=new THREE.Vector3(),_iT=new THREE.Vector3(),_iD=new THREE.Vector3(),_iP=new THREE.Vector3(),_iX=new THREE.Vector3(),_iq=new THREE.Quaternion(),_iq2=new THREE.Quaternion(),_iq3=new THREE.Quaternion();
+function turnBone(b,from,to){// rotate bone b (world space) so direction 'from' points along 'to'
+  _iq.setFromUnitVectors(from,to);b.getWorldQuaternion(_iq2);_iq2.premultiply(_iq);b.parent.getWorldQuaternion(_iq3);b.quaternion.copy(_iq3.invert().multiply(_iq2));b.updateMatrixWorld(true);}
+function leftHandIK(o,gun,grip,w){
+  if(!grip||!grip.lh||w<0.01)return;
+  if(!o.lArm){o.lArm=o.model.getObjectByName('mixamorigLeftArm');o.lFore=o.model.getObjectByName('mixamorigLeftForeArm');}
+  const A=o.lArm,F=o.lFore,H=o.lh;if(!A||!F||!H)return;
+  gun.updateMatrixWorld(true);_iT.copy(grip.lh).applyMatrix4(gun.matrixWorld);
+  A.getWorldPosition(_iS);F.getWorldPosition(_iE);H.getWorldPosition(_iH);
+  _iT.lerp(_iH,1-w);
+  const a=_iS.distanceTo(_iE),b=_iE.distanceTo(_iH);_iD.subVectors(_iT,_iS);let d=_iD.length();if(d<1e-4)return;_iD.divideScalar(d);d=clamp(d,Math.abs(a-b)+1e-3,a+b-1e-3);
+  const x=(a*a-b*b+d*d)/(2*d),h=Math.sqrt(Math.max(0,a*a-x*x));
+  _iP.subVectors(_iE,_iS);_iP.addScaledVector(_iD,-_iP.dot(_iD));if(_iP.lengthSq()<1e-6)_iP.set(0,-1,0).addScaledVector(_iD,_iD.y);_iP.normalize();
+  _iX.copy(_iS).addScaledVector(_iD,x).addScaledVector(_iP,h);
+  turnBone(A,_iP.subVectors(_iE,_iS).normalize(),_iD.subVectors(_iX,_iS).normalize());
+  F.getWorldPosition(_iE);H.getWorldPosition(_iH);
+  turnBone(F,_iP.subVectors(_iH,_iE).normalize(),_iD.subVectors(_iT,_iE).normalize());
+  // grip the handguard the way the aim pose does
+  gun.getWorldQuaternion(_iq2);_iq2.multiply(grip.lhq);H.parent.getWorldQuaternion(_iq3);_iq.copy(_iq3.invert().multiply(_iq2));H.quaternion.slerp(_iq,w);H.updateMatrixWorld(true);
+}
 function holdGun(hand,gun,grip){
   if(!hand||!grip)return false;
   hand.add(gun);gun.position.copy(grip.p);gun.quaternion.copy(grip.q);gun.scale.setScalar(grip.s);return true;
@@ -2448,13 +2466,9 @@ function animateSkin(g,dt){
     if(g.jerk>0.01){g.headB=g.headB||g.model.getObjectByName('mixamorigHead');g.chestB=g.chestB||g.model.getObjectByName('mixamorigSpine2');if(g.headB){g.headB.rotateX(-g.jerk*0.75);g.headB.rotateZ(g.jerk*0.3*(g.jerkS||1));}if(g.chestB)g.chestB.rotateX(-g.jerk*0.2);}}
   g.group.updateMatrixWorld(true);
   if(g.gripped&&g.grip){
-    const free=g.state==='dead'||/^(hit|reactBig|startWalk|crouchToKneel|kneelToStand|sideStep|turn)/.test(g.cur||'');
-    const aimNow=g.state==='alert'&&/^(aim|fire|crouchFire)$/.test(g.cur||'');
-    g.gun.getWorldPosition(_gw);let kT=free?0:1;
-    if(aimNow)_gd.set(P.pos.x,P.eye+P.jy-0.35,P.pos.z).sub(_gw).normalize();
-    else{g.lh.getWorldPosition(_gd);_gd.sub(_gw);const hl=_gd.length();if(hl>0.16&&hl<0.8)_gd.divideScalar(hl);else{const ry=g.group.rotation.y,cy=Math.cos(ry),sy=Math.sin(ry);_gd.set(-sy*0.82-cy*0.45,-0.3,-cy*0.82+sy*0.45).normalize();kT=free?0:0.7;}}
-    g.gunK=lerp(g.gunK||0,kT,Math.min(1,dt*10));
-    if(dist<80)aimGun(g.gun,g.grip,_gd,g.gunK);}
+    g.gun.quaternion.copy(g.grip.q);g.gun.updateMatrixWorld(true);
+    const free=g.state==='dead'||/^(hit|reactBig|reload)/.test(g.cur||'');
+    g.ikW=lerp(g.ikW==null?1:g.ikW,free?0:1,Math.min(1,dt*10));if(dist<35)leftHandIK(g,g.gun,g.grip,g.ikW);}
   else if(g.state!=='dead'||g.deadT<0.35){
     g.rh.getWorldPosition(gA);g.lh.getWorldPosition(gB);
     gC.subVectors(gB,gA);const len=gC.length();
@@ -2517,14 +2531,17 @@ function updatePlayerBody(dt,tps,sprint){
   // moving amount, direction in the body's frame, walk-to-run
   const spd=P.speed,moving=spd>0.25;
   BL.m=lerp(BL.m,moving?1:0,Math.min(1,dt*(moving?7:5)));
-  if(moving){const f=(P.mvF||0)/spd,sd=(P.mvS||0)/spd;const dF=Math.max(0,f),dB=Math.max(0,-f),dR=Math.max(0,sd),dL=Math.max(0,-sd),t=dF+dB+dR+dL||1;
-    BL.dF=lerp(BL.dF,dF/t,k8);BL.dB=lerp(BL.dB,dB/t,k8);BL.dR=lerp(BL.dR,dR/t,k8);BL.dL=lerp(BL.dL,dL/t,k8);}
-  BL.r=lerp(BL.r,crouchOn?clamp((spd-1.2)/0.35,0,1):clamp((spd-1.6)/1.4,0,1),Math.min(1,dt*6));
+  if(moving){const f=(P.mvF||0)/spd,sd=(P.mvS||0)/spd;
+    // pick one direction; keep the current one unless the other axis clearly wins
+    const cur=BL.dir||'F',fwdAxis=cur==='F'||cur==='B';const useF=fwdAxis?Math.abs(f)>=Math.abs(sd)*0.75:Math.abs(f)>Math.abs(sd)*1.35;
+    BL.dir=useF?(f>=0?'F':'B'):(sd>=0?'R':'L');}
+  {const k=Math.min(1,dt*9);for(const d of ['F','B','R','L'])BL['d'+d]=lerp(BL['d'+d],BL.dir===d||(!BL.dir&&d==='F')?1:0,k);}
+  BL.r=lerp(BL.r,(crouchOn?spd>1.35:spd>2.4)?1:0,Math.min(1,dt*7));
   BL.c=lerp(BL.c,crouchOn?1:0,Math.min(1,dt*7));
   BL.u=lerp(BL.u,(aimNow||reloading>0)&&!sp?1:0,Math.min(1,dt*9));
   BL.rl=lerp(BL.rl,reloading>0?1:0,Math.min(1,dt*9));
   // which clip each direction uses, standing and crouched
-  const SET=[['F',PL.actions.walk2?'walk2':'walk','run',PL.actions.crouchWalk2?'crouchWalk2':'crouchWalk','crouchRun'],['B','walkBack','runBack','crouchBack','crouchBack'],['R','walkR','runStrafeR','strafeR','strafeR'],['L','walkL','runStrafeL','strafeL','strafeL']];
+  const SET=[['F','walk','run',PL.actions.crouchWalk2?'crouchWalk2':'crouchWalk','crouchRun'],['B','walkBack','runBack','crouchBack','crouchBack'],['R','walkR','runStrafeR','strafeR','strafeR'],['L','walkL','runStrafeL','strafeL','strafeL']];
   const W={};const add=(n,w)=>{if(w>0&&PL.actions[n])W[n]=(W[n]||0)+w;};
   let strideSum=0,strideW=0;
   for(const [d,w0,r0,cw,cr] of SET){const dw=BL['d'+d];if(dw<0.001)continue;
@@ -2570,16 +2587,9 @@ function updatePlayerBody(dt,tps,sprint){
   PL.rh.getWorldPosition(pA);
   camera.getWorldDirection(pC);
   if(PL.gripped&&PL.grip&&wi>=1){const gun=wi===2?PL.ak:PL.rifle;
-    const free=P.dead||/^(reload|putBack|grabPutBack|grenade|kick|pullOut|die|dying|knock)/.test(PL.cur||'');
-    gun.getWorldPosition(_gw);const kT=free?0:1;
-    if(aimNow||P.prone){camera.getWorldDirection(_gd);_gd.multiplyScalar(60).add(camera.position).sub(_gw).normalize();}
-    else{// along both hands, but always ahead of the body: never straight down, never off to the side
-      PL.lh.getWorldPosition(_gd);_gd.sub(_gw);if(_gd.lengthSq()<0.01)_gd.set(-Math.sin(P.yaw),0,-Math.cos(P.yaw));_gd.normalize();
-      const rel=clamp(angDiff(P.yaw,Math.atan2(-_gd.x,-_gd.z)),-0.2,0.7),pt=clamp(Math.asin(clamp(_gd.y,-1,1)),-0.55,0.2),yw=P.yaw+rel;
-      _gd.set(-Math.sin(yw)*Math.cos(pt),Math.sin(pt),-Math.cos(yw)*Math.cos(pt));}
-    if(!PL.gdir)PL.gdir=_gd.clone();PL.gdir.lerp(_gd,Math.min(1,dt*12)).normalize();_gd.copy(PL.gdir);
-    PL.gunK=lerp(PL.gunK||0,kT,Math.min(1,dt*12));
-    aimGun(gun,PL.grip,_gd,PL.gunK);}
+    gun.quaternion.copy(PL.grip.q);gun.updateMatrixWorld(true);
+    const free=P.dead||reloading>0||/^(putBack|grenade|kick|pullOut|die|dying|knock|jump)/.test(PL.cur||'');
+    PL.ikW=lerp(PL.ikW==null?1:PL.ikW,free?0:1,Math.min(1,dt*10));leftHandIK(PL,gun,PL.grip,PL.ikW);}
   if(wi>=1&&PL.gripped){}
   else if(wi>=1){
     const gun=wi===2?PL.ak:PL.rifle;
@@ -2599,6 +2609,7 @@ function initBlend(){
   for(const k of ['walk','walk2','run','walkBack','runBack','walkR','walkL','runStrafeR','runStrafeL','strafeR','strafeL','crouchWalk','crouchWalk2','crouchRun','crouchBack']){
     if(!SOLDIER.clips[k])continue;if(!PL.actions[k+'_lo'])PL.actions[k+'_lo']=PL.mixer.clipAction(split(SOLDIER.clips[k],false,k+'_lo'));
     BL.loco.push(k,k+'_lo');}
+  BL.dir='F';
   if(SOLDIER.clips.aim&&!PL.actions.aim_up)PL.actions.aim_up=PL.upA||PL.mixer.clipAction(split(SOLDIER.clips.aim,true,'aim_up'));
   if(SOLDIER.clips.reload&&!PL.actions.reload_up)PL.actions.reload_up=PL.mixer.clipAction(split(SOLDIER.clips.reload,true,'reload_up'));
   BL.all=BL.loco.concat(['aim_up','reload_up','idle','aim','reload','kneel','crouchFire']);
@@ -3008,10 +3019,10 @@ function step(dt){
   let tgt=0;
   if(mv.lengthSq()>0){
     mv.normalize();const fw=mv.x*f.x+mv.z*f.z;
-    tgt=P.crouch?((keys.ShiftLeft||keys.ShiftRight)?1.6:1.1):wantRun?(fw<-0.3?2.6:fw<0.5?3.2:3.6):(fw<-0.3?1.15:1.35);
+    tgt=P.crouch?((keys.ShiftLeft||keys.ShiftRight)?1.6:1.1):wantRun?(fw<-0.3?2.6:fw<0.5?3.2:3.6):(fw<-0.3?1.1:1.2);
     if(jm&&P.crouch)tgt=jm<0.45?0.75:jm<0.88?1.1:1.6;
-    else if(jm&&!wantRun)tgt=sneak?0.9:(fw<-0.3?1.15:1.35);
-    if(ads&&tgt>1.35)tgt=1.35;
+    else if(jm&&!wantRun)tgt=sneak?0.9:(fw<-0.3?1.1:1.2);
+    if(ads&&tgt>1.2)tgt=1.2;
     if(P.prone)tgt=fw<-0.3?0.38:0.5;
   }
   const sprint=wantRun&&tgt>2.5;
