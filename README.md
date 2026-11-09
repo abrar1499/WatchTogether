@@ -19,7 +19,8 @@ A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. This is p
   - `scripts/player.gd`: movement, animation, guns, IK, camera, shooting
   - `scripts/touch.gd`: on-screen controls, keyboard/mouse, HUD, start and pause menus
   - `assets/soldier.glb`: the soldier with its Mixamo animations
-  - `assets/guns/`: the three rifles, `assets/sfx/`: the sound files (unedited)
+  - `assets/guns/`: the AK-47, M4A1 (with red-dot sight) and suppressed SD-9 pistol, `assets/sfx/`: the sound files (unedited)
+- `tools/gunbuild/`: the Python script that builds the three gun models (real size, rounded edges, wood-grain and metal textures); run `python3 build_guns.py ../../godot/assets/guns` (needs numpy, Pillow, mapbox_earcut)
 - `android/debug.keystore`: the signing key of the original app, so the game installs as its update
 - `.github/workflows/build.yml`: exports the APK with Godot and publishes it
 

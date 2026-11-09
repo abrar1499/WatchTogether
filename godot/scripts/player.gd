@@ -27,17 +27,18 @@ const UPPER := ["mixamorigSpine", "mixamorigSpine1", "mixamorigSpine2", "mixamor
 	"mixamorigLeftShoulder", "mixamorigLeftArm", "mixamorigLeftForeArm", "mixamorigLeftHand",
 	"mixamorigRightShoulder", "mixamorigRightArm", "mixamorigRightForeArm", "mixamorigRightHand"]
 
-# real sizes: the models came out about a quarter too long
-const GUN_SCALE := {"pistol": 0.85, "m4": 0.8, "ak": 0.78}
+# the gun models are built to real size (metres)
+const GUN_SCALE := {"pistol": 1.0, "m4": 1.0, "ak": 1.0}
 # left hand, in the gun's own units (x left, y up, z along the barrel): where the palm presses (p), the way the palm
 # faces (n) and the way the fingers point (d). Rifles: palm up under the handguard, fingers across and round the
 # far side. Pistol: palm over the right hand's fingers from the left, fingers forward and down.
 const LEFT_HOLD := {
 	"pistol": {"p": Vector3(0.04, -0.05, -0.005), "n": Vector3(-1.0, 0.35, 0.0), "d": Vector3(0.0, -0.5, 0.85)},
-	"m4": {"p": Vector3(0.012, 0.012, 0.31), "n": Vector3(-0.3, 1.0, 0.0), "d": Vector3(-0.7, 0.0, 0.7)},
-	"ak": {"p": Vector3(0.012, -0.016, 0.3), "n": Vector3(-0.3, 1.0, 0.0), "d": Vector3(-0.7, 0.0, 0.7)}}
+	"m4": {"p": Vector3(0.012, 0.024, 0.24), "n": Vector3(-0.3, 1.0, 0.0), "d": Vector3(-0.7, 0.0, 0.7)},
+	"ak": {"p": Vector3(0.012, -0.006, 0.26), "n": Vector3(-0.3, 1.0, 0.0), "d": Vector3(-0.7, 0.0, 0.7)}}
 const GRIP_DOWN := Vector3(0, -0.94, -0.34)   # down the pistol grip (same rake on all three)
-const VM_ADS := {"pistol": Vector3(0, -0.06, -0.3), "m4": Vector3(0, -0.135, -0.28), "ak": Vector3(0, -0.085, -0.32)}   # first person, aiming
+# first person, aiming: eye on the sight line (AK irons, M4 through the red dot, pistol irons)
+const VM_ADS := {"pistol": Vector3(0, -0.068, -0.32), "m4": Vector3(0, -0.127, -0.14), "ak": Vector3(0, -0.079, -0.2)}
 # finger curl (degrees) of segments 1..3: right hand round the pistol grip with the index on the trigger,
 # left hand round the handguard
 const CURL_R := {"Thumb": [12, 28, 28], "Index": [30, 42, 28], "Middle": [72, 88, 55], "Ring": [74, 90, 55], "Pinky": [76, 90, 55]}
@@ -177,18 +178,7 @@ func _load_gun(k: String) -> Node3D:
 	var g: Node3D = load("res://assets/guns/%s.glb" % k).instantiate()
 	g.scale = Vector3.ONE * GUN_SCALE[k]
 	for m in g.find_children("*", "MeshInstance3D", true, false):
-		var mi: MeshInstance3D = m
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		for si in mi.mesh.get_surface_count():
-			var mat = mi.mesh.surface_get_material(si)
-			if mat is StandardMaterial3D and mat.shading_mode != BaseMaterial3D.SHADING_MODE_UNSHADED:
-				# the colours were written as sRGB values; read them that way (dark steel and wood, not white)
-				var mm: StandardMaterial3D = mat.duplicate()
-				var c: Color = mm.albedo_color.srgb_to_linear() * 0.6
-				mm.albedo_color = Color(c.r, c.g, c.b, 1.0)
-				mm.metallic = min(mm.metallic, 0.3)
-				mm.roughness = clamp(mm.roughness, 0.45, 0.8)
-				mi.set_surface_override_material(si, mm)
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return g
 
 
