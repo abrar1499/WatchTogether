@@ -1,5 +1,5 @@
 extends Node3D
-## Dust Signal (Godot) - phase 1: the soldier, the rifle, a small practice yard and phone controls.
+## Dust Signal (Godot): the soldier, the rifles, a practice yard with enemy soldiers, and phone controls.
 
 const REPO_API := "https://api.github.com/repos/abrar1499/WatchTogether/releases?per_page=10"
 
@@ -10,6 +10,20 @@ var snd := Snd.new()
 var version := 0
 var playing := false
 var test_mode := ""
+# enemies: where each one stands (position, facing, other end of his beat)
+const POSTS := [
+	[Vector3(12, 0, -18.5), PI, Vector3(7, 0, -18.5)],
+	[Vector3(-10, 0, -18), PI, Vector3(-4, 0, -18)],
+	[Vector3(8, 0, -19.5), PI * 0.5, Vector3(0, 0, -19.5)],
+	[Vector3(20, 0, -6), 0.0, Vector3(20, 0, -16)],
+	[Vector3(-20, 0, -10), -PI * 0.5, Vector3(-20, 0, -2)],
+	[Vector3(0, 0, -27), PI, Vector3(-6, 0, -27)],
+]
+var enemies := []
+var wave := 0
+var wave_t := -1.0
+var kills := 0
+var headshots := 0
 
 
 func _ready() -> void:
@@ -54,6 +68,8 @@ func _ready() -> void:
 func start_game() -> void:
 	playing = true
 	ui.hide_start()
+	if test_mode == "" or test_mode == "enemies":
+		_spawn_wave()
 	if not ui.is_touch and test_mode == "":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -285,6 +301,71 @@ func _build_yard() -> void:
 		_box(Vector3(-40 + i * 3.0, 0, 30), Vector3(0.08, 2.2, 0.08), metal, 0.0, "metal")
 
 
+# ---------------- enemies ----------------
+func _spawn_wave() -> void:
+	for e in enemies:
+		e.queue_free()
+	enemies.clear()
+	wave += 1
+	for p in POSTS:
+		var e = load("res://scripts/enemy.gd").new()
+		e.name = "Enemy%d" % enemies.size()
+		add_child(e)
+		e.setup(self, p[0] + Vector3(0, 0.05, 0), p[1], p[2])
+		enemies.append(e)
+	ui.message("WAVE %d" % wave, "%d enemy soldiers in the yard" % enemies.size(), 2.5)
+
+
+func alive() -> int:
+	var n := 0
+	for e in enemies:
+		if not e.dead:
+			n += 1
+	return n
+
+
+## The player fired: soldiers within earshot come to look.
+func noise(pos: Vector3, radius: float) -> void:
+	for e in enemies:
+		e.hear(pos, radius)
+
+
+## A soldier who has seen the player calls the ones near him.
+func enemy_alarm(src: Node) -> void:
+	for e in enemies:
+		if e != src and not e.dead and e.global_position.distance_to(src.global_position) < 22.0:
+			e.alarm(src.last_seen)
+
+
+func on_enemy_killed(_e: Node, headshot: bool) -> void:
+	kills += 1
+	if headshot:
+		headshots += 1
+	ui.kill_note("HEADSHOT" if headshot else "KILL")
+	if alive() == 0:
+		wave_t = 7.0
+		ui.message("AREA CLEAR", "Next wave in a few seconds", 4.0)
+
+
+func on_player_dead() -> void:
+	ui.message("YOU WERE KILLED", "Back in a moment", 3.5)
+
+
+func on_player_respawn() -> void:
+	for e in enemies:
+		if not e.dead:
+			e.mode = "guard"
+			e.alert = 0.0
+			e.grace = 3.0
+
+
+func _process(dt: float) -> void:
+	if wave_t > 0.0:
+		wave_t -= dt
+		if wave_t <= 0.0:
+			_spawn_wave()
+
+
 # ---------------- updates ----------------
 func _check_update() -> void:
 	var http := HTTPRequest.new()
@@ -443,6 +524,17 @@ class FX extends Node3D:
 		h.look_at(p + n, up)
 		h.rotate_object_local(Vector3.FORWARD, randf() * TAU)
 
+	func blood(p: Vector3, n: Vector3) -> void:
+		for i in 2:
+			var s: Sprite3D = puffs[puff_i % puffs.size()]
+			puff_i += 1
+			s.global_position = p + n * (0.04 + i * 0.08) + Vector3(randf_range(-0.04, 0.04), randf_range(-0.03, 0.05), randf_range(-0.04, 0.04))
+			s.modulate = Color(0.45, 0.02, 0.02) if i == 0 else Color(0.6, 0.06, 0.04)
+			s.pixel_size = 0.0045 if i == 0 else 0.003
+			s.visible = true
+			s.set_meta("t", 0.45)
+			s.set_meta("max", 0.45)
+
 	func tracer(a: Vector3, b: Vector3) -> void:
 		var m: MeshInstance3D = tracers[tr_i % tracers.size()]
 		tr_i += 1
@@ -500,9 +592,11 @@ class Snd extends Node:
 	var one_shots := []
 	var streams := {}
 	var pistol_i := 0
+	var world_shots := []
 
 	func _ready() -> void:
-		for k in ["ak", "m4", "pistol", "reload_rifle", "reload_pistol", "steps_sand", "steps_run"]:
+		for k in ["ak", "m4", "pistol", "reload_rifle", "reload_pistol", "steps_sand", "steps_run",
+				"enemy_ak", "die_male", "die_collapse", "die_scream", "die_fall", "die_breath"]:
 			streams[k] = load("res://assets/sfx/%s.mp3" % k)
 		auto = AudioStreamPlayer.new()
 		add_child(auto)
@@ -511,6 +605,13 @@ class Snd extends Node:
 			p.set_meta("stop", -1.0)
 			add_child(p)
 			one_shots.append(p)
+		for i in 10:
+			var p := AudioStreamPlayer3D.new()
+			p.set_meta("stop", -1.0)
+			p.unit_size = 9.0
+			p.max_distance = 140.0
+			add_child(p)
+			world_shots.append(p)
 
 	func _play(k: String, from: float, dur: float, vol_db := 0.0) -> void:
 		var best: AudioStreamPlayer = one_shots[0]
@@ -522,6 +623,47 @@ class Snd extends Node:
 		best.volume_db = vol_db
 		best.play(from)
 		best.set_meta("stop", from + dur)
+
+	func _play3d(k: String, pos: Vector3, from: float, dur: float, vol_db := 0.0) -> void:
+		var best: AudioStreamPlayer3D = world_shots[0]
+		for p in world_shots:
+			if not p.playing:
+				best = p
+				break
+		best.stream = streams[k]
+		best.volume_db = vol_db
+		best.global_position = pos
+		best.play(from)
+		best.set_meta("stop", from + dur)
+
+	## An enemy burst: the enemy rifle recording from where he stands, a little quieter than the player's gun.
+	func enemy_burst(pos: Vector3, shots: int) -> void:
+		var long := shots > 4
+		_play3d("enemy_ak", pos, 0.595 if long else 0.78, 0.97 if long else 0.79, -7.0)
+
+	## A death cry (none for most headshots), then the body hitting the ground.
+	func death(pos: Vector3, kind: String) -> void:
+		var pl := kind == "player"
+		var voice := ""
+		if pl:
+			voice = "die_male" if randf() < 0.5 else "die_collapse"
+		elif kind == "head":
+			voice = "die_collapse" if randf() < 0.3 else ""
+		else:
+			var r := randf()
+			voice = "die_male" if r < 0.45 else ("die_collapse" if r < 0.8 else "die_scream")
+		if voice != "":
+			if pl:
+				_play(voice, 0.0, 4.0)
+			else:
+				_play3d(voice, pos, 0.0, 4.0, -2.0)
+		get_tree().create_timer(0.4 if kind == "head" else 0.55).timeout.connect(func():
+			if pl:
+				_play("die_fall", 0.0, 3.0, -4.0)
+			else:
+				_play3d("die_fall", pos, 0.0, 3.0, -4.0))
+		if pl:
+			get_tree().create_timer(1.4).timeout.connect(func(): _play("die_breath", 0.0, 6.0, 2.0))
 
 	func start_auto(kind: String) -> void:
 		if auto.playing and auto_kind == kind:
@@ -553,5 +695,8 @@ class Snd extends Node:
 		if auto.playing and auto.get_playback_position() >= auto_loop[1]:
 			auto.seek(auto_loop[0])
 		for p in one_shots:
+			if p.playing and p.get_playback_position() >= float(p.get_meta("stop")):
+				p.stop()
+		for p in world_shots:
 			if p.playing and p.get_playback_position() >= float(p.get_meta("stop")):
 				p.stop()

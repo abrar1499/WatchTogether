@@ -31,6 +31,11 @@ var update_url := ""
 var ver_label: Label
 var hint := ""
 var hint_t := 0.0
+var msg := ""
+var msg_sub := ""
+var msg_t := 0.0
+var note := ""
+var note_t := 0.0
 
 
 func _ready() -> void:
@@ -166,7 +171,20 @@ func _hint(s: String) -> void:
 	hint_t = 1.6
 
 
+func message(title: String, sub: String, secs: float) -> void:
+	msg = title
+	msg_sub = sub
+	msg_t = secs
+
+
+func kill_note(s: String) -> void:
+	note = s
+	note_t = 1.2
+
+
 func _process(dt: float) -> void:
+	msg_t = max(0.0, msg_t - dt)
+	note_t = max(0.0, note_t - dt)
 	if hint_t > 0:
 		hint_t -= dt
 	queue_redraw()
@@ -178,6 +196,14 @@ func _draw() -> void:
 	var vs := get_viewport_rect().size
 	var s := _scale()
 	var c := vs * 0.5
+	# hit: red edge flash and a mark toward the shooter
+	if player.hurt_t > 0.0:
+		var a: float = player.hurt_t / 0.6
+		draw_rect(Rect2(Vector2.ZERO, vs), Color(0.7, 0.0, 0.0, 0.22 * a))
+		var ang: float = player.hurt_dir - PI * 0.5
+		draw_arc(c, 110 * s, ang - 0.35, ang + 0.35, 16, Color(1, 0.15, 0.1, 0.85 * a), 7.0 * s)
+	if player.dead:
+		draw_rect(Rect2(Vector2.ZERO, vs), Color(0.35, 0.0, 0.0, 0.35))
 	# crosshair (red dot while aiming)
 	if player.aiming:
 		draw_circle(c, 3.0 * s, Color(1, 0.25, 0.15))
@@ -195,6 +221,30 @@ func _draw() -> void:
 	draw_rect(Rect2(ap - Vector2(12, 40) * s, Vector2(220, 64) * s), Color(0.05, 0.06, 0.06, 0.6))
 	draw_string(font, ap + Vector2(0, -16 * s), w["name"] + ("  RELOADING" if player.reloading > 0 else ""), HORIZONTAL_ALIGNMENT_LEFT, -1, int(13 * s), Color(0.85, 0.82, 0.72))
 	draw_string(font, ap + Vector2(0, 14 * s), ammo, HORIZONTAL_ALIGNMENT_LEFT, -1, int(28 * s), Color(1, 1, 1))
+	# health
+	var hp_k: float = clamp(player.hp / 100.0, 0.0, 1.0)
+	var hb := Rect2(ap + Vector2(-12, 30) * s, Vector2(220, 10) * s)
+	draw_rect(hb, Color(0.05, 0.06, 0.06, 0.6))
+	draw_rect(Rect2(hb.position, Vector2(hb.size.x * hp_k, hb.size.y)), Color(0.85, 0.2, 0.15) if hp_k < 0.35 else Color(0.55, 0.85, 0.45))
+	draw_string(font, ap + Vector2(0, 56 * s), "HEALTH %d" % int(ceil(player.hp)), HORIZONTAL_ALIGNMENT_LEFT, -1, int(12 * s), Color(0.9, 0.88, 0.8))
+	# enemies left and score
+	if main.enemies.size() > 0:
+		var tl := Vector2(24 * s, 34 * s)
+		draw_rect(Rect2(tl - Vector2(12, 24) * s, Vector2(190, 52) * s), Color(0.05, 0.06, 0.06, 0.55))
+		draw_string(font, tl, "ENEMIES  %d / %d" % [main.alive(), main.enemies.size()], HORIZONTAL_ALIGNMENT_LEFT, -1, int(15 * s), Color(1, 0.86, 0.7))
+		draw_string(font, tl + Vector2(0, 20 * s), "KILLS %d   HEADSHOTS %d" % [main.kills, main.headshots], HORIZONTAL_ALIGNMENT_LEFT, -1, int(11 * s), Color(0.85, 0.83, 0.75))
+	if note_t > 0.0:
+		var fsn := int(15 * s)
+		var tw: float = font.get_string_size(note, HORIZONTAL_ALIGNMENT_LEFT, -1, fsn).x
+		draw_string(font, c + Vector2(-tw / 2, 46 * s), note, HORIZONTAL_ALIGNMENT_LEFT, -1, fsn, Color(1, 0.35, 0.25, min(1.0, note_t * 2.0)))
+	if msg_t > 0.0:
+		var al: float = min(1.0, msg_t * 1.5)
+		var f1 := int(30 * s)
+		var f2 := int(14 * s)
+		var w1: float = font.get_string_size(msg, HORIZONTAL_ALIGNMENT_LEFT, -1, f1).x
+		var w2: float = font.get_string_size(msg_sub, HORIZONTAL_ALIGNMENT_LEFT, -1, f2).x
+		draw_string(font, Vector2(c.x - w1 / 2, vs.y * 0.3), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, f1, Color(1, 0.92, 0.75, al))
+		draw_string(font, Vector2(c.x - w2 / 2, vs.y * 0.3 + 26 * s), msg_sub, HORIZONTAL_ALIGNMENT_LEFT, -1, f2, Color(0.95, 0.9, 0.8, al))
 	if hint_t > 0:
 		draw_string(font, Vector2(vs.x * 0.5 - 60 * s, vs.y * 0.62), hint, HORIZONTAL_ALIGNMENT_LEFT, -1, int(16 * s), Color(0.6, 1, 0.6, min(1.0, hint_t)))
 	if not is_touch:
