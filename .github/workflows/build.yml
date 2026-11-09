@@ -28,11 +28,13 @@ jobs:
       # Same package id and signing key as the old app, so this installs as its update.
       # versionCode = run number, tag "v<number>".
       - name: Export APK
+        shell: bash
         env:
-          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ github.workspace }}/android/debug.keystore
           GODOT_ANDROID_KEYSTORE_RELEASE_USER: androiddebugkey
           GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: android
         run: |
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$GITHUB_WORKSPACE/android/debug.keystore"
+          ls -la "$GODOT_ANDROID_KEYSTORE_RELEASE_PATH"
           cd godot
           echo "${{ github.run_number }}" > version.txt
           sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/" export_presets.cfg
