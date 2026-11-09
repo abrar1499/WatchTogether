@@ -189,22 +189,158 @@ func _build_environment() -> void:
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.tonemap_white = 4.0         # room for the bright desert: sunlit sand no longer burns out to flat white
-	env.tonemap_exposure = 0.95
+	env.tonemap_exposure = 0.9
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.72, 0.74, 0.76)
 	env.fog_density = 0.0011
+	# muted, a little more contrast: the sand had come out too yellow
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 0.84
+	env.adjustment_contrast = 1.07
+	env.adjustment_brightness = 0.98
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
-	var sun := DirectionalLight3D.new()
+	world_env = env
+	sun = DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-32, -135, 0)
-	sun.light_color = Color(1.0, 0.96, 0.9)
-	sun.light_energy = 1.2
+	sun.light_color = Color(1.0, 0.98, 0.95)
+	sun.light_energy = 1.15
 	sun.shadow_enabled = true
 	sun.shadow_opacity = 0.78          # soft, not black
 	sun.shadow_blur = 1.6
 	sun.directional_shadow_max_distance = 45.0
 	add_child(sun)
+
+
+var world_env: Environment
+var sun: DirectionalLight3D
+
+
+## Late evening (a mission): the sun low and dim, a deep blue sky going grey at the horizon, cool fill light, more
+## haze. Lamps and searchlights do the rest.
+func apply_dusk() -> void:
+	var sm: ProceduralSkyMaterial = world_env.sky.sky_material
+	sm.sky_top_color = Color(0.07, 0.11, 0.22)
+	sm.sky_horizon_color = Color(0.42, 0.42, 0.46)
+	sm.ground_horizon_color = Color(0.3, 0.3, 0.32)
+	sm.ground_bottom_color = Color(0.12, 0.12, 0.13)
+	sm.sun_angle_max = 8.0
+	world_env.ambient_light_color = Color(0.42, 0.47, 0.6)
+	world_env.ambient_light_energy = 0.5
+	world_env.fog_light_color = Color(0.3, 0.32, 0.38)
+	world_env.fog_density = 0.0045
+	world_env.tonemap_exposure = 1.05
+	world_env.adjustment_saturation = 0.8
+	sun.rotation_degrees = Vector3(-9, -60, 0)
+	sun.light_color = Color(0.95, 0.78, 0.66)
+	sun.light_energy = 0.55
+	sun.shadow_opacity = 0.6
+
+
+## Small stones, partly sunk in the sand, and dry desert scrub (kept outside `clear_r` of the flat centre).
+func scatter(stones: int, scrub: int, clear_r: float) -> void:
+	if rock_meshes.is_empty():
+		for s_ in 3:
+			rock_meshes.append(_rock_mesh(40 + s_))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 99
+	var rock_mat := _tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true)
+	for k in 3:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = rock_meshes[k]
+		var n := stones / 3
+		mm.instance_count = n
+		for i in n:
+			var a := rng.randf() * TAU
+			var r := sqrt(rng.randf()) * (flat_r + 30.0)
+			var x := flat_c.x + cos(a) * r
+			var z := flat_c.y + sin(a) * r
+			var sc := rng.randf_range(0.04, 0.2) * (2.0 if rng.randf() < 0.08 else 1.0)
+			var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc * rng.randf_range(0.8, 1.4), sc * rng.randf_range(0.5, 0.9), sc))
+			mm.set_instance_transform(i, Transform3D(b, Vector3(x, ground_height(x, z) - sc * 0.15, z)))
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		mi.material_override = rock_mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+	# scrub: crossed cards of a dry twiggy bush
+	var tex := _scrub_texture()
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = tex
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.alpha_scissor_threshold = 0.5
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.vertex_color_use_as_albedo = true
+	m.roughness = 1.0
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for a2 in [0.0, PI / 3.0, PI * 2.0 / 3.0]:
+		var d := Vector3(cos(a2), 0, sin(a2)) * 0.5
+		var n2 := Vector3(-d.z, 0, d.x).normalized()
+		var v := [-d, d, d + Vector3(0, 1, 0), -d + Vector3(0, 1, 0)]
+		var uv := [Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]
+		for idx in [0, 1, 2, 0, 2, 3]:
+			st.set_normal(Vector3.UP.lerp(n2, 0.3).normalized())
+			st.set_uv(uv[idx])
+			st.add_vertex(v[idx])
+	var mm2 := MultiMesh.new()
+	mm2.transform_format = MultiMesh.TRANSFORM_3D
+	mm2.use_colors = true
+	mm2.mesh = st.commit()
+	mm2.instance_count = scrub
+	var placed := 0
+	while placed < scrub:
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(clear_r, flat_r + 40.0)
+		var x := flat_c.x + cos(a) * r
+		var z := flat_c.y + sin(a) * r
+		var sc := rng.randf_range(0.35, 1.0)
+		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc * rng.randf_range(0.8, 1.3), sc, sc))
+		mm2.set_instance_transform(placed, Transform3D(b, Vector3(x, ground_height(x, z) - 0.03, z)))
+		var tone := rng.randf_range(0.75, 1.0)
+		mm2.set_instance_color(placed, Color(tone, tone * rng.randf_range(0.92, 1.0), tone * 0.85))
+		placed += 1
+	var mi2 := MultiMeshInstance3D.new()
+	mi2.multimesh = mm2
+	mi2.material_override = m
+	mi2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi2)
+
+
+## A dry bush on a transparent card: branching grey-brown twigs.
+func _scrub_texture() -> ImageTexture:
+	var w := 128
+	var img := Image.create(w, w, true, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var stack := []
+	for i in 7:
+		stack.append([Vector2(w * 0.5 + rng.randf_range(-6, 6), w - 1), -PI * 0.5 + rng.randf_range(-0.9, 0.9), rng.randf_range(40, 70), 3.0])
+	while not stack.is_empty():
+		var br: Array = stack.pop_back()
+		var p: Vector2 = br[0]
+		var ang: float = br[1]
+		var length: float = br[2]
+		var th: float = br[3]
+		var steps := int(length)
+		for k in steps:
+			ang += rng.randf_range(-0.08, 0.08)
+			p += Vector2(cos(ang), sin(ang))
+			var c := Color(0.42, 0.36, 0.28, 1).lerp(Color(0.62, 0.56, 0.45, 1), float(k) / steps)
+			var rr := int(max(0.5, th * (1.0 - float(k) / steps * 0.7)))
+			for dx in range(-rr, rr + 1):
+				for dy in range(-rr, rr + 1):
+					var q := Vector2i(int(p.x) + dx, int(p.y) + dy)
+					if q.x >= 0 and q.y >= 0 and q.x < w and q.y < w:
+						img.set_pixelv(q, c)
+			if th > 0.8 and rng.randf() < 0.06:
+				stack.append([p, ang + rng.randf_range(-0.9, 0.9), length * rng.randf_range(0.35, 0.6), th * 0.6])
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
 
 
 func _noise_tex(c0: Color, c1: Color, freq := 0.02, size := 512) -> NoiseTexture2D:
@@ -321,7 +457,8 @@ func _build_ground() -> void:
 			var h: float = ground_h[j * w + i]
 			var tn := tone.get_noise_2d(x, z) + tone2.get_noise_2d(x, z) * 0.6
 			var k = 0.92 + 0.08 * tn - min(h, 8.0) * 0.004
-			st.set_color(Color(k, k * (0.985 + 0.015 * tn), k * (0.97 + 0.03 * tn)))
+			# (less yellow than the texture alone: red and green held back a little)
+			st.set_color(Color(k * 0.9, k * 0.9 * (0.985 + 0.015 * tn), k * 0.97 * (0.97 + 0.03 * tn)))
 			st.set_uv(Vector2(x, z) / 4.0)
 			st.add_vertex(Vector3(x, h, z))
 	for j in n:
@@ -1196,6 +1333,7 @@ func _build_yard() -> void:
 	extra_cover = SANDBAG_COVER
 	_build_ground()
 	_build_mountains()
+	scatter(900, 160, 34.0)
 	var metal := _mat(Color(0.35, 0.37, 0.33), Color(0.5, 0.52, 0.46), 0.6, 0.55, 0.35)
 	var rock_mat := _tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true)
 	# wooden crates (rounds go through them; enough hits break them)
@@ -2162,10 +2300,8 @@ class Snd extends Node:
 			streams[k] = load("res://assets/sfx/%s.mp3" % k)
 		streams["whoosh"] = load("res://assets/music/whoosh.mp3")
 		streams["boom"] = load("res://assets/music/escape.mp3")   # the impact hit near the end of "Action trailer"
-		_outdoor_bus()
-		_synth_all()
+		# only the player's own recordings, played as they are: no sounds made here, no added echo
 		auto = AudioStreamPlayer.new()
-		auto.bus = "Outdoor"
 		add_child(auto)
 		for i in 8:
 			var p := AudioStreamPlayer.new()
@@ -2177,8 +2313,7 @@ class Snd extends Node:
 			p.set_meta("stop", -1.0)
 			p.unit_size = 14.0
 			p.max_distance = 140.0
-			p.attenuation_filter_cutoff_hz = 3800.0     # far off: duller, as in the open air
-			p.attenuation_filter_db = -18.0
+			p.attenuation_filter_db = 0.0
 			add_child(p)
 			world_shots.append(p)
 		for i in 8:
@@ -2186,168 +2321,11 @@ class Snd extends Node:
 			p.set_meta("stop", -1.0)
 			p.unit_size = 4.0
 			p.max_distance = 45.0
-			p.bus = "Outdoor"
 			add_child(p)
 			imp_players.append(p)
 
 	var imp_players := []
 	var imp_i := 0
-
-	## Gunfire and explosions go through an "outdoor" bus: a little open-air reverb and two late echoes off the hills.
-	func _outdoor_bus() -> void:
-		if AudioServer.get_bus_index("Outdoor") >= 0:
-			return
-		var idx := AudioServer.bus_count
-		AudioServer.add_bus(idx)
-		AudioServer.set_bus_name(idx, "Outdoor")
-		AudioServer.set_bus_send(idx, "Master")
-		var rv := AudioEffectReverb.new()
-		rv.room_size = 0.7
-		rv.damping = 0.65
-		rv.spread = 1.0
-		rv.predelay_msec = 70.0
-		rv.hipass = 0.2
-		rv.wet = 0.14
-		rv.dry = 1.0
-		AudioServer.add_bus_effect(idx, rv)
-		var dl := AudioEffectDelay.new()
-		dl.dry = 1.0
-		dl.tap1_active = true
-		dl.tap1_delay_ms = 430.0
-		dl.tap1_level_db = -17.0
-		dl.tap1_pan = -0.3
-		dl.tap2_active = true
-		dl.tap2_delay_ms = 950.0
-		dl.tap2_level_db = -25.0
-		dl.tap2_pan = 0.35
-		dl.feedback_active = false
-		AudioServer.add_bus_effect(idx, dl)
-
-	# ---- short sounds made here from noise and tones (no recordings of these) ----
-	const SR := 22050
-	var rng := RandomNumberGenerator.new()
-
-	func _wav(a: PackedFloat32Array, loop := false) -> AudioStreamWAV:
-		var b := PackedByteArray()
-		b.resize(a.size() * 2)
-		for i in a.size():
-			b.encode_s16(i * 2, int(clamp(a[i], -1.0, 1.0) * 30000.0))
-		var w := AudioStreamWAV.new()
-		w.format = AudioStreamWAV.FORMAT_16_BITS
-		w.mix_rate = SR
-		w.stereo = false
-		w.data = b
-		if loop:
-			w.loop_mode = AudioStreamWAV.LOOP_FORWARD
-			w.loop_end = a.size()
-		return w
-
-	## noise through a one-pole low-pass (k small: darker)
-	func _noise(n: int, k: float) -> PackedFloat32Array:
-		var a := PackedFloat32Array()
-		a.resize(n)
-		var y := 0.0
-		for i in n:
-			y += (rng.randf_range(-1.0, 1.0) - y) * k
-			a[i] = y
-		return a
-
-	func _synth_all() -> void:
-		rng.seed = 4242
-		# ricochet off steel: a click and a few ringing partials
-		for v in 3:
-			var n := int(SR * 0.5)
-			var a := _noise(n, 0.9)
-			var fs := [1850.0, 2930.0, 4410.0, 6120.0]
-			var am := [1.0, 0.6, 0.4, 0.25]
-			var dec := [8.0, 11.0, 15.0, 21.0]
-			var sc: float = [0.82, 1.0, 1.22][v]
-			for i in n:
-				var t := float(i) / SR
-				var x: float = a[i] * exp(-t * 400.0) * 0.8
-				for k in 4:
-					x += sin(TAU * fs[k] * sc * t) * am[k] * exp(-t * dec[k]) * 0.22
-				a[i] = x
-			streams["s_metal%d" % v] = _wav(a)
-		# into wood: a dull knock with a splintering crack
-		var nw := int(SR * 0.2)
-		var wd := _noise(nw, 0.3)
-		var hi := _noise(nw, 0.95)
-		for i in nw:
-			var t := float(i) / SR
-			wd[i] = wd[i] * exp(-t * 32.0) * 1.3 + sin(TAU * 170.0 * t) * exp(-t * 28.0) * 0.5 + hi[i] * exp(-t * 160.0) * 0.5
-		streams["s_wood"] = _wav(wd)
-		# into sand: a soft thup
-		var ns := int(SR * 0.16)
-		var sd := _noise(ns, 0.1)
-		for i in ns:
-			var t := float(i) / SR
-			sd[i] = sd[i] * exp(-t * 26.0) * 2.2 + sin(TAU * 75.0 * t) * exp(-t * 30.0) * 0.4
-		streams["s_sand"] = _wav(sd)
-		# into concrete or rock: a sharp crack and grit
-		var nc := int(SR * 0.18)
-		var cc := _noise(nc, 0.55)
-		var hc := _noise(nc, 0.98)
-		for i in nc:
-			var t := float(i) / SR
-			cc[i] = cc[i] * exp(-t * 45.0) * 1.1 + hc[i] * exp(-t * 220.0) * 0.7
-			if rng.randf() < 0.004:
-				cc[i] += rng.randf_range(-0.5, 0.5) * exp(-t * 15.0)
-		streams["s_conc"] = _wav(cc)
-		# a round into a body
-		var nf := int(SR * 0.14)
-		var fl := _noise(nf, 0.07)
-		for i in nf:
-			var t := float(i) / SR
-			fl[i] = fl[i] * exp(-t * 40.0) * 2.5 + sin(TAU * 105.0 * t) * exp(-t * 35.0) * 0.6
-		streams["s_flesh"] = _wav(fl)
-		# a round going past: the sharp crack of the bullet and a short tearing hiss
-		var nz := int(SR * 0.32)
-		var zl := _noise(nz, 0.6)
-		var zlo := _noise(nz, 0.06)
-		for i in nz:
-			var t := float(i) / SR
-			var env: float = sin(clamp(t / 0.22, 0.0, 1.0) * PI)
-			var crack := 0.0
-			if t < 0.003:
-				crack = 1.0 - t / 0.0015
-			zl[i] = crack * 0.9 + (zl[i] - zlo[i]) * env * 0.7
-		streams["s_whiz"] = _wav(zl)
-		# something heavy landing: a low thump
-		var nt := int(SR * 0.35)
-		var th := _noise(nt, 0.08)
-		for i in nt:
-			var t := float(i) / SR
-			th[i] = th[i] * exp(-t * 18.0) * 2.0 + sin(TAU * 62.0 * t) * exp(-t * 12.0) * 0.7
-		streams["s_thud"] = _wav(th)
-		# an alarm siren: a wail rising and falling (loops)
-		var nsi := int(SR * 2.4)
-		var si := PackedFloat32Array()
-		si.resize(nsi)
-		var ph := 0.0
-		for i in nsi:
-			var t := float(i) / SR
-			var f: float = 620.0 + 380.0 * (0.5 - 0.5 * cos(TAU * t / 2.4))
-			ph += TAU * f / SR
-			si[i] = (sin(ph) * 0.6 + sin(ph * 2.0) * 0.15 + sin(ph * 3.0) * 0.08) * 0.8
-		streams["s_siren"] = _wav(si, true)
-		# a diesel generator's hum (loops)
-		var nh := int(SR * 1.0)
-		var hm := _noise(nh, 0.02)
-		for i in nh:
-			var t := float(i) / SR
-			hm[i] = hm[i] * 1.2 + sin(TAU * 50.0 * t) * 0.25 + sin(TAU * 100.0 * t) * 0.18 + sin(TAU * 25.0 * t) * 0.2 * (0.6 + 0.4 * sin(TAU * 12.5 * t))
-		streams["s_hum"] = _wav(hm, true)
-		# a fire: low roar with crackles (loops)
-		var nfi := int(SR * 2.0)
-		var fi := _noise(nfi, 0.03)
-		var pop := 0.0
-		for i in nfi:
-			if rng.randf() < 0.0018:
-				pop = rng.randf_range(0.3, 0.9) * (1.0 if rng.randf() < 0.5 else -1.0)
-			pop *= 0.93
-			fi[i] = fi[i] * 1.6 + pop * rng.randf_range(0.2, 1.0)
-		streams["s_fire"] = _wav(fi, true)
 
 	## from/dur in the file's own seconds; pitch only changes how it is played back; fade: the last seconds faded out
 	func _play(k: String, from: float, dur: float, vol_db := 0.0, pitch := 1.0, fade := 0.0, echo := false) -> void:
@@ -2356,7 +2334,7 @@ class Snd extends Node:
 			if not p.playing:
 				best = p
 				break
-		best.bus = "Outdoor" if echo else "Master"
+		best.bus = "Master"
 		best.stream = streams[k]
 		best.volume_db = vol_db
 		best.pitch_scale = pitch
@@ -2371,7 +2349,7 @@ class Snd extends Node:
 			if not p.playing:
 				best = p
 				break
-		best.bus = "Outdoor" if echo else "Master"
+		best.bus = "Master"
 		best.stream = streams[k]
 		best.volume_db = vol_db
 		best.pitch_scale = pitch
@@ -2411,22 +2389,10 @@ class Snd extends Node:
 		_play("steps_run", RUN_STEPS[randi() % RUN_STEPS.size()], 0.28, -3.0)
 		get_tree().create_timer(0.3).timeout.connect(func(): _play("steps_run", RUN_STEPS[randi() % RUN_STEPS.size()], 0.28, -5.0))
 
-	## The player hit: the thud of the round (no voice).
+	## The player hit: no sound of its own (none recorded).
 	func hurt(heavy: bool) -> void:
-		var p: AudioStreamPlayer = one_shots[0]
-		for q in one_shots:
-			if not q.playing:
-				p = q
-				break
-		p.bus = "Master"
-		p.stream = streams["s_flesh"]
-		p.volume_db = 2.0 if heavy else -2.0
-		p.pitch_scale = randf_range(0.85, 1.05)
-		p.play()
-		p.set_meta("stop", 9.0)
-		p.set_meta("fade", 0.0)
+		return
 
-	## An enemy hit but not killed: now and then one of the short grunts, quietly.
 	func grunt(pos: Vector3) -> void:
 		if randf() < 0.45:
 			return
@@ -2444,72 +2410,21 @@ class Snd extends Node:
 	## An enemy burst: the enemy rifle recording from where he stands, a little quieter than the player's gun.
 	func enemy_burst(pos: Vector3, shots: int) -> void:
 		var long := shots > 4
-		_play3d("enemy_ak", pos, 0.595 if long else 0.78, 0.97 if long else 0.79, -7.0, 1.0, 0.0, true)
+		_play3d("enemy_ak", pos, 0.595 if long else 0.78, 0.97 if long else 0.79, 0.0)
 
 	## A round striking something: the sound of what it hit, from there (not from far off).
 	func impact(pos: Vector3, surf: String, _mine: bool) -> void:
-		var cam := get_viewport().get_camera_3d()
-		if cam and cam.global_position.distance_to(pos) > 40.0:
-			return
-		# rounds into sand, sandbags, concrete and rock make no sound of their own (the noise bursts hissed)
-		if surf not in ["metal", "wood", "flesh"]:
-			return
-		var k := "s_sand"
-		var vol := -6.0
-		match surf:
-			"metal":
-				k = "s_metal%d" % (randi() % 3)
-				vol = -9.0
-			"wood":
-				k = "s_wood"
-				vol = -4.0
-			"concrete", "rock":
-				k = "s_conc"
-				vol = -5.0
-			"flesh":
-				k = "s_flesh"
-				vol = -3.0
-		var p: AudioStreamPlayer3D = imp_players[imp_i % imp_players.size()]
-		imp_i += 1
-		p.stream = streams[k]
-		p.volume_db = vol
-		p.pitch_scale = randf_range(0.9, 1.1)
-		p.global_position = pos
-		p.play()
+		return     # (no recording for impacts: silent)
 
-	## An enemy round past the player's head: louder the closer.
 	func whiz(pos: Vector3, near: float) -> void:
-		var p: AudioStreamPlayer3D = imp_players[imp_i % imp_players.size()]
-		imp_i += 1
-		p.stream = streams["s_whiz"]
-		p.volume_db = lerp(2.0, -10.0, near / 2.2)
-		p.pitch_scale = randf_range(0.85, 1.15)
-		p.global_position = pos
-		p.play()
+		return
 
 	func thud(pos: Vector3, vol := 0.0) -> void:
-		var p: AudioStreamPlayer3D = imp_players[imp_i % imp_players.size()]
-		imp_i += 1
-		p.stream = streams["s_thud"]
-		p.volume_db = vol
-		p.pitch_scale = randf_range(0.85, 1.1)
-		p.global_position = pos
-		p.play()
+		return
 
-	## A fire's roar and crackle, following `parent` (a burning drum).
 	func fire_on(parent: Node3D) -> AudioStreamPlayer3D:
-		return null    # (the fire's roar: switched off, a constant hiss)
-		var p := AudioStreamPlayer3D.new()
-		p.stream = streams["s_fire"]
-		p.unit_size = 3.0
-		p.max_distance = 35.0
-		p.volume_db = -2.0
-		parent.add_child(p)
-		p.position = Vector3(0, 0.9, 0)
-		p.play()
-		return p
+		return null    # (no recording of a fire)
 
-	## A death cry (none for most headshots), then the body hitting the ground.
 	func death(pos: Vector3, kind: String) -> void:
 		var pl := kind == "player"
 		var voice := ""
@@ -2633,11 +2548,15 @@ class Music extends Node:
 		best.set_meta("stop", from + dur if dur > 0 else 9999.0)
 
 	## Play pressed: a whoosh and the opening of the trailer, softly, then the quiet bed.
+	var quiet_start := false
+	## Play pressed. The training yard opens with the whoosh and the trailer; a mission starts quiet.
 	func begin() -> void:
 		on = true
-		_shot("whoosh", 0.5)
-		_start_piece("intro", 24.0, 0.2)
-		rest_until = t + 30.0
+		quiet_start = main.mission != null
+		if not quiet_start:
+			_shot("whoosh", 0.5)
+			_start_piece("intro", 24.0, 0.2)
+		rest_until = t + (40.0 if quiet_start else 30.0)
 		for k in ["amb", "night"]:
 			var p: AudioStreamPlayer = layers[k]
 			p.play(randf() * streams[k].get_length() * 0.6)
@@ -2654,6 +2573,12 @@ class Music extends Node:
 		if on and t - spotted_t > 15.0:
 			spotted_t = t
 			_shot("spotted", 0.55)
+
+	## A mission's alarm: the stinger, louder, and the firefight music straight away.
+	func alarm() -> void:
+		spotted_t = t
+		_shot("spotted", 0.9)
+		rest_until = t
 
 	func player_died() -> void:
 		_shot("whoosh", 0.4)
@@ -2675,9 +2600,16 @@ class Music extends Node:
 					contact_t = t
 		fight = fight and t - contact_t < 20.0
 		var dead: bool = pl.dead
-		var want := {"amb": 0.0 if dead else (0.04 if fight else 0.09),
+		# in a mission, close to a soldier who has not seen you: a slow heartbeat under the quiet
+		var near_unseen := false
+		if main.mission and not fight and not dead:
+			for e in main.enemies:
+				if not e.dead and e.mode != "combat" and e.global_position.distance_to(pl.global_position) < 9.0:
+					near_unseen = true
+					break
+		var want := {"amb": 0.0 if dead else (0.04 if fight else (0.14 if quiet_start else 0.09)),
 			"night": 0.0 if dead else (0.06 if fight else 0.18),
-			"heart": (0.1 + clamp((30.0 - pl.hp) / 30.0, 0.0, 1.0) * 0.35) if (not dead and pl.hp < 30.0) else 0.0}
+			"heart": (0.1 + clamp((30.0 - pl.hp) / 30.0, 0.0, 1.0) * 0.35) if (not dead and pl.hp < 30.0) else (0.12 if near_unseen else 0.0)}
 		for k in LOOPS:
 			var rate := 0.25 if want[k] > level[k] else 0.12
 			level[k] = move_toward(level[k], want[k], rate * dt)

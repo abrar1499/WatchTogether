@@ -119,6 +119,7 @@ func _win() -> void:
 
 func _process(dt: float) -> void:
 	t += dt
+	_sweep(dt)
 	if over or not main.playing:
 		return
 	var p = main.player
@@ -157,15 +158,7 @@ func _raise_alarm() -> void:
 	alarm = true
 	reinf_t = 9.0
 	main.ui.message("ALARM!", "The station knows you are here. More soldiers are coming.", 3.5)
-	siren = AudioStreamPlayer3D.new()
-	siren.stream = main.snd.streams["s_siren"]
-	siren.unit_size = 25.0
-	siren.max_distance = 200.0
-	siren.volume_db = -4.0
-	main.add_child(siren)
-	siren.global_position = siren_pos
-	siren.play()
-	get_tree().create_timer(25.0).timeout.connect(func(): if is_instance_valid(siren): siren.stop())
+	main.music.alarm()
 	for e in main.enemies:
 		if not e.dead:
 			e.investigate(main.player.global_position)
@@ -221,8 +214,7 @@ func _m(key: String) -> StandardMaterial3D:
 		"fence":
 			m = StandardMaterial3D.new()
 			m.albedo_texture = _chainlink()
-			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-			m.alpha_scissor_threshold = 0.4
+			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA       # (fades to a grey haze far off, as real mesh does)
 			m.cull_mode = BaseMaterial3D.CULL_DISABLED
 			m.metallic = 0.6
 			m.roughness = 0.5
@@ -446,16 +438,6 @@ func _generator(c: Vector3, rot: float, obj: int) -> StaticBody3D:
 	g.global_position = c
 	g.rotation.y = rot
 	main.machines.append(g)
-	# its steady hum
-	var hum := AudioStreamPlayer3D.new()
-	hum.stream = main.snd.streams["s_hum"]
-	hum.unit_size = 3.0
-	hum.max_distance = 30.0
-	hum.volume_db = -6.0
-	g.add_child(hum)
-	hum.position = Vector3(0, 1, 0)
-	# (the hum is switched off: a constant buzz)
-	g.set_meta("hum", hum)
 	return g
 
 
@@ -485,6 +467,8 @@ func _m1() -> Vector3:
 	main._build_ground()
 	main._build_mountains()
 	main._build_rocks(main._tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true), 70.0, false)
+	main.scatter(1200, 260, 44.0)
+	main.apply_dusk()
 	main.extra_cover = []
 	# the fence: west gate (the way in), east gate (the way out), a torn stretch in the south side
 	_fence(Vector2(-34, 5), Vector2(34, 5), [[54.0, 57.0]])
@@ -536,6 +520,13 @@ func _m1() -> Vector3:
 	main._building_extras(Vector3(20, 0, -40))
 	siren_pos = Vector3(15, 3.0, -36)
 	var tower_c := _tower(Vector3(30.0, 0, -2.0))
+	# evening: searchlights sweeping from the towers, lamps on poles round the compound
+	_searchlight(tower_a, PI * 0.5, 2)
+	_searchlight(tower_b, PI * 0.5, 3)
+	_searchlight(tower_c, PI * 0.75, 14)
+	for lp in [Vector3(-32.6, 0, -26.0), Vector3(-30.5, 0, -17.0), Vector3(-4.6, 0, -24.0), Vector3(-15, 0, -30), Vector3(11.5, 0, -8.6),
+			Vector3(14.5, 0, -34.5), Vector3(4.5, 0, -44.5), Vector3(32.5, 0, -22.0), Vector3(-20, 0, -8.5), Vector3(20, 0, -18)]:
+		_lamp(lp)
 	_mast(Vector3(14, 0, -50))
 	_generator(Vector3(6, 0, -47), 0.0, 1)
 	_drum(Vector3(8.2, 0, -46.4), "red")
@@ -557,25 +548,98 @@ func _m1() -> Vector3:
 	var west := PI * 0.5
 	# the soldiers: [position, facing (0 faces north, PI/2 west), character, gun, patrol route]
 	posts = [
-		[Vector3(-31.5, 0, -27.6), west, "olive", "ak", []],                                 # the west gate
-		[Vector3(-31.5, 0, -20.4), west, "blue", "ak", []],
-		[tower_a + Vector3(-0.8, 0, -0.2), west, "gasmask", "svd", []],                     # tower A: a sniper
-		[tower_b + Vector3(-0.8, 0, 0.3), west, "olive", "ak", []],                          # tower B
+		# the west gate: two guards, each pacing a few steps
+		[Vector3(-31.0, 0, -27.6), west, "olive", "ak", [Vector3(-31.0, 0, -27.6), Vector3(-28.0, 0, -27.0)]],
+		[Vector3(-31.5, 0, -20.4), west, "blue", "ak", [Vector3(-31.5, 0, -20.4), Vector3(-31.0, 0, -17.0)]],
+		# the towers: each man walks round his platform
+		[tower_a + Vector3(-0.9, 0, -0.9), west, "gasmask", "svd", _deck(tower_a)],
+		[tower_b + Vector3(-0.9, 0, -0.9), west, "olive", "ak", _deck(tower_b)],
 		[Vector3(-28, 0, -8), PI * 0.5, "blue", "ak", [Vector3(-28, 0, -8), Vector3(-12, 0, -8), Vector3(-12, 0, -42), Vector3(-24, 0, -42)]],
 		[Vector3(-16, 0, -35.5), west, "gasmask", "ak", []],                                 # outer yard
 		[Vector3(-14, 0, -24.5), west, "olive", "ak", []],                                   # behind the sandbags
-		[Vector3(-3, 0, -28.6), west, "blue", "ak", []],                                     # the inner gate
-		[Vector3(-3, 0, -19.4), west, "gasmask", "ak", []],
+		[Vector3(-3, 0, -28.6), west, "blue", "ak", [Vector3(-3, 0, -28.6), Vector3(-1, 0, -30.5)]],      # the inner gate
+		[Vector3(-3, 0, -19.4), west, "gasmask", "ak", [Vector3(-3, 0, -19.4), Vector3(-1, 0, -17.5)]],
 		[Vector3(10.6, 0, -8.6), PI, "olive", "ak", []],                                     # outside the command hut
 		[hut_c + Vector3(1.5, 0, -1.2), PI * 0.85, "blue", "ak", []],                        # inside it
 		[Vector3(16.5, 0, -35.0), west, "gasmask", "ak", []],                                # by the barracks
 		[Vector3(21, 3.2, -37.2), PI, "olive", "ak", []],                                    # on its roof
 		[Vector3(9.0, 0, -44.6), PI * 0.9, "blue", "ak", []],                                # at the generator
-		[tower_c + Vector3(-0.8, 0, -0.2), west, "gasmask", "ak", []],                       # tower C
+		[tower_c + Vector3(-0.9, 0, -0.9), west, "gasmask", "ak", _deck(tower_c)],          # tower C
 		[Vector3(2, 0, -30), -PI * 0.5, "olive", "ak", [Vector3(2, 0, -30), Vector3(28, 0, -30), Vector3(28, 0, -16), Vector3(2, 0, -16)]],
 	]
 	start_yaw = -PI * 0.5
 	return Vector3(-62.6, 0.05, -8.0)
+
+
+var lights := []      # searchlights: {"n": SpotLight3D, "yaw": centre of its sweep, "ph": phase, "guard": soldier index}
+## A searchlight on a tower roof, sweeping the ground outward (facing `yaw`); the soldier at `guard` (index in the
+## soldiers) is the one who sees what it lights.
+func _searchlight(top: Vector3, yaw: float, guard: int) -> void:
+	var head := _block(top + Vector3(0, 2.05, 0), Vector3(0.35, 0.3, 0.45), "dark", "metal", 0.0, false)
+	var sl := SpotLight3D.new()
+	sl.light_color = Color(0.86, 0.9, 1.0)
+	sl.light_energy = 9.0
+	sl.spot_range = 70.0
+	sl.spot_angle = 9.0
+	sl.spot_attenuation = 0.6
+	sl.shadow_enabled = false
+	main.add_child(sl)
+	sl.global_position = top + Vector3(0, 2.0, 0)
+	lights.append({"n": sl, "head": head, "yaw": yaw, "ph": randf() * TAU, "guard": guard})
+
+
+## A lamp on a pole: a warm pool of light.
+func _lamp(p: Vector3) -> void:
+	_block(p + Vector3(0, 2.0, 0), Vector3(0.1, 4.0, 0.1), "steel", "metal")
+	var bulb := _block(p + Vector3(0, 4.0, 0.25), Vector3(0.3, 0.12, 0.5), "dark", "metal", 0.0, false)
+	var lm := StandardMaterial3D.new()
+	lm.albedo_color = Color(1, 0.85, 0.6)
+	lm.emission_enabled = true
+	lm.emission = Color(1, 0.8, 0.55)
+	lm.emission_energy_multiplier = 4.0
+	var glow := _block(p + Vector3(0, 3.93, 0.3), Vector3(0.22, 0.03, 0.3), "dark", "metal", 0.0, false)
+	glow.get_child(0).material_override = lm
+	var l := OmniLight3D.new()
+	l.light_color = Color(1.0, 0.8, 0.58)
+	l.light_energy = 2.2
+	l.omni_range = 12.0
+	l.omni_attenuation = 1.4
+	main.add_child(l)
+	l.global_position = p + Vector3(0, 3.7, 0.3)
+
+
+## Sweep the searchlights; a lit player is seen by that tower's man (he looks, then he sees).
+func _sweep(dt: float) -> void:
+	var pl = main.player
+	for L in lights:
+		var g = main.enemies[L["guard"]] if L["guard"] < main.enemies.size() else null
+		var alive: bool = g != null and not g.dead
+		if alive:
+			L["ph"] += dt * 0.32
+		var sl: SpotLight3D = L["n"]
+		var yaw: float = L["yaw"] + sin(L["ph"]) * 0.95
+		if alive and g.mode == "combat":
+			var to: Vector3 = pl.global_position - sl.global_position
+			yaw = lerp_angle(sl.rotation.y, atan2(-to.x, -to.z), min(1.0, dt * 3.0))    # on the player
+		sl.rotation = Vector3(-0.19, yaw, 0)
+		L["head"].rotation.y = yaw
+		if not alive or pl.dead:
+			continue
+		var d: Vector3 = pl.global_position + Vector3(0, 1.0, 0) - sl.global_position
+		var fwd: Vector3 = -sl.global_transform.basis.z
+		if d.length() < 50.0 and fwd.dot(d.normalized()) > cos(deg_to_rad(10.0)) and g.mode == "guard":
+			# only if the beam really reaches him (not through a wall)
+			var q := PhysicsRayQueryParameters3D.create(sl.global_position, pl.global_position + Vector3(0, 1.0, 0))
+			q.exclude = [pl.get_rid()]
+			q.collision_mask = 1
+			var h: Dictionary = main.get_world_3d().direct_space_state.intersect_ray(q)
+			if h.is_empty() or h.collider.has_meta("seethrough"):
+				g.investigate(pl.global_position)
+
+
+## A walk round a tower's platform (top: its centre at floor level).
+func _deck(top: Vector3) -> Array:
+	return [top + Vector3(-0.9, 0, -0.9), top + Vector3(-0.9, 0, 0.9), top + Vector3(0.7, 0, 0.9), top + Vector3(0.7, 0, -0.9)]
 
 
 func _sandbags(c: Vector3, n_bags: int) -> void:

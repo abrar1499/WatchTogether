@@ -269,7 +269,7 @@ func _cut_clip(src: String, dst: String, from: float, k: float) -> void:
 ## arms, which also leave out whatever is within a hand's breadth of the eye (head, helmet) with a clean cut.
 func _skin(sc: Node3D, tint: Color, fade_near := false) -> void:
 	for m in sc.find_children("*", "MeshInstance3D", true, false):
-		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if fade_near else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF      # no shadows from people
 		var mat = m.get_active_material(0)
 		if mat is StandardMaterial3D:
 			var mm: StandardMaterial3D = mat.duplicate()
@@ -304,7 +304,7 @@ func make_rig(tint: Color, keys: Array, fade_near := false, kind := "soldier") -
 		holder.name = k
 		holder.transform = d["holder"][k]
 		att.add_child(holder)
-		var g := _load_gun(k, not fade_near)
+		var g := _load_gun(k)
 		holder.add_child(g)
 		var tgt := Marker3D.new()
 		tgt.name = "LeftGrip"
@@ -451,7 +451,7 @@ func _frame(d: Vector3, n: Vector3) -> Basis:
 	return Basis(dd, nn, dd.cross(nn))
 
 
-func _load_gun(k: String, shadows := true) -> Node3D:
+func _load_gun(k: String, shadows := false) -> Node3D:
 	var g: Node3D = load("res://assets/guns/%s.glb" % k).instantiate()
 	g.scale = Vector3.ONE * GUN_SCALE[k]
 	for m in g.find_children("*", "MeshInstance3D", true, false):
@@ -1416,7 +1416,7 @@ func _fire() -> void:
 	var mp := mz.global_position
 	fx.muzzle_flash(mp, mz.global_transform.basis.z, gun)
 	var world: Node = fx.get_parent()
-	world.noise(global_position, 10.0 if gun == "pistol" else (24.0 if w["auto"] else 30.0))   # the SD-9 is suppressed
+	world.noise(global_position, 10.0 if gun == "pistol" else (18.0 if w["auto"] else 24.0))   # the SD-9 is suppressed
 	if w.has("rocket"):
 		# the rocket leaves the tube toward whatever is under the crosshair
 		var q := PhysicsRayQueryParameters3D.create(from, from + d0 * 300.0)
