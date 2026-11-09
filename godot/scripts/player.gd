@@ -29,20 +29,23 @@ const UPPER := ["mixamorigSpine", "mixamorigSpine1", "mixamorigSpine2", "mixamor
 
 # the gun models are built to real size (metres)
 const GUN_SCALE := {"pistol": 1.0, "m4": 1.0, "ak": 1.0}
-# left hand, in the gun's own units (x left, y up, z along the barrel): where the palm presses (p), the way the palm
-# faces (n) and the way the fingers point (d). Rifles: palm up under the handguard, fingers across and round the
-# far side. Pistol: palm over the right hand's fingers from the left, fingers forward and down.
+# left hand, in the gun's own units (x left, y up, z along the barrel): the way the palm faces (n), the way the
+# fingers point (d), and either the knuckle joints (k) or where the palm presses (p). Rifles: palm up under the
+# handguard, knuckles under its middle so the fingers wrap up round the far side. Pistol: palm over the right
+# hand's fingers from the left, fingers forward and down.
 const LEFT_HOLD := {
 	"pistol": {"p": Vector3(0.04, -0.05, -0.005), "n": Vector3(-1.0, 0.35, 0.0), "d": Vector3(0.0, -0.5, 0.85)},
-	"m4": {"p": Vector3(0.012, 0.024, 0.24), "n": Vector3(-0.3, 1.0, 0.0), "d": Vector3(-0.7, 0.0, 0.7)},
-	"ak": {"p": Vector3(0.012, -0.006, 0.26), "n": Vector3(-0.3, 1.0, 0.0), "d": Vector3(-0.7, 0.0, 0.7)}}
+	"m4": {"k": Vector3(-0.006, 0.008, 0.24), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.86},
+	"ak": {"k": Vector3(-0.01, -0.018, 0.26), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.9}}
 const GRIP_DOWN := Vector3(0, -0.94, -0.34)   # down the pistol grip (same rake on all three)
 # first person, aiming: eye on the sight line (AK irons, M4 through the red dot, pistol irons)
 const VM_ADS := {"pistol": Vector3(0, -0.068, -0.32), "m4": Vector3(0, -0.127, -0.14), "ak": Vector3(0, -0.079, -0.2)}
 # finger curl (degrees) of segments 1..3: right hand round the pistol grip with the index on the trigger,
 # left hand round the handguard
-const CURL_R := {"Thumb": [12, 28, 28], "Index": [30, 42, 28], "Middle": [72, 88, 55], "Ring": [74, 90, 55], "Pinky": [76, 90, 55]}
-const CURL_L := {"Thumb": [4, 12, 12], "Index": [48, 62, 40], "Middle": [54, 68, 45], "Ring": [58, 70, 45], "Pinky": [62, 72, 45]}
+# (spread over the three joints: the glove mesh creases into spikes if one joint bends too far)
+const CURL_R := {"Thumb": [14, 24, 20], "Index": [34, 34, 20], "Middle": [74, 62, 34], "Ring": [77, 64, 34], "Pinky": [80, 66, 34]}
+const CURL_L := {"Thumb": [6, 12, 10], "Index": [50, 55, 32], "Middle": [52, 56, 34], "Ring": [54, 58, 34], "Pinky": [56, 60, 36]}
+const CLOSE_FINGERS := 0.6   # how much of the rest pose's finger spread to take out
 
 var weapons := [
 	{"name": "SD-9 PISTOL", "gun": "pistol", "res0": 48, "mag": 12, "size": 12, "res": 48, "dmg": 42, "rate": 0.26, "spread": 0.006, "auto": false, "kick": 0.9},
@@ -258,8 +261,12 @@ func _calibrate_and_attach() -> void:
 		var lf := _frame(hold["d"], hold["n"])
 		var tgt := Marker3D.new()
 		tgt.name = "LeftGrip"
-		var p: Vector3 = hold["p"] * gs
-		tgt.transform = Transform3D(lf * l_loc.inverse(), p - lf.x * (l_len * 0.55) - lf.y * 0.025)
+		var wrist_l: Vector3
+		if hold.has("k"):
+			wrist_l = hold["k"] * gs - lf.x * l_len
+		else:
+			wrist_l = hold["p"] * gs - lf.x * (l_len * 0.55) - lf.y * 0.025
+		tgt.transform = Transform3D(lf * l_loc.inverse(), wrist_l)
 		holder.add_child(tgt)
 		guns[k] = holder
 		muzzles[k] = mz
@@ -277,9 +284,12 @@ func _calibrate_and_attach() -> void:
 
 
 ## Finger curls, measured once from the rest pose: each joint turns about the line square to the finger and the palm.
+## The rest pose has the fingers fanned out; the first joint also turns them in, side by side.
 func _setup_fingers() -> void:
 	for side in ["Right", "Left"]:
-		var n_s: Vector3 = _hand_axes(side, true)["n"]
+		var hx := _hand_axes(side, true)
+		var n_s: Vector3 = hx["n"]
+		var d_s: Vector3 = hx["d"]
 		var table: Dictionary = CURL_R if side == "Right" else CURL_L
 		for f in table:
 			for seg in 3:
@@ -292,8 +302,14 @@ func _setup_fingers() -> void:
 				var ax: Vector3 = along.cross(n_s)
 				if ax.length() < 0.05:
 					continue
-				var ax_l: Vector3 = (gb.basis.orthonormalized().inverse() * ax.normalized()).normalized()
-				finger_set.append([b, skel.get_bone_rest(b).basis.get_rotation_quaternion(), ax_l, deg_to_rad(table[f][seg])])
+				var inv: Basis = gb.basis.orthonormalized().inverse()
+				var ax_l: Vector3 = (inv * ax.normalized()).normalized()
+				var q := skel.get_bone_rest(b).basis.get_rotation_quaternion()
+				if seg == 0 and f != "Thumb":
+					var flat: Vector3 = (along - n_s * along.dot(n_s)).normalized()
+					var spread: float = atan2(d_s.cross(flat).dot(n_s), d_s.dot(flat))
+					q = q * Quaternion((inv * n_s).normalized(), -spread * CLOSE_FINGERS)
+				finger_set.append([b, q, ax_l, deg_to_rad(table[f][seg]), side == "Left"])
 
 
 ## After the clips: the right wrist turn and the closed fingers.
@@ -302,8 +318,9 @@ func _pose_hands() -> void:
 	if rh_bone < 0:
 		rh_bone = skel.find_bone("mixamorigRightHand")
 	skel.set_bone_pose_rotation(rh_bone, skel.get_bone_pose_rotation(rh_bone) * r_corr)
+	var lc: float = LEFT_HOLD[weapons[wi]["gun"]].get("c", 1.0)   # thicker handguard, less curl
 	for f in finger_set:
-		skel.set_bone_pose_rotation(f[0], f[1] * Quaternion(f[2], f[3]))
+		skel.set_bone_pose_rotation(f[0], f[1] * Quaternion(f[2], f[3] * (lc if f[4] else 1.0)))
 
 
 func _select_gun() -> void:
