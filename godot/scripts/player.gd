@@ -163,12 +163,14 @@ func _calibrate_and_attach() -> void:
 	var lhand_w: Transform3D = sg * skel.get_bone_global_pose(lh)
 	var pr := hand_w.origin
 	var pl := lhand_w.origin
-	var barrel := (pl - pr).normalized()
-	var gun_basis := Basis.looking_at(barrel, Vector3.UP, true)   # +Z of the gun along the barrel
-	var gp := pr - barrel * 0.02 - Vector3.UP * 0.025
+	var ahead := -global_transform.basis.z          # the way the body faces (and the crosshair, in the aim pose)
+	var gun_basis := Basis.looking_at(ahead, Vector3.UP, true)   # +Z of the gun along the barrel
+	var gp := pr - Vector3.UP * 0.03
 	var gun_w := Transform3D(gun_basis, gp)
 	var local_in_hand := hand_w.affine_inverse() * gun_w
-	var lh_in_gun := gun_w.affine_inverse() * lhand_w
+	# left hand: on the handguard, as far ahead of the grip as it is in the aim pose, palm as in the aim pose
+	var reach: float = clamp((pl - pr).dot(ahead), 0.26, 0.42)
+	var lh_in_gun := Transform3D(gun_basis.inverse() * lhand_w.basis.orthonormalized(), Vector3(-0.01, -0.035, reach))
 	var elbow_skel: Vector3 = skel.get_bone_global_pose(le).origin
 	ap.stop()
 
@@ -264,6 +266,7 @@ func _build_tree() -> void:
 	bt.connect_node("output", 0, "upper")
 	tree.tree_root = bt
 	tree.active = true
+	tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	playback = tree.get("parameters/loco/playback")
 	tree.set("parameters/rspeed/scale", 1.4)
 
@@ -386,6 +389,8 @@ func _physics_process(dt: float) -> void:
 	shake = max(0.0, shake - dt * 0.8)
 
 	_animate(dt)
+	tree.advance(dt)
+	_bend_spine(dt)
 	_update_camera(dt)
 	_footsteps(dt)
 
@@ -404,9 +409,8 @@ func _fire() -> void:
 	last_shot = t
 	var kk: float = w["kick"] * (0.65 if aiming else 1.0) * (0.75 if crouch else 1.0)
 	recoil = min(recoil + (0.45 if w["auto"] else 0.8) * kk, 1.6)
-	pitch = clamp(pitch + (0.006 if w["auto"] else 0.012) * kk, -1.2, 1.1)
 	yaw += randf_range(-0.003, 0.003) * kk
-	kick_p += 0.007 * kk
+	kick_p += 0.006 * kk
 	if w["auto"]:
 		snd.start_auto(w["gun"])
 	else:
@@ -479,6 +483,28 @@ func _animate(dt: float) -> void:
 		guns[g].visible = g == w["gun"] and switching < 0.2 and view != 2
 
 
+var aim_k := 0.35
+var spine_ids := []
+## Lean the chest up or down with the camera pitch so the rifle follows the crosshair.
+func _bend_spine(dt: float) -> void:
+	if spine_ids.is_empty():
+		for n in ["mixamorigSpine", "mixamorigSpine1", "mixamorigSpine2"]:
+			spine_ids.append(skel.find_bone(n))
+	var aim_now: bool = aiming or firing or t - last_shot < 2.5
+	aim_k = lerp(aim_k, 1.0 if aim_now else 0.35, min(1.0, dt * 8.0))
+	var total: float = clamp(pitch, -0.9, 0.9) * aim_k
+	if abs(total) < 0.001:
+		return
+	var axis_skel: Vector3 = (skel.global_transform.basis.orthonormalized().inverse() * global_transform.basis.x).normalized()
+	for i in spine_ids.size():
+		var b: int = spine_ids[i]
+		var par: int = skel.get_bone_parent(b)
+		var pg: Basis = skel.get_bone_global_pose(par).basis.orthonormalized()
+		var axis_p: Vector3 = (pg.inverse() * axis_skel).normalized()
+		var q := Quaternion(axis_p, total / 3.0)
+		skel.set_bone_pose_rotation(b, q * skel.get_bone_pose_rotation(b))
+
+
 func _update_camera(dt: float) -> void:
 	var lens := [[2.0, 0.55, 1.6], [1.35, 0.45, 1.62], [0.0, 0.0, 1.62]]
 	var cfg: Array = lens[view]
@@ -486,7 +512,7 @@ func _update_camera(dt: float) -> void:
 	var ts: float = cfg[1]
 	var th: float = cfg[2]
 	if crouch:
-		th -= 0.5
+		th -= 0.32
 	if aiming and view != 2:
 		tl = 0.95
 		ts = 0.42

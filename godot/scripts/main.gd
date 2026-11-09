@@ -38,7 +38,13 @@ func _ready() -> void:
 	ui.set_anchors_preset(Control.PRESET_FULL_RECT)
 	if test_mode != "":
 		start_game()
-		_run_test()
+		if test_mode == "diag":
+			var d = load("res://scripts/diag.gd").new()
+			d.main = self
+			add_child(d)
+			d.run()
+		else:
+			_run_test()
 		return
 	ui.show_start(version)
 	_check_update()
