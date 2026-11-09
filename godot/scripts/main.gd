@@ -148,7 +148,7 @@ func _build_environment() -> void:
 	sky.sky_material = sm
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.45
+	env.ambient_light_energy = 0.4
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.93, 0.72, 0.52)
@@ -159,8 +159,10 @@ func _build_environment() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-32, -135, 0)
 	sun.light_color = Color(1.0, 0.86, 0.68)
-	sun.light_energy = 1.05
+	sun.light_energy = 1.15
 	sun.shadow_enabled = true
+	sun.shadow_opacity = 0.78          # soft, not black
+	sun.shadow_blur = 1.6
 	sun.directional_shadow_max_distance = 45.0
 	add_child(sun)
 
@@ -186,6 +188,7 @@ func _mat(c0: Color, c1: Color, scale := 1.0, rough := 0.95, metal := 0.0) -> St
 	m.albedo_texture = _noise_tex(c0, c1, 0.03, 256)
 	m.uv1_scale = Vector3(scale, scale, scale)
 	m.uv1_triplanar = true
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	m.roughness = rough
 	m.metallic = metal
 	return m
@@ -222,6 +225,7 @@ func _build_yard() -> void:
 	sand.albedo_texture = _noise_tex(Color(0.6, 0.48, 0.34), Color(0.74, 0.62, 0.46), 0.015, 512)
 	sand.uv1_scale = Vector3(60, 60, 60)
 	sand.roughness = 1.0
+	sand.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	gm.material_override = sand
 	ground.add_child(gm)
 	var gcs := CollisionShape3D.new()

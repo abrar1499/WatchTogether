@@ -167,20 +167,22 @@ func _build_model() -> void:
 	_build_tree()
 
 
+## Soldier materials. They cast soft shadows (on themselves and lightly on the ground), except the first-person
+## arms, which also leave out whatever is within a hand's breadth of the eye (head, helmet) with a clean cut.
 func _skin(sc: Node3D, tint: Color, fade_near := false) -> void:
 	for m in sc.find_children("*", "MeshInstance3D", true, false):
-		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if fade_near else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		var mat = m.get_active_material(0)
 		if mat is StandardMaterial3D:
 			var mm: StandardMaterial3D = mat.duplicate()
 			mm.albedo_color = tint
-			mm.roughness = 0.9
+			mm.roughness = 0.85
 			mm.metallic = 0.0
+			mm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 			if fade_near:
-				# first-person arms: whatever is within a hand's breadth of the eye (head, helmet) is not drawn
 				mm.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
-				mm.distance_fade_min_distance = 0.19
-				mm.distance_fade_max_distance = 0.25
+				mm.distance_fade_min_distance = 0.2
+				mm.distance_fade_max_distance = 0.2005
 			m.material_override = mm
 
 
@@ -203,7 +205,7 @@ func make_rig(tint: Color, keys: Array, fade_near := false) -> Dictionary:
 		holder.name = k
 		holder.transform = holder_xf[k]
 		att.add_child(holder)
-		var g := _load_gun(k)
+		var g := _load_gun(k, not fade_near)
 		holder.add_child(g)
 		var tgt := Marker3D.new()
 		tgt.name = "LeftGrip"
@@ -281,11 +283,16 @@ func _frame(d: Vector3, n: Vector3) -> Basis:
 	return Basis(dd, nn, dd.cross(nn))
 
 
-func _load_gun(k: String) -> Node3D:
+func _load_gun(k: String, shadows := true) -> Node3D:
 	var g: Node3D = load("res://assets/guns/%s.glb" % k).instantiate()
 	g.scale = Vector3.ONE * GUN_SCALE[k]
 	for m in g.find_children("*", "MeshInstance3D", true, false):
-		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var mi: MeshInstance3D = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for si in mi.mesh.get_surface_count():
+			var mat = mi.mesh.surface_get_material(si)
+			if mat is StandardMaterial3D:
+				mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return g
 
 
