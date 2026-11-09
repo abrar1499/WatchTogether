@@ -154,6 +154,10 @@ var grenades := 4
 var throw_t := -1.0                 # grenade throw: time into it (-1: not throwing)
 var thrown := false
 var nade_hand: Node3D               # the grenade in the right hand until it is thrown
+var knife_hand: Node3D              # the combat knife, in the hand while it is used
+var knife_t := -1.0                 # a knife stroke: time into it
+var knife_hit := false
+const KNIFE_FROM := 0.85            # the grenade clip's overarm swing, used for a downward stab
 var holstered := false              # the gun is on the back (the pistol in its thigh holster)
 var hol_t := -1.0                   # putting the gun away (hol_dir 1) or drawing it (-1): time into it
 var hol_dir := 0
@@ -562,6 +566,12 @@ func _calibrate_and_attach() -> void:
 	nade_hand.scale = Vector3.ONE / skel.global_transform.basis.get_scale().x
 	att.add_child(nade_hand)
 	nade_hand.visible = false
+	knife_hand = _knife_mesh()
+	# held point-down out of the little-finger side of the fist (along the line a pistol grip would take)
+	knife_hand.transform = Transform3D(Basis(holder_xf["pistol"].basis.orthonormalized()) * Basis.looking_at(-GRIP_DOWN.normalized(), Vector3(0, 0, 1)), holder_xf["pistol"] * (GRIP_DOWN.normalized() * 0.05))
+	knife_hand.scale = Vector3.ONE / skel.global_transform.basis.get_scale().x
+	att.add_child(knife_hand)
+	knife_hand.visible = false
 	_build_back_guns()
 	ik = SkeletonIK3D.new()
 	ik.root_bone = "mixamorigLeftArm"
@@ -819,7 +829,67 @@ func jump() -> void:
 
 
 func busy() -> bool:
-	return dead or climb_t >= 0.0 or throw_t >= 0.0 or hol_t >= 0.0 or act_t >= 0.0
+	return dead or climb_t >= 0.0 or throw_t >= 0.0 or hol_t >= 0.0 or act_t >= 0.0 or knife_t >= 0.0
+
+
+## A combat knife: steel blade, black grip, guard (metres; the blade along +z of the hand's grip).
+func _knife_mesh() -> Node3D:
+	var root := Node3D.new()
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.7, 0.7, 0.68)
+	steel.metallic = 0.9
+	steel.roughness = 0.25
+	var black := StandardMaterial3D.new()
+	black.albedo_color = Color(0.06, 0.06, 0.06)
+	black.roughness = 0.7
+	for pt in [[Vector3(0, 0, 0.11), Vector3(0.004, 0.028, 0.17), steel], [Vector3(0, 0.006, 0.2), Vector3(0.004, 0.016, 0.02), steel],
+			[Vector3(0, 0, 0.0), Vector3(0.024, 0.03, 0.12), black], [Vector3(0, 0, 0.065), Vector3(0.012, 0.06, 0.01), steel]]:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = pt[1]
+		mi.mesh = bm
+		mi.material_override = pt[2]
+		mi.position = pt[0]
+		root.add_child(mi)
+	return root
+
+
+## KNIFE: an overarm stab at whoever is within reach in front. A soldier who has not seen it coming (on guard,
+## searching, or turned away) dies silently; one in a fight facing the player takes a deep wound.
+func knife() -> void:
+	if busy():
+		return
+	knife_t = 0.0
+	knife_hit = false
+	reloading = 0.0
+	firing = false
+	snd.stop_auto()
+	snd.holster()
+
+
+func _knife_step(dt: float) -> void:
+	knife_t += dt
+	if knife_t >= 0.24 and not knife_hit:
+		knife_hit = true
+		var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
+		var best = null
+		var bd := 1.9
+		for e in fx.get_parent().enemies:
+			if e.dead:
+				continue
+			var to: Vector3 = e.global_position - global_position
+			to.y = 0.0
+			var d := to.length()
+			if d < bd and (d < 0.6 or fwd.dot(to.normalized()) > 0.45) and abs(e.global_position.y - global_position.y) < 1.2:
+				bd = d
+				best = e
+		if best:
+			var efwd := Vector3(-sin(best.yaw), 0, -cos(best.yaw))
+			var unaware: bool = best.mode != "combat" or efwd.dot(fwd) > 0.3
+			best.stab(fwd, unaware)
+			shake = max(shake, 0.15)
+	if knife_t >= 0.7:
+		knife_t = -1.0
 
 
 func swap() -> void:
@@ -1081,6 +1151,8 @@ func _physics_process(dt: float) -> void:
 				holstered = false
 			if hol_t * DRAW_SPEED >= 1.5:
 				hol_t = -1.0
+	if knife_t >= 0.0:
+		_knife_step(dt)
 	if throw_t >= 0.0:
 		throw_t += dt
 		var ct := NADE_FROM + throw_t * 1.5
@@ -1391,7 +1463,7 @@ func _eject(gun: String) -> void:
 
 func _animate(dt: float) -> void:
 	var w: Dictionary = weapons[wi]
-	var acting := throw_t >= 0.0 or hol_t >= 0.0 or holstered
+	var acting := throw_t >= 0.0 or hol_t >= 0.0 or holstered or knife_t >= 0.0
 	var doing := act_t >= 0.0
 	var aim_now := (aiming or firing or t - last_shot < 2.5) and not acting and climb_t < 0.0 and not doing
 	var moving := speed > 0.25
@@ -1446,7 +1518,10 @@ func _animate(dt: float) -> void:
 	tree.set("parameters/upper/blend_amount", up_w)
 	tree.set("parameters/pick/blend_amount", rl_w)
 	tree.set("parameters/act/blend_amount", act_w)
-	if throw_t >= 0.0:
+	if knife_t >= 0.0:
+		tree.set("parameters/acts/blend_amount", -1.0)
+		tree.set("parameters/nade_seek/seek_request", KNIFE_FROM + min(knife_t, 0.42) * 1.2)
+	elif throw_t >= 0.0:
 		tree.set("parameters/acts/blend_amount", -1.0)
 		tree.set("parameters/nade_seek/seek_request", NADE_FROM + throw_t * 1.5)
 	elif hol_t >= 0.0 and hol_dir == -1:
@@ -1460,11 +1535,12 @@ func _animate(dt: float) -> void:
 	do_w = lerp(do_w, 1.0 if doing else 0.0, min(1.0, dt * 10.0))
 	ik_w = lerp(ik_w, 0.0 if free else 1.0, min(1.0, dt * 10.0))
 	ik.interpolation = ik_w
-	var in_hand := not holstered and throw_t < 0.0
+	var in_hand := not holstered and throw_t < 0.0 and knife_t < 0.0
 	for g in guns:
 		guns[g].visible = g == w["gun"] and switching < 0.2 and view != 2 and in_hand
 		back_guns[g].visible = g == w["gun"] and holstered
 	nade_hand.visible = throw_t >= 0.0 and not thrown and view != 2
+	knife_hand.visible = knife_t >= 0.0 and view != 2
 
 
 var aim_k := 0.0
@@ -1542,7 +1618,7 @@ func _update_arms(dt: float) -> void:
 	if cur != vm_gun:
 		vm_gun = cur
 		start_rig(vm_rig, cur)
-	vm_rig["guns"][cur].visible = switching < 0.2 and not holstered and throw_t < 0.0
+	vm_rig["guns"][cur].visible = switching < 0.2 and not holstered and throw_t < 0.0 and knife_t < 0.0
 	var vap: AnimationPlayer = vm_rig["ap"]
 	vap.seek(0.6, true)                 # the aim pose held still: its breathing looks like shaking this close
 	var vsk: Skeleton3D = vm_rig["skel"]
@@ -1624,6 +1700,7 @@ func _respawn() -> void:
 	grenades = 4
 	holstered = false
 	act_t = -1.0
+	knife_t = -1.0
 	leg_t = 0.0
 	arm_t = 0.0
 	hol_t = -1.0

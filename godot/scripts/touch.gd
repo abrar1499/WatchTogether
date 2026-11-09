@@ -18,6 +18,7 @@ var buttons := [
 	{"id": "nade", "label": "GRENADE", "c": Vector2(0.955, 0.66), "r": 38.0},
 	{"id": "holster", "label": "HOLSTER", "c": Vector2(0.065, 0.2), "r": 34.0},
 	{"id": "act", "label": "ACTION", "c": Vector2(0.705, 0.62), "r": 42.0},
+	{"id": "knife", "label": "KNIFE", "c": Vector2(0.615, 0.87), "r": 36.0},
 ]
 var mission_panel: PanelContainer
 var brief_panel: PanelContainer
@@ -99,6 +100,8 @@ func _press(id: String, down: bool) -> void:
 			if down: player.toggle_holster()
 		"act":
 			if down: player.action()
+		"knife":
+			if down: player.knife()
 		"view":
 			if down:
 				player.cycle_view()
@@ -169,6 +172,7 @@ func _input(e: InputEvent) -> void:
 				KEY_G: player.throw_grenade()
 				KEY_H: player.toggle_holster()
 				KEY_E: player.action()
+				KEY_F: player.knife()
 				KEY_4: _set_weapon(3)
 				KEY_5: _set_weapon(4)
 				KEY_6: _set_weapon(5)

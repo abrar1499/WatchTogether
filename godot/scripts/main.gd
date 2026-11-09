@@ -871,6 +871,65 @@ func spawn_grenade(pos: Vector3, v: Vector3, owner: Node) -> void:
 	nades.append({"b": rb, "t": 2.4, "owner": owner})
 
 
+var gibs := []          # severed limbs in flight, trailing blood: {"b": body, "t": time left}
+## A limb torn off by an explosion: from a (joint) to e, flung along dir; it bleeds as it flies and lands.
+func spawn_limb(a: Vector3, e: Vector3, skin: Material, dir: Vector3) -> void:
+	var len: float = max(0.15, a.distance_to(e) * 1.15)
+	var rb := RigidBody3D.new()
+	rb.collision_layer = 2
+	rb.collision_mask = 1
+	rb.mass = 3.0
+	var mi := MeshInstance3D.new()
+	var cm := CapsuleMesh.new()
+	cm.radius = 0.055
+	cm.height = len
+	mi.mesh = cm
+	mi.material_override = skin
+	rb.add_child(mi)
+	var stump := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.05
+	sm.height = 0.07
+	stump.mesh = sm
+	var red := StandardMaterial3D.new()
+	red.albedo_color = Color(0.4, 0.02, 0.02)
+	red.roughness = 0.4
+	stump.material_override = red
+	stump.position = Vector3(0, len * 0.5 - 0.02, 0)
+	rb.add_child(stump)
+	var cs := CollisionShape3D.new()
+	var cp := CapsuleShape3D.new()
+	cp.radius = 0.055
+	cp.height = len
+	cs.shape = cp
+	rb.add_child(cs)
+	add_child(rb)
+	var up: Vector3 = (a - e).normalized()
+	var side := up.cross(Vector3.UP if abs(up.y) < 0.95 else Vector3.RIGHT).normalized()
+	rb.global_transform = Transform3D(Basis(side, up, side.cross(up)), (a + e) * 0.5)
+	rb.linear_velocity = Vector3(dir.x, 0, dir.z).normalized() * randf_range(4.0, 7.0) + Vector3(0, randf_range(3.5, 6.0), 0)
+	rb.angular_velocity = Vector3(randf_range(-12, 12), randf_range(-12, 12), randf_range(-12, 12))
+	debris.append(rb)
+	gibs.append({"b": rb, "t": 1.2, "next": 0.0})
+	_settle(rb)
+
+
+func _gibs(dt: float) -> void:
+	for i in range(gibs.size() - 1, -1, -1):
+		var g: Dictionary = gibs[i]
+		g["t"] -= dt
+		var b = g["b"]
+		if not is_instance_valid(b) or g["t"] <= 0.0:
+			if is_instance_valid(b):
+				fx.blood_drop(b.global_position)
+			gibs.remove_at(i)
+			continue
+		g["next"] -= dt
+		if g["next"] <= 0.0:
+			g["next"] = 0.06
+			fx.blood(b.global_position, Vector3.UP)
+
+
 ## Live grenades near a point (enemies run from them, the player is warned).
 func grenades_near(p: Vector3, r: float) -> Array:
 	var out := []
@@ -889,6 +948,7 @@ func fire_rocket(pos: Vector3, dir: Vector3, owner: Node) -> void:
 
 
 func _physics_process(dt: float) -> void:
+	_gibs(dt)
 	for i in range(nades.size() - 1, -1, -1):
 		var g: Dictionary = nades[i]
 		g["t"] -= dt
@@ -1730,6 +1790,14 @@ class FX extends Node3D:
 			_big(p + off2, randf_range(1.8, 2.8), randf_range(4.0, 7.0), randf_range(3.0, 5.5), Vector3(randf_range(-0.4, 0.4), randf_range(1.4, 2.8), randf_range(-0.4, 0.4)),
 				Color(0.16, 0.14, 0.12, 0.85), Color(0.32, 0.3, 0.28, 0.0))
 		chips(p, Vector3.UP, "dark", 12, 9.0)
+		# the blast wave kicking up a ring of dust along the ground
+		var gy: float = get_parent().ground_height(p.x, p.z)
+		if p.y - gy < 1.5:
+			for i in 12:
+				var a := i * TAU / 12.0 + randf_range(-0.1, 0.1)
+				var out := Vector3(cos(a), 0, sin(a))
+				_big(Vector3(p.x, gy + 0.3, p.z) + out * 0.8, 1.2, 4.0, randf_range(1.2, 1.8), out * randf_range(7.0, 10.0),
+					Color(0.72, 0.62, 0.48, 0.65), Color(0.75, 0.66, 0.52, 0.0))
 		boom_light.global_position = p + Vector3(0, 1.0, 0)
 		boom_light.light_energy = 9.0
 		boom_t = 0.55
@@ -2104,13 +2172,13 @@ class Snd extends Node:
 			p.set_meta("stop", -1.0)
 			add_child(p)
 			one_shots.append(p)
-		for i in 10:
+		for i in 18:
 			var p := AudioStreamPlayer3D.new()
 			p.set_meta("stop", -1.0)
-			p.unit_size = 9.0
+			p.unit_size = 14.0
 			p.max_distance = 140.0
-			p.attenuation_filter_cutoff_hz = 2600.0     # far off: duller, as in the open air
-			p.attenuation_filter_db = -30.0
+			p.attenuation_filter_cutoff_hz = 3800.0     # far off: duller, as in the open air
+			p.attenuation_filter_db = -18.0
 			add_child(p)
 			world_shots.append(p)
 		for i in 8:
@@ -2368,6 +2436,10 @@ class Snd extends Node:
 	## An explosion (drum, grenade, rocket): the user's blast recording, from where it happened.
 	func explosion(pos: Vector3) -> void:
 		_play3d("blast", pos, 0.0, 2.9, 5.0, randf_range(0.94, 1.04), 0.3, true)
+
+	## One enemy round: a single AK shot from where he stands, cut short with its crack and a little tail.
+	func enemy_shot(pos: Vector3) -> void:
+		_play3d("ak", pos, AK_SINGLE[randi() % AK_SINGLE.size()], 0.42, 1.0, randf_range(0.95, 1.06), 0.22, true)
 
 	## An enemy burst: the enemy rifle recording from where he stands, a little quieter than the player's gun.
 	func enemy_burst(pos: Vector3, shots: int) -> void:

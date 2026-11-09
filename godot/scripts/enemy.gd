@@ -82,6 +82,7 @@ var taken := false             # (dead) his gun has been taken
 var roll := 0.0                # (dead) how far the body has been turned on its side
 var hips_base := Quaternion.IDENTITY
 var hitbox: StaticBody3D
+var silent_death := false
 var hit_shape: CylinderShape3D
 var perch := false             # posted on the roof: holds his place behind the parapet
 var react_t := 0.0             # staggered by a heavy hit
@@ -192,6 +193,8 @@ func _physics_process(dt: float) -> void:
 			if not taken:
 				player.pose_rig_hands(skel, gun, rig["data"])
 			hips_base = skel.get_bone_pose_rotation(hips_b)
+		for b in severed:
+			skel.set_bone_pose_scale(b, Vector3.ONE * 0.001)
 		if abs(roll) > 0.001:
 			var axis: Vector3 = (skel.get_bone_global_pose(skel.find_bone("mixamorigSpine2")).origin - skel.get_bone_global_pose(hips_b).origin).normalized()
 			skel.set_bone_pose_rotation(hips_b, Quaternion(axis, roll) * hips_base)
@@ -360,7 +363,7 @@ func _physics_process(dt: float) -> void:
 			if shot_t <= 0.0:
 				_shoot()
 				shots_left -= 1
-				shot_t = 0.11
+				shot_t = randf_range(0.1, 0.14)
 				if shots_left == 0:
 					pause_t = randf_range(0.7, 1.6) * (1.5 if arm_hit else 1.0)
 					if gun == "svd":
@@ -373,7 +376,6 @@ func _physics_process(dt: float) -> void:
 					main.snd.enemy_single(muzzle.global_position)
 				else:
 					shots_left = randi_range(2, 3) if arm_hit else randi_range(3, 6)
-					main.snd.enemy_burst(muzzle.global_position, shots_left)
 				shot_t = 0.0
 	else:
 		shots_left = 0
@@ -447,11 +449,22 @@ func _eye() -> Vector3:
 
 ## Nothing solid between a and b (people do not count).
 func _sight(a: Vector3, b: Vector3) -> bool:
-	var q := PhysicsRayQueryParameters3D.create(a, b)
-	q.exclude = [get_rid(), player.get_rid()]
-	q.collision_mask = 1
-	var h := get_world_3d().direct_space_state.intersect_ray(q)
+	var h := _look(a, b, [get_rid(), player.get_rid()])
 	return h.is_empty() or h.collider.has_method("take_hit")
+
+
+## A line of sight ray that sees through chain-link fence.
+func _look(a: Vector3, b: Vector3, ex: Array) -> Dictionary:
+	var h := {}
+	for i in 4:
+		var q := PhysicsRayQueryParameters3D.create(a, b)
+		q.exclude = ex
+		q.collision_mask = 1
+		h = get_world_3d().direct_space_state.intersect_ray(q)
+		if h.is_empty() or not h.collider.has_meta("seethrough"):
+			return h
+		ex.append(h.collider.get_rid())
+	return h
 
 
 ## Pick the next spot to fight from: a few metres away, reachable in a straight line, 7-32 m from the player.
@@ -512,10 +525,7 @@ func _relocate() -> void:
 
 
 func _clear(a: Vector3, b: Vector3) -> bool:
-	var q := PhysicsRayQueryParameters3D.create(a, b)
-	q.exclude = [get_rid()]
-	q.collision_mask = 1
-	var h := get_world_3d().direct_space_state.intersect_ray(q)
+	var h := _look(a, b, [get_rid()])
 	return h.is_empty() or h.collider == player
 
 
@@ -613,7 +623,7 @@ func _shoot() -> void:
 	var chest: Vector3 = player.global_position + Vector3(0, 0.85 if player.crouch else 1.25, 0)
 	var dir := (chest - from).normalized()
 	var d := from.distance_to(chest)
-	var sp: float = 0.075 * clamp(1.4 - seen_t * 0.2, 0.5, 1.4)
+	var sp: float = 0.048 * clamp(1.4 - seen_t * 0.2, 0.5, 1.4)    # (rounds must now meet the body itself, not a wide capsule)
 	sp *= 1.5 if player.speed > 2.5 else 1.0
 	sp *= 0.65 if player.crouch else 1.0
 	sp *= 0.7 + d / 40.0
@@ -622,6 +632,8 @@ func _shoot() -> void:
 		sp *= 0.3
 	dir = (dir + Vector3(randf_range(-sp, sp), randf_range(-sp, sp) * 0.7, randf_range(-sp, sp))).normalized()
 	main.fx.muzzle_flash(from, muzzle.global_transform.basis.z, gun)
+	if gun != "svd":
+		main.snd.enemy_shot(from)
 	shot_n += 1
 	var end: Vector3 = main.shoot_ray(from, dir, randf_range(26.0, 34.0) if gun == "svd" else randf_range(4.0, 7.0), self)
 	if shot_n % 2 == 0 or gun == "svd":
@@ -640,7 +652,7 @@ func take_hit(dmg: float, pos: Vector3, dir: Vector3, power := 1.0, part := "tor
 	var d: float = player.global_position.distance_to(global_position)
 	var force: float = power * clamp(1.0 - (d - 3.0) / 9.0, 0.0, 1.0)
 	if hp <= 0.0:
-		_die(headshot, false, dir, force)
+		_die(headshot, false, dir, force, power >= 2.0 and force > 0.9)
 		return
 	hit_t = 0.3
 	wounded = true
@@ -666,6 +678,27 @@ func take_hit(dmg: float, pos: Vector3, dir: Vector3, power := 1.0, part := "tor
 	if not moving:
 		shots_left = 0
 		hold_t = 0.0
+
+
+## The player's knife. Unaware: dead at once without a sound. Facing him in a fight: a deep wound.
+func stab(dir: Vector3, unaware: bool) -> void:
+	if dead:
+		return
+	main.fx.blood(global_position + Vector3(0, 1.3, 0), -dir)
+	main.fx.blood(global_position + Vector3(0, 1.2, 0), dir)
+	main.snd.impact(global_position + Vector3(0, 1.2, 0), "flesh", true)
+	if unaware:
+		hp = 0.0
+		silent_death = true
+		_die(false, false, dir, 0.0, false)
+		return
+	hp -= 70.0
+	wounded = true
+	if hp <= 0.0:
+		_die(false, false, dir, 0.0, false)
+		return
+	react_t = 0.6
+	alarm(player.global_position, true)
 
 
 ## Both legs hit (or one heavy round): he goes down and fights on from the ground.
@@ -700,6 +733,8 @@ func blast(dmg: float, from: Vector3) -> void:
 	hp -= dmg
 	if hp <= 0.0:
 		_die(false, true, global_position - from, 1.0)
+		if dmg > 140.0:
+			gib(from)
 		return
 	hit_t = 0.5
 	react_t = 0.8
@@ -743,7 +778,10 @@ func _throw_nade() -> void:
 ## Falls the way the round (or blast) pushed him. Each death clip falls one way relative to the body (forward,
 ## to his left, or back for the knock-back clips); the one that needs the least turn of the body to fall along the
 ## push is used, and only where there is room to fall (not into a crate or a wall, not off the roof).
-func _die(headshot: bool, blasted := false, push := Vector3.ZERO, force := 0.0) -> void:
+## Dead. Thrown along the push (a close shotgun blast: about a metre back; an explosion: further) with the clip that
+## needs the least turn of the body; any other round: he drops with an ordinary death clip, falling the way that
+## clip falls, turned only if there is no room that way (not into a crate or a wall, not off the roof).
+func _die(headshot: bool, blasted := false, push := Vector3.ZERO, force := 0.0, knock := false) -> void:
 	dead = true
 	hp = 0.0
 	collision_layer = 0
@@ -754,27 +792,42 @@ func _die(headshot: bool, blasted := false, push := Vector3.ZERO, force := 0.0) 
 		flat = global_position - player.global_position
 		flat.y = 0.0
 	flat = flat.normalized()
-	var back: String = "dieBlast" if blasted else ("dieKnock" if force > 0.45 else "dieFall")
 	var fwd_clip: String = "dieBackHS" if headshot else ["die", "dieFront", "dieBackHS"][randi() % 3]
-	# [clip, yaw offset from the fall direction, where the body faces at the start relative to that yaw, distance]
-	var opts := [[fwd_clip, 0.0, 0.0, 1.3], ["dieLeft", -PI * 0.5, 0.0, 1.3], [back, 0.0, -2.02, 3.0 if blasted else 1.3]]
-	var best := []
-	var best_cost := INF
-	for k in 9:
-		# the push direction first, then turned further and further off it if there is no room that way
-		var off: float = 0.0 if k == 0 else PI * 0.25 * ceil(k / 2.0) * (1.0 if k % 2 == 1 else -1.0)
-		var dir := flat.rotated(Vector3.UP, off)
-		var fall_yaw := atan2(-dir.x, -dir.z)
-		for o in opts:
-			var y: float = fall_yaw + float(o[1])
-			var spin: float = abs(wrapf(y + float(o[2]) - yaw, -PI, PI))
-			var cost: float = spin + abs(off) * 1.5
-			if cost < best_cost and _room_behind(dir, float(o[3])):
-				best_cost = cost
-				best = [o[0], y]
-		if not best.is_empty() and k >= 2:
-			break
 	var clip: String = fwd_clip
+	var best := []
+	if blasted or knock:
+		var back: String = "dieBlast" if blasted else "dieKnock"
+		# [clip, yaw offset from the fall direction, where the body faces at the start relative to that yaw, distance]
+		var opts := [[fwd_clip, 0.0, 0.0, 1.3], ["dieLeft", -PI * 0.5, 0.0, 1.3], [back, 0.0, -2.02, 3.0 if blasted else 1.3]]
+		var best_cost := INF
+		for k in 9:
+			var off: float = 0.0 if k == 0 else PI * 0.25 * ceil(k / 2.0) * (1.0 if k % 2 == 1 else -1.0)
+			var dir := flat.rotated(Vector3.UP, off)
+			var fall_yaw := atan2(-dir.x, -dir.z)
+			for o in opts:
+				var y: float = fall_yaw + float(o[1])
+				var spin: float = abs(wrapf(y + float(o[2]) - yaw, -PI, PI))
+				var cost: float = spin + abs(off) * 1.5
+				if cost < best_cost and _room_behind(dir, float(o[3])):
+					best_cost = cost
+					best = [o[0], y]
+			if not best.is_empty() and k >= 2:
+				break
+	else:
+		# an ordinary death: forward or to his left as the clip goes; turned a little only if blocked
+		var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
+		for k in 7:
+			var off: float = 0.0 if k == 0 else PI * 0.25 * ceil(k / 2.0) * (1.0 if k % 2 == 1 else -1.0)
+			var opts2 := [[fwd_clip, 0.0], ["dieLeft", PI * 0.5]]
+			if randf() < 0.3:
+				opts2.reverse()
+			for o in opts2:
+				var dir: Vector3 = fwd.rotated(Vector3.UP, off + float(o[1]))
+				if _room_behind(dir, 1.3):
+					best = [o[0], yaw + off]
+					break
+			if not best.is_empty():
+				break
 	if not best.is_empty():
 		clip = best[0]
 		yaw = best[1]
@@ -785,5 +838,34 @@ func _die(headshot: bool, blasted := false, push := Vector3.ZERO, force := 0.0) 
 	playback.travel(clip)
 	tree.set("parameters/speed/scale", 1.15 if clip == "dieKnock" else 1.0)
 	rig["ik"].interpolation = 0.0
-	main.snd.death(global_position, "blast" if blasted else ("head" if headshot else "body"))
+	main.snd.death(global_position, "blast" if blasted else ("head" if (headshot or silent_death) else "body"))
 	main.on_enemy_killed(self, headshot)
+
+
+## Torn apart by a close explosion: an arm or leg (or two) comes off and flies, blood everywhere.
+const LIMBS := [["LeftForeArm", "LeftHand"], ["RightForeArm", "RightHand"], ["LeftLeg", "LeftFoot"], ["RightLeg", "RightFoot"],
+	["LeftArm", "LeftForeArm"], ["RightUpLeg", "RightLeg"]]
+var severed := []
+func gib(from: Vector3) -> void:
+	var picks := LIMBS.duplicate()
+	picks.shuffle()
+	var skin: Material = null
+	for m in rig["root"].find_children("*", "MeshInstance3D", true, false):
+		if m.material_override:
+			skin = m.material_override
+			break
+	for i in randi_range(1, 2):
+		var lb: Array = picks[i]
+		var b := skel.find_bone("mixamorig" + lb[0])
+		var c := skel.find_bone("mixamorig" + lb[1])
+		if b < 0 or c < 0:
+			continue
+		var gt := skel.global_transform
+		var a: Vector3 = gt * skel.get_bone_global_pose(b).origin
+		var e: Vector3 = gt * skel.get_bone_global_pose(c).origin
+		severed.append(b)
+		main.spawn_limb(a, e, skin, (a - from).normalized())
+	for k in 4:
+		main.fx.blood(global_position + Vector3(randf_range(-0.3, 0.3), randf_range(0.4, 1.4), randf_range(-0.3, 0.3)), (global_position - from).normalized())
+
+

@@ -22,6 +22,7 @@ var over := false
 var start_t := 0.0
 var t := 0.0
 var mats := {}
+var start_yaw := 0.0
 
 
 ## Build mission `num` into main; returns where the player starts.
@@ -44,7 +45,7 @@ func ready_player() -> void:
 	p.weapons[2]["res"] = 90
 	p.wi = 2
 	p.grenades = 3
-	p.yaw = 0.0
+	p.yaw = start_yaw
 
 
 func begin() -> void:
@@ -171,7 +172,7 @@ func _raise_alarm() -> void:
 
 
 func _reinforce() -> void:
-	var spots := [Vector3(-3, 0, -82), Vector3(0, 0, -84), Vector3(3, 0, -82), Vector3(6, 0, -85)]
+	var spots := [Vector3(70, 0, -27), Vector3(72, 0, -24), Vector3(70, 0, -21), Vector3(73, 0, -19)]
 	var kinds := ["olive", "blue", "gasmask", "olive"]
 	for i in spots.size():
 		var e = load("res://scripts/enemy.gd").new()
@@ -347,6 +348,7 @@ func _fence(a: Vector2, b: Vector2, gaps := []) -> void:
 		var col := StaticBody3D.new()
 		col.set_meta("surf", "metal")
 		col.set_meta("pierce", "sheet")
+		col.set_meta("seethrough", true)
 		var cs := CollisionShape3D.new()
 		var sh := BoxShape3D.new()
 		sh.size = Vector3(s1 - s0, 3.4, 0.08)
@@ -466,95 +468,114 @@ func _drum(p: Vector3, color := "red") -> void:
 
 
 # =============== MISSION 1: BROKEN RELAY ===============
-## A militia radio relay station in the desert: a fenced compound with a gate and guard booth, a watchtower with a
-## sniper, a barracks with men on its roof, a command hut, the mast and the generator that powers it.
-## Objectives: the relay codes from the command hut, the generator, then out through the north gate to the pickup.
+## A militia radio relay station in the desert, in two parts: an outer yard inside the fence (gate with two guards,
+## two watchtowers, containers, a patrol) and, behind an inner concrete wall with its own guarded gate, the inner
+## compound (command hut, barracks with a man on the roof, a third tower, the mast and its generator). The player
+## starts west of it behind a ruined wall; the way out is the east gate.
 func _m1() -> Vector3:
 	title = "BROKEN RELAY"
 	briefing = "A militia unit has taken a radio relay station on the old desert road and is using it to pass orders " + \
-		"to its fighters across the border.\n\nGet into the station, take the relay codes from the command hut, knock out " + \
-		"the generator that powers the mast, and get out through the north side to the pickup point.\n\n" + \
-		"You carry an AK-47, an SD-9 pistol and three grenades. Take what you need from the guards. If a guard raises " + \
-		"the alarm, more soldiers will come up the road from the north."
+		"to its fighters across the border.\n\nYou start behind a ruined wall west of the station. Get through the outer " + \
+		"yard and the inner wall, take the relay codes from the command hut, knock out the generator that powers the mast, " + \
+		"and get out through the east gate to the pickup point.\n\nYou carry an AK-47, an SD-9 pistol, a knife and three " + \
+		"grenades. Take what you need from the guards. If a guard raises the alarm, more soldiers will come up the road."
 	main.flat_c = Vector2(0, -25)
-	main.flat_r = 78.0
+	main.flat_r = 80.0
 	main.area = Rect2(-33, -54, 66, 58)
 	main._build_ground()
 	main._build_mountains()
-	main._build_rocks(main._tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true), 52.0, false)
-	# the fence: gate in the south side, an open gate in the north side, a torn stretch in the east side
-	_fence(Vector2(-34, 5), Vector2(34, 5), [[30.0, 38.0]])
-	_fence(Vector2(34, 5), Vector2(34, -55), [[22.0, 25.5]])
-	_fence(Vector2(34, -55), Vector2(-34, -55), [[31.0, 37.0]])
-	_fence(Vector2(-34, -55), Vector2(-34, 5))
-	# gate: a guard booth and a lowered barrier
-	_block(Vector3(7.0, 1.3, 6.5), Vector3(2.2, 2.6, 2.2), "plaster")
-	_block(Vector3(7.0, 1.6, 7.62), Vector3(1.6, 0.8, 0.04), "glass", "metal", 0.0, false)
-	_block(Vector3(7.0, 2.7, 6.5), Vector3(2.6, 0.15, 2.6), "steel", "metal")
-	_block(Vector3(4.6, 0.5, 5.0), Vector3(0.25, 1.0, 0.25), "steel", "metal")
-	var bar := _block(Vector3(0.6, 0.95, 5.0), Vector3(8.0, 0.1, 0.1), "white", "metal")
-	for k in 4:
-		_block(Vector3(-2.4 + k * 2.0, 0.95, 5.0), Vector3(0.9, 0.11, 0.11), "red", "metal", 0.0, false)
+	main._build_rocks(main._tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true), 70.0, false)
 	main.extra_cover = []
-	# watchtower at the south-west corner
-	var tower_top := _tower(Vector3(-24.0, 0, 3.0))
-	# command hut (the codes are inside) and the barracks (the yard's building, with stairs to its roof)
-	var hut_c := Vector3(-14, 0, -30)
+	# the fence: west gate (the way in), east gate (the way out), a torn stretch in the south side
+	_fence(Vector2(-34, 5), Vector2(34, 5), [[54.0, 57.0]])
+	_fence(Vector2(34, 5), Vector2(34, -55), [[26.0, 32.0]])
+	_fence(Vector2(34, -55), Vector2(-34, -55))
+	_fence(Vector2(-34, -55), Vector2(-34, 5), [[28.0, 34.0]])
+	# west gate: booth and a lowered barrier
+	_block(Vector3(-31.5, 1.3, -31.0), Vector3(2.2, 2.6, 2.2), "plaster")
+	_block(Vector3(-32.62, 1.6, -31.0), Vector3(0.04, 0.8, 1.6), "glass", "metal", 0.0, false)
+	_block(Vector3(-31.5, 2.7, -31.0), Vector3(2.6, 0.15, 2.6), "steel", "metal")
+	_block(Vector3(-34.0, 0.5, -28.4), Vector3(0.25, 1.0, 0.25), "steel", "metal")
+	_block(Vector3(-34.0, 0.95, -24.0), Vector3(0.1, 0.1, 8.0), "white", "metal")
+	for k in 4:
+		_block(Vector3(-34.0, 0.95, -27.0 + k * 2.0), Vector3(0.11, 0.11, 0.9), "red", "metal", 0.0, false)
+	# where the player starts: a ruined wall west of the station, and cover on the way in
+	_block(Vector3(-61.0, 1.1, -8.0), Vector3(0.45, 2.2, 7.0), "plaster")
+	_block(Vector3(-61.0, 0.7, -12.6), Vector3(0.45, 1.4, 2.2), "plaster")
+	_block(Vector3(-61.0, 0.45, -3.6), Vector3(0.45, 0.9, 1.8), "plaster")
+	for p in [Vector3(-52, 0, -14), Vector3(-47, 0, -2), Vector3(-44, 0, -30), Vector3(-41, 0, -17)]:
+		_crate(p)
+	_sandbags(Vector3(-48, 0, -23), 4)
+	# the inner wall: concrete T-walls along x = -6, with a gate in the middle
+	for z in range(4, -21, -2):
+		main._prop("res://assets/env/barrier.glb", Vector3(-6, 0, z - 1.0), PI * 0.5 + randf_range(-0.015, 0.015), Vector3(2.0, 2.6, 0.3), "concrete")
+	for z in range(-27, -55, -2):
+		main._prop("res://assets/env/barrier.glb", Vector3(-6, 0, z - 1.0), PI * 0.5 + randf_range(-0.015, 0.015), Vector3(2.0, 2.6, 0.3), "concrete")
+	# outer yard: two towers, containers, crates, sandbags, drums
+	var tower_a := _tower(Vector3(-28.0, 0, 2.0))
+	var tower_b := _tower(Vector3(-28.0, 0, -44.0))
+	for c in [[Vector3(-20, 0, -12), 0.0, "green"], [Vector3(-18, 0, -40), PI * 0.5, "blue"]]:
+		var cb: StaticBody3D = main._prop("res://assets/env/container_%s.glb" % c[2], c[0], c[1], Vector3(2.44, 2.59, 6.06), "metal")
+		cb.set_meta("pierce", "sheet")
+	for p in [Vector3(-25, 0, -22), Vector3(-23.6, 0, -22.3), Vector3(-14, 0, -4), Vector3(-21, 0, -30), Vector3(-10, 0, -48)]:
+		_crate(p)
+	_sandbags(Vector3(-14, 0, -25.5), 4)
+	_drum(Vector3(-16, 0, -18.5), "red")
+	_drum(Vector3(-16.6, 0, -19.1), "blue")
+	# inner compound: command hut, barracks, a third tower, mast and generator
+	var hut_c := Vector3(8, 0, -12)
 	_hut(hut_c, 6.0, 5.0, 1.2, "x")
-	_block(hut_c + Vector3(-1.4, 0.4, -1.2), Vector3(1.6, 0.8, 0.8), "wood", "wood")           # table
-	_block(hut_c + Vector3(-2.4, 0.35, -1.9), Vector3(0.5, 0.7, 0.5), "steel", "metal")         # radio set
-	_block(hut_c + Vector3(2.2, 0.5, -1.8), Vector3(1.0, 1.0, 0.6), "green", "metal")           # cabinet
+	_block(hut_c + Vector3(-1.4, 0.4, -1.2), Vector3(1.6, 0.8, 0.8), "wood", "wood")
+	_block(hut_c + Vector3(-2.4, 0.35, -1.9), Vector3(0.5, 0.7, 0.5), "steel", "metal")
+	_block(hut_c + Vector3(2.2, 0.5, -1.8), Vector3(1.0, 1.0, 0.6), "green", "metal")
 	var codes := _block(hut_c + Vector3(-1.2, 0.83, -1.1), Vector3(0.32, 0.05, 0.24), "red", "wood", 0.3, false)
 	codes.set_meta("label", "TAKE CODES")
 	codes.set_meta("obj", 0)
 	items.append(codes)
-	main._prop("res://assets/env/building.glb", Vector3(14, 0, -40), 0.0, Vector3(10, 3.2, 7), "concrete")
-	main._building_extras(Vector3(14, 0, -40))
-	siren_pos = Vector3(9, 3.0, -36)
-	# the mast and its generator, with fuel drums beside it
-	_mast(Vector3(10, 0, -49))
-	_generator(Vector3(2, 0, -47), 0.0, 1)
-	_drum(Vector3(4.2, 0, -46.4), "red")
-	_drum(Vector3(4.9, 0, -47.1), "blue")
-	_drum(Vector3(-0.6, 0, -48.0), "red")
-	# cover inside: containers, crates, sandbags, drums
-	for c in [[Vector3(-22, 0, -18), 0.0, "green"], [Vector3(22, 0, -16), PI * 0.5, "red"], [Vector3(-24, 0, -42), 0.15, "blue"]]:
-		var cb: StaticBody3D = main._prop("res://assets/env/container_%s.glb" % c[2], c[0], c[1], Vector3(2.44, 2.59, 6.06), "metal")
-		cb.set_meta("pierce", "sheet")
-	for p in [Vector3(-5, 0, -8), Vector3(-3.6, 0, -8.2), Vector3(7.6, 0, -15), Vector3(-8, 0, -40), Vector3(-6.7, 0, -40.3), Vector3(24, 0, -30),
-			Vector3(-29, 0, -28), Vector3(20, 0, -6)]:
+	main._prop("res://assets/env/building.glb", Vector3(20, 0, -40), 0.0, Vector3(10, 3.2, 7), "concrete")
+	main._building_extras(Vector3(20, 0, -40))
+	siren_pos = Vector3(15, 3.0, -36)
+	var tower_c := _tower(Vector3(30.0, 0, -2.0))
+	_mast(Vector3(14, 0, -50))
+	_generator(Vector3(6, 0, -47), 0.0, 1)
+	_drum(Vector3(8.2, 0, -46.4), "red")
+	_drum(Vector3(8.9, 0, -47.1), "blue")
+	_drum(Vector3(3.4, 0, -48.0), "red")
+	var cr: StaticBody3D = main._prop("res://assets/env/container_red.glb", Vector3(16, 0, -22), PI * 0.5, Vector3(2.44, 2.59, 6.06), "metal")
+	cr.set_meta("pierce", "sheet")
+	for p in [Vector3(2, 0, -6), Vector3(3.4, 0, -6.3), Vector3(24, 0, -26), Vector3(-2, 0, -38), Vector3(27, 0, -48)]:
 		_crate(p)
-	for p in [Vector3(15, 0, -22), Vector3(15.7, 0, -22.6), Vector3(-18, 0, -8), Vector3(26, 0, -45)]:
-		_drum(p, ["red", "blue"][randi() % 2])
+	_sandbags(Vector3(4, 0, -32), 4)
+	_drum(Vector3(22, 0, -12), "red")
 	main._restore_breakables()
-	_sandbags(Vector3(-2, 0, -26), 4)
-	_sandbags(Vector3(6, 0, 1.5), 3)
-	# outside: a few rocks and crates to creep up behind
-	for p in [Vector3(-8, 0, 18), Vector3(12, 0, 21), Vector3(-15, 0, 12)]:
-		_crate(p)
-	main._restore_breakables()
-	# the pickup point
-	lz = Vector3(0, 0, -74)
+	# the way out: the pickup point east of the station
+	lz = Vector3(60, 0, -24)
 	objectives = [
 		{"text": "Take the relay codes from the command hut", "done": false, "pos": hut_c + Vector3(-1.2, 1.0, -1.1)},
-		{"text": "Knock out the generator powering the mast", "done": false, "pos": Vector3(2, 1.2, -47)},
-		{"text": "Get to the pickup point north of the station", "done": false, "pos": lz + Vector3(0, 1, 0), "needs": [0, 1], "lz": true}]
-	# the soldiers: [position, facing (0 faces north), character, gun, patrol route]
+		{"text": "Knock out the generator powering the mast", "done": false, "pos": Vector3(6, 1.2, -47)},
+		{"text": "Get out through the east gate to the pickup point", "done": false, "pos": lz + Vector3(0, 1, 0), "needs": [0, 1], "lz": true}]
+	var west := PI * 0.5
+	# the soldiers: [position, facing (0 faces north, PI/2 west), character, gun, patrol route]
 	posts = [
-		[Vector3(2.5, 0, 7.5), PI, "olive", "ak", []],                                   # at the barrier
-		[Vector3(9.0, 0, 4.0), PI * 0.8, "blue", "ak", [Vector3(9, 0, 4), Vector3(9, 0, -4)]],
-		[tower_top + Vector3(0.3, 0, 0.8), PI, "gasmask", "svd", []],                    # sniper in the tower
-		[Vector3(-28, 0, -8), 0.0, "olive", "ak", [Vector3(-28, 0, -8), Vector3(-28, 0, -50), Vector3(28, 0, -51), Vector3(28, 0, -8)]],
-		[Vector3(-6, 0, -12), 0.0, "blue", "ak", [Vector3(-6, 0, -12), Vector3(10, 0, -12), Vector3(10, 0, -21), Vector3(-6, 0, -21)]],
-		[Vector3(-11.5, 0, -26.2), PI, "gasmask", "ak", []],                             # outside the command hut
-		[hut_c + Vector3(1.5, 0, -1.2), PI * 0.85, "olive", "ak", []],                   # inside it
-		[Vector3(11, 0, -33.5), PI, "blue", "ak", []],                                   # in front of the barracks
-		[Vector3(16.5, 0, -33.0), PI * 1.1, "gasmask", "ak", [Vector3(16.5, 0, -33), Vector3(22, 0, -33)]],
-		[Vector3(15, 3.2, -37.2), PI, "olive", "ak", []],                                # on the barracks roof
-		[Vector3(4.5, 0, -44.5), PI * 0.9, "blue", "ak", []],                            # at the generator
-		[Vector3(12.5, 0, -46), PI * 0.5, "gasmask", "ak", [Vector3(12.5, 0, -46), Vector3(12.5, 0, -52)]],
+		[Vector3(-31.5, 0, -27.6), west, "olive", "ak", []],                                 # the west gate
+		[Vector3(-31.5, 0, -20.4), west, "blue", "ak", []],
+		[tower_a + Vector3(-0.8, 0, -0.2), west, "gasmask", "svd", []],                     # tower A: a sniper
+		[tower_b + Vector3(-0.8, 0, 0.3), west, "olive", "ak", []],                          # tower B
+		[Vector3(-28, 0, -8), PI * 0.5, "blue", "ak", [Vector3(-28, 0, -8), Vector3(-12, 0, -8), Vector3(-12, 0, -42), Vector3(-24, 0, -42)]],
+		[Vector3(-16, 0, -35.5), west, "gasmask", "ak", []],                                 # outer yard
+		[Vector3(-14, 0, -24.5), west, "olive", "ak", []],                                   # behind the sandbags
+		[Vector3(-3, 0, -28.6), west, "blue", "ak", []],                                     # the inner gate
+		[Vector3(-3, 0, -19.4), west, "gasmask", "ak", []],
+		[Vector3(10.6, 0, -8.6), PI, "olive", "ak", []],                                     # outside the command hut
+		[hut_c + Vector3(1.5, 0, -1.2), PI * 0.85, "blue", "ak", []],                        # inside it
+		[Vector3(16.5, 0, -35.0), west, "gasmask", "ak", []],                                # by the barracks
+		[Vector3(21, 3.2, -37.2), PI, "olive", "ak", []],                                    # on its roof
+		[Vector3(9.0, 0, -44.6), PI * 0.9, "blue", "ak", []],                                # at the generator
+		[tower_c + Vector3(-0.8, 0, -0.2), west, "gasmask", "ak", []],                       # tower C
+		[Vector3(2, 0, -30), -PI * 0.5, "olive", "ak", [Vector3(2, 0, -30), Vector3(28, 0, -30), Vector3(28, 0, -16), Vector3(2, 0, -16)]],
 	]
-	return Vector3(0, 0.05, 34)
+	start_yaw = -PI * 0.5
+	return Vector3(-62.6, 0.05, -8.0)
 
 
 func _sandbags(c: Vector3, n_bags: int) -> void:
