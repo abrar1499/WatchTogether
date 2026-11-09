@@ -433,8 +433,188 @@ func _build_rocks(rock_mat: Material) -> void:
 		placed += 1
 
 
+# ---------------- rounds, damage, things that break ----------------
+const PIERCE := {"wood": 0.65, "sheet": 0.6, "drum": 0.5}    # damage left after going through
+var breakables := []
+var debris := []
+const SANDBAG_COVER := [Vector3(-3.5, 0, -10), Vector3(-1.8, 0, -10), Vector3(-0.1, 0, -10), Vector3(1.6, 0, -10)]
+
+
+## Low things a soldier can crouch behind and fire over: crates, drums and the sandbag wall, with their half size.
+func cover_list() -> Array:
+	var out := []
+	for b in breakables:
+		var n = b["node"]
+		if n != null and is_instance_valid(n) and not n.get_meta("gone", false) and n.global_position.y < 0.5:
+			out.append([n.global_position, 0.65 if b["kind"] == "crate" else 0.3])
+	for c in SANDBAG_COVER:
+		out.append([c, 0.3])
+	return out
+var scorches := []
+
+
+## (Re)build every crate and drum that is missing (start, and each new wave).
+func _restore_breakables() -> void:
+	for b in breakables:
+		if b["node"] != null and is_instance_valid(b["node"]):
+			continue
+		var n: StaticBody3D
+		if b["kind"] == "crate":
+			n = _prop("res://assets/env/crate.glb", b["pos"], b["rot"], Vector3(1.3, 1.3, 1.3), "wood")
+			n.set_meta("hp", 140.0)
+			n.set_meta("pierce", "wood")
+		else:
+			n = _prop("res://assets/env/drum_%s.glb" % b["color"], b["pos"], b["rot"], Vector3(0.3, 0.88, 0), "metal", true)
+			n.set_meta("hp", 60.0)
+			n.set_meta("pierce", "drum")
+		n.set_meta("kind", b["kind"])
+		b["node"] = n
+	for d in debris:
+		if is_instance_valid(d):
+			d.queue_free()
+	debris.clear()
+	for sc in scorches:
+		if is_instance_valid(sc):
+			sc.queue_free()
+	scorches.clear()
+
+
+## One round from `from` along `dir`: stops in the first solid thing, but goes on through wood, container sheet
+## and drums with less force each time; hurts what it hits. Enemy rounds pass through other enemies.
+## Returns where it ended (for the tracer).
+func shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node) -> Vector3:
+	var space := get_world_3d().direct_space_state
+	var exclude := [shooter.get_rid()]
+	var start := from
+	var end := from + dir * 400.0
+	for i in 5:
+		var q := PhysicsRayQueryParameters3D.create(start, end)
+		q.exclude = exclude
+		var h := space.intersect_ray(q)
+		if h.is_empty():
+			return end
+		var col = h.collider
+		var p: Vector3 = h.position
+		if col == player:
+			if shooter != player:
+				player.hit(dmg, shooter.global_position)
+			return p
+		if col.has_method("take_hit"):
+			if shooter == player:
+				col.take_hit(dmg, p, dir)
+				return p
+			exclude.append(col.get_rid())
+			start = p
+			continue
+		fx.impact(p, h.normal, col)
+		if col.has_meta("hp"):
+			damage_prop(col, dmg, p, h.normal)
+		var keep: float = PIERCE.get(str(col.get_meta("pierce", "")), 0.0)
+		if keep <= 0.0:
+			return p
+		dmg *= keep
+		exclude.append(col.get_rid())
+		start = p + dir * 0.02
+	return end
+
+
+func damage_prop(col: Node, dmg: float, p: Vector3, n: Vector3) -> void:
+	if not is_instance_valid(col) or col.get_meta("gone", false):
+		return
+	var hp: float = float(col.get_meta("hp")) - dmg
+	col.set_meta("hp", hp)
+	if col.get_meta("kind") == "crate":
+		fx.chips(p, n, "wood", 4)
+		if hp <= 0.0:
+			_break_crate(col)
+	else:
+		fx.chips(p, n, "metal", 3)
+		if hp <= 0.0:
+			col.set_meta("gone", true)
+			get_tree().create_timer(0.12).timeout.connect(func(): _explode_drum(col))
+
+
+## A crate gives way: planks fly, dust, and whatever stood on it comes down too.
+func _break_crate(col: Node) -> void:
+	if not is_instance_valid(col) or col.get_meta("gone", false):
+		return
+	col.set_meta("gone", true)
+	var pos: Vector3 = col.global_position
+	var mat: Material = null
+	for m in col.find_children("*", "MeshInstance3D", true, false):
+		mat = m.mesh.surface_get_material(0)
+		break
+	col.queue_free()
+	fx.dust(pos + Vector3(0, 0.6, 0), 1.6)
+	for i in 12:
+		var rb := RigidBody3D.new()
+		rb.collision_layer = 2
+		rb.collision_mask = 1
+		var size := Vector3(randf_range(0.5, 1.2), 0.03, randf_range(0.09, 0.14))
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = size
+		mi.mesh = bm
+		mi.material_override = mat
+		rb.add_child(mi)
+		var cs := CollisionShape3D.new()
+		var sh := BoxShape3D.new()
+		sh.size = size
+		cs.shape = sh
+		rb.add_child(cs)
+		add_child(rb)
+		rb.global_position = pos + Vector3(randf_range(-0.5, 0.5), randf_range(0.1, 1.2), randf_range(-0.5, 0.5))
+		rb.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
+		rb.linear_velocity = Vector3(randf_range(-2.5, 2.5), randf_range(1.0, 3.5), randf_range(-2.5, 2.5))
+		rb.angular_velocity = Vector3(randf_range(-6, 6), randf_range(-6, 6), randf_range(-6, 6))
+		debris.append(rb)
+	for b in breakables:
+		var n = b["node"]
+		if b["kind"] == "crate" and n != null and is_instance_valid(n) and n != col and not n.get_meta("gone", false):
+			if n.global_position.y > pos.y + 1.0 and Vector2(n.global_position.x - pos.x, n.global_position.z - pos.z).length() < 0.8:
+				get_tree().create_timer(0.15).timeout.connect(func(): if is_instance_valid(n): _break_crate(n))
+
+
+## A fuel drum blows up: fireball, smoke, light, debris, a scorch mark, a blast that hurts whoever is close and
+## in the open (enemies and the player), sets off drums next to it and breaks crates.
+func _explode_drum(col: Node) -> void:
+	if not is_instance_valid(col):
+		return
+	var pos: Vector3 = col.global_position + Vector3(0, 0.45, 0)
+	col.queue_free()
+	fx.explosion(pos)
+	scorches.append(fx.scorch(Vector3(pos.x, 0.02, pos.z)))
+	snd.explosion(pos)
+	noise(pos, 60.0)
+	var space := get_world_3d().direct_space_state
+	var in_open := func(target: Vector3, ignore: RID) -> bool:
+		var q := PhysicsRayQueryParameters3D.create(pos, target)
+		q.exclude = [col.get_rid(), ignore]
+		var h := space.intersect_ray(q)
+		return h.is_empty()
+	for e in enemies:
+		if e.dead:
+			continue
+		var d: float = e.global_position.distance_to(pos)
+		if d < 7.0 and in_open.call(e.global_position + Vector3(0, 1.0, 0), e.get_rid()):
+			e.blast(260.0 * (1.0 - d / 7.0), pos)
+	var dp: float = player.global_position.distance_to(pos)
+	if dp < 7.0 and in_open.call(player.global_position + Vector3(0, 1.0, 0), player.get_rid()):
+		player.hit(120.0 * (1.0 - dp / 7.0), pos)
+	player.shake = max(player.shake, clamp(1.2 - dp / 22.0, 0.0, 1.2))
+	for b in breakables:
+		var n = b["node"]
+		if n == null or not is_instance_valid(n) or n == col or n.get_meta("gone", false):
+			continue
+		var dn: float = n.global_position.distance_to(pos)
+		if b["kind"] == "drum" and dn < 4.5:
+			damage_prop(n, 999.0, n.global_position + Vector3(0, 0.5, 0), Vector3.UP)
+		elif b["kind"] == "crate" and dn < 3.2:
+			_break_crate(n)
+
+
 ## A prop model with a plain box (or cylinder) to collide with.
-func _prop(path: String, pos: Vector3, rot := 0.0, col := Vector3.ZERO, surf := "concrete", cylinder := false) -> Node3D:
+func _prop(path: String, pos: Vector3, rot := 0.0, col := Vector3.ZERO, surf := "concrete", cylinder := false) -> StaticBody3D:
 	var b := StaticBody3D.new()
 	b.position = pos
 	b.rotation.y = rot
@@ -463,9 +643,9 @@ func _build_yard() -> void:
 	_build_mountains()
 	var metal := _mat(Color(0.35, 0.37, 0.33), Color(0.5, 0.52, 0.46), 0.6, 0.55, 0.35)
 	var rock_mat := _tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true)
-	# wooden crates
+	# wooden crates (rounds go through them; enough hits break them)
 	for p in [Vector3(-3, 0, -2), Vector3(-1.6, 0, -2), Vector3(4, 0, -6), Vector3(6, 0, 3), Vector3(-7, 0, 4), Vector3(-7, 1.3, 4)]:
-		_prop("res://assets/env/crate.glb", p, randf_range(-0.06, 0.06), Vector3(1.3, 1.3, 1.3), "wood")
+		breakables.append({"kind": "crate", "pos": p, "rot": randf_range(-0.06, 0.06), "node": null})
 	# sandbag wall: the old two rows of boxes, now 144 bags laid like bricks
 	for i in 6:
 		for y in [0.0, 0.45]:
@@ -513,14 +693,16 @@ func _build_yard() -> void:
 			_prop("res://assets/env/barrier.glb", p, rot + randf_range(-0.015, 0.015), Vector3(2.0, 2.6, 0.3), "concrete")
 	# the building, fuel drums, containers
 	_prop("res://assets/env/building.glb", Vector3(14, 0, -24), 0.0, Vector3(10, 3.2, 7), "concrete")
+	# fuel drums (a few rounds and they blow up), some near the enemy posts
 	var di := 0
-	for p in [Vector3(8, 0, -2), Vector3(8.7, 0, -2.6), Vector3(8.1, 0, -3.3)]:
-		_prop("res://assets/env/drum_%s.glb" % ["blue", "red"][di % 2], p, randf() * TAU, Vector3(0.3, 0.88, 0), "metal", true)
+	for p in [Vector3(8, 0, -2), Vector3(8.7, 0, -2.6), Vector3(8.1, 0, -3.3), Vector3(11.5, 0, -19.6), Vector3(12.2, 0, -20.1),
+			Vector3(-8.2, 0, -18.4), Vector3(18.6, 0, -9.0), Vector3(-18.5, 0, -6.5), Vector3(-1.5, 0, -25.5)]:
+		breakables.append({"kind": "drum", "pos": p, "rot": randf() * TAU, "color": ["blue", "red"][di % 2], "node": null})
 		di += 1
-	_prop("res://assets/env/container_green.glb", Vector3(-10, 0, -22), 0.3, Vector3(2.44, 2.59, 6.06), "metal")
-	_prop("res://assets/env/container_red.glb", Vector3(24, 0, -14), 0.0, Vector3(2.44, 2.59, 6.06), "metal")
-	_prop("res://assets/env/container_blue.glb", Vector3(-24, 0, -18), PI * 0.5, Vector3(2.44, 2.59, 6.06), "metal")
-	_prop("res://assets/env/container_red.glb", Vector3(-24, 2.59, -18.1), PI * 0.5 + 0.03, Vector3(2.44, 2.59, 6.06), "metal")
+	_restore_breakables()
+	for c in [[Vector3(-10, 0, -22), 0.3, "green"], [Vector3(24, 0, -14), 0.0, "red"], [Vector3(-24, 0, -18), PI * 0.5, "blue"], [Vector3(-24, 2.59, -18.1), PI * 0.5 + 0.03, "red"]]:
+		var cb := _prop("res://assets/env/container_%s.glb" % c[2], c[0], c[1], Vector3(2.44, 2.59, 6.06), "metal")
+		cb.set_meta("pierce", "sheet")
 	_build_rocks(rock_mat)
 	# practice targets: steel plates on posts
 	for i in 5:
@@ -552,6 +734,8 @@ func _spawn_wave() -> void:
 	for e in enemies:
 		e.queue_free()
 	enemies.clear()
+	if wave > 0:
+		_restore_breakables()
 	wave += 1
 	for p in POSTS:
 		var e = load("res://scripts/enemy.gd").new()
@@ -835,6 +1019,119 @@ class FX extends Node3D:
 		h.look_at(p + n, up)
 		h.rotate_object_local(Vector3.FORWARD, randf() * TAU)
 
+	# ---- chips (wood splinters, metal bits), dust, explosions ----
+	var chip_list := []
+	var chip_i := 0
+	var chip_mats := {}
+	var big := []          # fireball and smoke sprites
+	var big_i := 0
+	var boom_light: OmniLight3D
+	var boom_t := 0.0
+
+	func _make_chips() -> void:
+		for k in ["wood", "metal", "dark"]:
+			var m := StandardMaterial3D.new()
+			m.albedo_color = {"wood": Color(0.55, 0.38, 0.2), "metal": Color(0.75, 0.72, 0.66), "dark": Color(0.12, 0.1, 0.09)}[k]
+			m.roughness = 0.9
+			chip_mats[k] = m
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.05, 0.012, 0.03)
+		for i in 40:
+			var mi := MeshInstance3D.new()
+			mi.mesh = bm
+			mi.visible = false
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(mi)
+			chip_list.append({"m": mi, "v": Vector3.ZERO, "t": 0.0, "spin": Vector3.ZERO})
+		for i in 40:
+			var s := Sprite3D.new()
+			s.texture = soft_tex
+			s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			s.shaded = false
+			s.visible = false
+			add_child(s)
+			big.append({"s": s, "t": 0.0, "life": 1.0, "v": Vector3.ZERO, "grow": 0.0, "c0": Color.WHITE, "c1": Color.WHITE})
+		boom_light = OmniLight3D.new()
+		boom_light.light_color = Color(1.0, 0.6, 0.25)
+		boom_light.omni_range = 16.0
+		boom_light.light_energy = 0.0
+		add_child(boom_light)
+
+	func chips(p: Vector3, n: Vector3, kind: String, count: int, speed := 3.0) -> void:
+		if chip_list.is_empty():
+			_make_chips()
+		for i in count:
+			var c: Dictionary = chip_list[chip_i % chip_list.size()]
+			chip_i += 1
+			var mi: MeshInstance3D = c["m"]
+			mi.material_override = chip_mats[kind]
+			mi.global_position = p + n * 0.03
+			mi.scale = Vector3.ONE * randf_range(0.7, 1.6) * (2.5 if kind == "dark" else 1.0)
+			mi.visible = true
+			c["v"] = (n + Vector3(randf_range(-0.8, 0.8), randf_range(0.2, 1.2), randf_range(-0.8, 0.8))).normalized() * speed * randf_range(0.5, 1.3)
+			c["spin"] = Vector3(randf_range(-15, 15), randf_range(-15, 15), randf_range(-15, 15))
+			c["t"] = randf_range(0.6, 1.2) * (2.0 if kind == "dark" else 1.0)
+
+	var flame_tex: Texture2D
+	func _big(p: Vector3, size: float, grow: float, life: float, v: Vector3, c0: Color, c1: Color, flame := false) -> void:
+		if chip_list.is_empty():
+			_make_chips()
+		if flame_tex == null:
+			flame_tex = load("res://assets/fx/flash_front.png")
+		var b: Dictionary = big[big_i % big.size()]
+		big_i += 1
+		var s: Sprite3D = b["s"]
+		s.texture = flame_tex if flame else soft_tex
+		s.rotation.z = randf() * TAU
+		s.global_position = p
+		s.pixel_size = size / 64.0
+		s.modulate = c0
+		s.visible = true
+		b["t"] = life
+		b["life"] = life
+		b["v"] = v
+		b["grow"] = grow / 64.0
+		b["c0"] = c0
+		b["c1"] = c1
+
+	func dust(p: Vector3, size: float) -> void:
+		for i in 3:
+			_big(p + Vector3(randf_range(-0.4, 0.4), randf_range(-0.2, 0.3), randf_range(-0.4, 0.4)), size, size * 0.8, 1.4,
+				Vector3(randf_range(-0.3, 0.3), 0.4, randf_range(-0.3, 0.3)), Color(0.72, 0.62, 0.48, 0.7), Color(0.72, 0.62, 0.48, 0.0))
+
+	func explosion(p: Vector3) -> void:
+		# flash and fireball, then a column of dark smoke
+		_big(p, 5.0, 8.0, 0.3, Vector3.ZERO, Color(1.0, 0.97, 0.8, 1.0), Color(1.0, 0.6, 0.15, 0.0), true)
+		for i in 12:
+			var off := Vector3(randf_range(-0.9, 0.9), randf_range(0.0, 1.4), randf_range(-0.9, 0.9))
+			_big(p + off, randf_range(2.0, 3.4), randf_range(3.5, 5.5), randf_range(0.8, 1.3), off * 1.8 + Vector3(0, 2.0, 0),
+				Color(1.0, randf_range(0.42, 0.7), randf_range(0.05, 0.18), 1.0), Color(0.3, 0.1, 0.03, 0.0), i % 2 == 0)
+		for i in 12:
+			var off2 := Vector3(randf_range(-0.8, 0.8), randf_range(0.3, 1.8), randf_range(-0.8, 0.8))
+			_big(p + off2, randf_range(1.8, 2.8), randf_range(4.0, 7.0), randf_range(3.0, 5.5), Vector3(randf_range(-0.4, 0.4), randf_range(1.4, 2.8), randf_range(-0.4, 0.4)),
+				Color(0.16, 0.14, 0.12, 0.85), Color(0.32, 0.3, 0.28, 0.0))
+		chips(p, Vector3.UP, "dark", 12, 9.0)
+		boom_light.global_position = p + Vector3(0, 1.0, 0)
+		boom_light.light_energy = 9.0
+		boom_t = 0.55
+
+	func scorch(p: Vector3) -> MeshInstance3D:
+		var mi := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(3.4, 3.4)
+		q.orientation = PlaneMesh.FACE_Y
+		mi.mesh = q
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = hole_tex
+		m.albedo_color = Color(0.25, 0.2, 0.16, 0.85)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+		mi.global_position = p
+		mi.rotation.y = randf() * TAU
+		return mi
+
 	func blood(p: Vector3, n: Vector3) -> void:
 		for i in 2:
 			var s: Sprite3D = puffs[puff_i % puffs.size()]
@@ -894,6 +1191,33 @@ class FX extends Node3D:
 		t["g"].global_transform = Transform3D(Basis().scaled(Vector3.ONE * clamp(hd * 0.018, 0.06, 0.7)), hp)
 
 	func _process(dt: float) -> void:
+		for c in chip_list:
+			if c["t"] > 0.0:
+				c["t"] -= dt
+				var mi: MeshInstance3D = c["m"]
+				c["v"] += Vector3(0, -9.8, 0) * dt
+				mi.global_position += c["v"] * dt
+				mi.rotation += c["spin"] * dt
+				if mi.global_position.y < 0.01:
+					mi.global_position.y = 0.01
+					c["v"] = Vector3.ZERO
+					c["spin"] = Vector3.ZERO
+				if c["t"] <= 0.0:
+					mi.visible = false
+		for b in big:
+			if b["t"] > 0.0:
+				b["t"] -= dt
+				var s: Sprite3D = b["s"]
+				var k: float = 1.0 - b["t"] / b["life"]
+				s.global_position += b["v"] * dt
+				b["v"] *= 1.0 - min(1.0, dt * 1.2)
+				s.pixel_size += b["grow"] * dt / b["life"]
+				s.modulate = (b["c0"] as Color).lerp(b["c1"], k)
+				if b["t"] <= 0.0:
+					s.visible = false
+		if boom_t > 0.0:
+			boom_t -= dt
+			boom_light.light_energy = max(0.0, boom_t / 0.55) * 9.0
 		for f in flash_rigs:
 			if f["t"] > 0.0:
 				f["t"] -= dt
@@ -939,6 +1263,7 @@ class Snd extends Node:
 		for k in ["ak", "m4", "pistol", "reload_rifle", "reload_pistol", "steps_sand", "steps_run",
 				"enemy_ak", "die_male", "die_collapse", "die_scream", "die_fall", "die_breath"]:
 			streams[k] = load("res://assets/sfx/%s.mp3" % k)
+		streams["boom"] = load("res://assets/music/escape.mp3")   # the impact hit near the end of "Action trailer"
 		auto = AudioStreamPlayer.new()
 		add_child(auto)
 		for i in 8:
@@ -977,6 +1302,10 @@ class Snd extends Node:
 		best.play(from)
 		best.set_meta("stop", from + dur)
 
+	## A drum going up: the impact hit near the end of the action trailer, from where it happened.
+	func explosion(pos: Vector3) -> void:
+		_play3d("boom", pos, 20.0, 4.2, 4.0)
+
 	## An enemy burst: the enemy rifle recording from where he stands, a little quieter than the player's gun.
 	func enemy_burst(pos: Vector3, shots: int) -> void:
 		var long := shots > 4
@@ -990,6 +1319,8 @@ class Snd extends Node:
 			voice = "die_male" if randf() < 0.5 else "die_collapse"
 		elif kind == "head":
 			voice = "die_collapse" if randf() < 0.3 else ""
+		elif kind == "blast":
+			voice = "die_scream"
 		else:
 			var r := randf()
 			voice = "die_male" if r < 0.45 else ("die_collapse" if r < 0.8 else "die_scream")

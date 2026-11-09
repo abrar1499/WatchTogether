@@ -134,10 +134,10 @@ func setup(fx_node: Node, snd_node: Node) -> void:
 	snd = snd_node
 	var cs := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
-	cap.radius = 0.32
-	cap.height = 1.75
+	cap.radius = 0.4
+	cap.height = 1.8
 	cs.shape = cap
-	cs.position.y = 0.875
+	cs.position.y = 0.9
 	cs.name = "Body"
 	add_child(cs)
 	floor_snap_length = 0.3
@@ -776,23 +776,14 @@ func _fire() -> void:
 	var from := cam.global_position
 	var d := -cam.global_transform.basis.z
 	d = (d + Vector3(randf_range(-sp, sp), randf_range(-sp, sp), randf_range(-sp, sp))).normalized()
-	var q := PhysicsRayQueryParameters3D.create(from, from + d * 400.0)
-	q.exclude = [get_rid()]
-	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	var mz: Node3D = vm_muzzles[w["gun"]] if view == 2 else muzzles[w["gun"]]
 	var mp := mz.global_position
 	fx.muzzle_flash(mp, mz.global_transform.basis.z, w["gun"])
-	if fx.get_parent().has_method("noise"):
-		fx.get_parent().noise(global_position, 10.0 if w["gun"] == "pistol" else 32.0)   # the SD-9 is suppressed
-	if hit:
-		if hit.collider and hit.collider.has_method("take_hit"):
-			hit.collider.take_hit(float(w["dmg"]), hit.position, d)
-		else:
-			fx.impact(hit.position, hit.normal, hit.collider)
-		if int(w["mag"]) % 2 == 0 or not w["auto"]:
-			fx.tracer(mp, hit.position, true)
-	elif int(w["mag"]) % 2 == 0 or not w["auto"]:
-		fx.tracer(mp, from + d * 120.0, true)
+	var world: Node = fx.get_parent()
+	world.noise(global_position, 10.0 if w["gun"] == "pistol" else 32.0)   # the SD-9 is suppressed
+	var end: Vector3 = world.shoot_ray(from, d, float(w["dmg"]), self)
+	if int(w["mag"]) % 2 == 0 or not w["auto"]:
+		fx.tracer(mp, end, true)
 
 
 func _animate(dt: float) -> void:

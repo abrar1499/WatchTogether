@@ -1,10 +1,11 @@
 extends CharacterBody3D
 ## Practice-yard soldier. Stands guard or walks a short beat; spots the player by sight (in front of him, in the
-## open, quicker up close, slower if the player is crouched) or by gunfire; then turns, aims and fires bursts,
-## closing in when far and hunting the last place he saw the player when he loses him. Headshots kill at once.
-## Dies with one of the Mixamo death clips.
+## open, quicker up close, slower if the player is crouched) or by gunfire. In a fight he does not stand still:
+## a burst or two from one spot, then he moves to another (cover he can shoot over if there is some, working
+## round to one side), ducks behind cover between bursts and pops up to fire, and moves at once when hit.
+## Closes in when far, hunts the last place he saw the player when he loses him. Headshots kill at once.
 
-const STATES := {"idle": "idle", "walk": "walk", "run": "run", "aim": "aim", "kneel_aim": "crouchFire", "hit": "hit",
+const STATES := {"idle": "idle", "walk": "walk", "run": "run", "aim": "aim", "kneel_aim": "crouchFire", "kneel": "kneel", "hit": "hit",
 	"die": "die", "dieFront": "dieFront", "dieLeft": "dieLeft", "dieBackHS": "dieBackHS"}
 const WALK := 1.15
 const RUN := 3.0
@@ -50,6 +51,14 @@ var stuck_t := 0.0
 var detour_t := 0.0
 var detour_sign := 1.0
 var shot_n := 0
+var moving := false            # relocating to `spot`
+var spot := Vector3.ZERO
+var move_t := 0.0
+var hold_t := 2.0              # time left at the current spot
+var spot_cover := false        # the spot has cover he can shoot over
+var peek_up := true            # standing up to fire (else ducked behind the cover)
+var peek_t := 0.0
+var flank := 1.0               # which way he works round the player
 
 
 func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasmask") -> void:
@@ -70,6 +79,8 @@ func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasma
 	yaw = face
 	rotation.y = yaw
 	kneels = randf() < 0.4
+	flank = 1.0 if randf() < 0.5 else -1.0
+	hold_t = randf_range(1.5, 3.0)
 	rig = player.make_rig(Color(0.86, 0.74, 0.58) if kind == "soldier" else Color(1, 1, 1), ["ak"], false, kind)
 	add_child(rig["root"])
 	skel = rig["skel"]
@@ -146,13 +157,38 @@ func _physics_process(dt: float) -> void:
 				target_v = to.normalized() * WALK
 				face = atan2(-to.x, -to.z)
 	else:
-		if sees:
+		var dist := to_p.length()
+		if sees and dist > 30.0:
+			moving = false
+			target_v = to_p.normalized() * RUN
 			face = atan2(-to_p.x, -to_p.z)
-			if to_p.length() > 28.0:
-				target_v = to_p.normalized() * RUN
+		elif sees or (moving and lost_t < 2.5):
+			if moving:
+				var to_s := spot - global_position
+				to_s.y = 0.0
+				move_t += dt
+				if to_s.length() < 0.45 or move_t > 5.0:
+					moving = false
+					hold_t = randf_range(2.0, 4.0)
+					peek_up = true
+					peek_t = randf_range(1.4, 2.4)
+				else:
+					target_v = to_s.normalized() * (RUN if to_s.length() > 1.8 else WALK * 1.3)
+					face = atan2(-target_v.x, -target_v.z)
 			else:
-				want_aim = true
+				face = atan2(-to_p.x, -to_p.z)
+				hold_t -= dt
+				if spot_cover:
+					peek_t -= dt
+					if peek_t <= 0.0 and shots_left == 0:
+						peek_up = not peek_up
+						peek_t = randf_range(1.4, 2.6) if peek_up else randf_range(0.7, 1.4)
+				want_aim = peek_up or not spot_cover
+				if hold_t <= 0.0 and shots_left == 0:
+					_relocate()
 		else:
+			moving = false
+			spot_cover = false
 			var to_l := last_seen - global_position
 			to_l.y = 0.0
 			if lost_t > 1.5 and to_l.length() > 1.2:
@@ -206,7 +242,7 @@ func _physics_process(dt: float) -> void:
 				shots_left -= 1
 				shot_t = 0.11
 				if shots_left == 0:
-					pause_t = randf_range(1.0, 2.2)
+					pause_t = randf_range(0.7, 1.6)
 		else:
 			pause_t -= dt
 			if pause_t <= 0.0:
@@ -224,12 +260,14 @@ func _physics_process(dt: float) -> void:
 		st = "run"
 	elif hs > 0.3:
 		st = "walk"
+	elif mode == "combat" and spot_cover and not peek_up:
+		st = "kneel"
 	elif want_aim or mode == "combat":
-		st = "kneel_aim" if kneels else "aim"
+		st = "kneel_aim" if (kneels and not spot_cover) else "aim"
 	if st != state:
 		playback.travel(st)
 		state = st
-		var low := st == "kneel_aim"
+		var low := st == "kneel_aim" or st == "kneel"
 		cap.height = 1.2 if low else 1.75
 		body.position.y = cap.height * 0.5
 	var scale := 1.0
@@ -249,7 +287,69 @@ func _physics_process(dt: float) -> void:
 
 
 func _eye() -> Vector3:
-	return global_position + Vector3(0, 1.0 if state == "kneel_aim" else 1.6, 0)
+	return global_position + Vector3(0, 1.0 if (state == "kneel_aim" or state == "kneel") else 1.6, 0)
+
+
+## Nothing solid between a and b (people do not count).
+func _sight(a: Vector3, b: Vector3) -> bool:
+	var q := PhysicsRayQueryParameters3D.create(a, b)
+	q.exclude = [get_rid(), player.get_rid()]
+	var h := get_world_3d().direct_space_state.intersect_ray(q)
+	return h.is_empty() or h.collider.has_method("take_hit")
+
+
+## Pick the next spot to fight from: a few metres away, reachable in a straight line, 7-32 m from the player.
+## Best is cover he can shoot over (hidden crouched, sees the player standing), then somewhere off to his chosen
+## side of the player, at a middling range.
+func _relocate() -> void:
+	var pe: Vector3 = player.global_position + Vector3(0, 1.5, 0)
+	var to_p: Vector3 = player.global_position - global_position
+	to_p.y = 0.0
+	var side := Vector3(-to_p.z, 0, to_p.x).normalized() * flank
+	var best := Vector3.ZERO
+	var best_s := -INF
+	var best_cover := false
+	var cands := []
+	for i in 10:
+		var ang := randf() * TAU
+		cands.append(global_position + Vector3(cos(ang), 0, sin(ang)) * randf_range(2.5, 6.5))
+	# the far side (from the player) of low cover nearby
+	for cv in main.cover_list():
+		var o: Vector3 = cv[0]
+		if o.distance_to(global_position) > 14.0:
+			continue
+		var away: Vector3 = o - player.global_position
+		away.y = 0.0
+		var cp: Vector3 = o + away.normalized() * (float(cv[1]) + 0.55)
+		cp.y = global_position.y
+		cands.append(cp)
+	for c in cands:
+		if abs(c.x) > 42.0 or c.z > 26.0 or c.z < -45.0:
+			continue
+		var dp = c.distance_to(player.global_position)
+		if dp < 7.0 or dp > 32.0:
+			continue
+		if not _sight(global_position + Vector3(0, 0.5, 0), c + Vector3(0, 0.5, 0)):
+			continue
+		var covered := not _sight(pe, c + Vector3(0, 0.85, 0))
+		var can_peek := _sight(pe, c + Vector3(0, 1.55, 0))
+		var score := (2.5 if covered and can_peek else (0.6 if covered else 0.0)) + (1.0 if can_peek else 0.0)
+		score += (c - global_position).normalized().dot(side) * 0.8
+		score += 0.6 - abs(dp - 16.0) / 20.0 + randf() * 0.6
+		score -= c.distance_to(global_position) * 0.05
+		if score > best_s:
+			best_s = score
+			best = c
+			best_cover = covered and can_peek
+	if best_s > -INF:
+		spot = best
+		spot_cover = best_cover
+		moving = true
+		move_t = 0.0
+	else:
+		hold_t = randf_range(1.0, 2.0)
+	if randf() < 0.25:
+		flank = -flank
 
 
 func _clear(a: Vector3, b: Vector3) -> bool:
@@ -318,7 +418,7 @@ func hear(pos: Vector3, radius: float) -> void:
 
 
 func _shoot() -> void:
-	var from: Vector3 = muzzle.global_position
+	var from: Vector3 = muzzle.global_position + muzzle.global_transform.basis.z * 0.05
 	var chest: Vector3 = player.global_position + Vector3(0, 0.85 if player.crouch else 1.25, 0)
 	var dir := (chest - from).normalized()
 	var d := from.distance_to(chest)
@@ -327,20 +427,9 @@ func _shoot() -> void:
 	sp *= 0.65 if player.crouch else 1.0
 	sp *= 0.7 + d / 40.0
 	dir = (dir + Vector3(randf_range(-sp, sp), randf_range(-sp, sp) * 0.7, randf_range(-sp, sp))).normalized()
-	var q := PhysicsRayQueryParameters3D.create(from, from + dir * 150.0)
-	q.exclude = [get_rid()]
-	var h := get_world_3d().direct_space_state.intersect_ray(q)
 	main.fx.muzzle_flash(from, muzzle.global_transform.basis.z, "ak")
 	shot_n += 1
-	var end := from + dir * 120.0
-	if not h.is_empty():
-		end = h.position
-		if h.collider == player:
-			player.hit(randf_range(4.0, 7.0), global_position)
-		elif h.collider and h.collider.has_method("take_hit"):
-			pass   # does not shoot his own side
-		else:
-			main.fx.impact(h.position, h.normal, h.collider)
+	var end: Vector3 = main.shoot_ray(from, dir, randf_range(4.0, 7.0), self)
 	if shot_n % 2 == 0:
 		main.fx.tracer(from, end)
 
@@ -360,16 +449,35 @@ func take_hit(dmg: float, pos: Vector3, dir: Vector3) -> void:
 		return
 	hit_t = 0.3
 	alarm(player.global_position, true)
+	# hit: get out of there
+	if not moving:
+		shots_left = 0
+		hold_t = 0.0
 
 
-func _die(headshot: bool) -> void:
+## Caught by an exploding drum.
+func blast(dmg: float, from: Vector3) -> void:
+	if dead:
+		return
+	main.fx.blood(global_position + Vector3(0, 1.1, 0), (global_position - from).normalized())
+	hp -= dmg
+	if hp <= 0.0:
+		_die(false, true)
+		return
+	hit_t = 0.5
+	alarm(player.global_position, true)
+	shots_left = 0
+	hold_t = 0.0
+
+
+func _die(headshot: bool, blasted := false) -> void:
 	dead = true
 	hp = 0.0
 	collision_layer = 0
 	shots_left = 0
-	var clip: String = "dieBackHS" if headshot else ["die", "dieFront", "dieLeft"][randi() % 3]
+	var clip: String = "dieBackHS" if (headshot or blasted) else ["die", "dieFront", "dieLeft"][randi() % 3]
 	playback.travel(clip)
 	tree.set("parameters/speed/scale", 1.0)
 	rig["ik"].interpolation = 0.0
-	main.snd.death(global_position, "head" if headshot else "body")
+	main.snd.death(global_position, "blast" if blasted else ("head" if headshot else "body"))
 	main.on_enemy_killed(self, headshot)
