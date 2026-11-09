@@ -1,70 +1,40 @@
-# Operation Dust Signal
+# Operation Dust Signal (Godot)
 
-A first-person stealth shooter that runs in the browser. Mission 1: get into the Hadra relay base, copy the codes from the bunker terminal, and reach landing zone Raven.
+A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. This is phase 1: the soldier, the rifles and a small practice yard. Guards, the Hadra base mission, effects and menus from the earlier browser version come back in later phases.
 
-## Play
+## What is in phase 1
 
-Open `index.html` through any web server (for example GitHub Pages). It does not work when opened straight from the file system, because the soldier model is loaded with `fetch`.
+- Mixamo "Swat Guy" with walk, run, strafe, walk/run backwards, crouch walk, kneel, aim and jump clips, driven by an AnimationTree: one direction clip at a time with a short crossfade, and the aim or reload pose on the arms and chest while the legs keep walking.
+- The rifle sits in the right hand exactly as in the aim pose; IK puts the left hand on the handguard in every pose (off while reloading or switching).
+- SD-9 pistol, M4A1 and AK-47 with their own sounds, recoil, muzzle flash, tracers and bullet holes.
+- Over-the-shoulder camera with a close and a closer view, a zoomed aim, and first person.
+- Phone controls: move with the bottom-left thumb, drag anywhere else to look, FIRE (slide the same finger to aim while firing), AIM, CROUCH, JUMP, RELOAD, SWAP, VIEW, MENU. On a computer: WASD, mouse, left/right click, Shift, C, Space, R, Q or 1/2/3, V, Esc.
 
-The game works **offline**: three.js, its loaders and meshoptimizer are bundled in `vendor/` (the Android app ships them in its assets), so no internet connection is needed to start or play. Only the Google web fonts need a connection; without one, system fonts are used. An uploaded soldier or song is stored on the device, so it also plays offline.
+## Project
 
-**Computer:** WASD move, mouse look, click fire, hold right mouse or Q to aim, Z to switch the 1×/4× scope, Shift sprint, C crouch, 1/2/3 pistol, M4A1, AK-47, R reload, B binoculars, M map, V first/third person, E use, Space jump, Esc pause.
+- `godot/`: the Godot project (`project.godot`, `main.tscn`, `scripts/`, `assets/`)
+  - `scripts/main.gd`: the yard, lighting, effects, sounds and the update check
+  - `scripts/player.gd`: movement, animation, guns, IK, camera, shooting
+  - `scripts/touch.gd`: on-screen controls, keyboard/mouse, HUD, start and pause menus
+  - `assets/soldier.glb`: the soldier with its Mixamo animations
+  - `assets/guns/`: the three rifles, `assets/sfx/`: the sound files (unedited)
+- `android/debug.keystore`: the signing key of the original app, so the game installs as its update
+- `.github/workflows/build.yml`: exports the APK with Godot and publishes it
 
-**Phone:** hold the phone sideways. Drag in the bottom-left corner to move: a small push sneaks, half a push walks, the edge sprints. Drag anywhere else on the screen to aim. Only the FIRE button shoots; keep the finger down and slide it to aim while firing, lift it to stop. Hold AIM (left side) to aim with the red dot; the 1×/4× button switches the rifle scope. VIEW switches between third person (your soldier on screen, the default) and first person.
+## Android app and updates
 
-## Android app
+Every push exports an APK with GitHub Actions and publishes it under **Releases** as `v<number>` (file `DustSignal.apk`). The app id is `com.abrar.watchtogether` and the APK is signed with the same key as before, so it installs over the earlier app. Godot test builds are published as pre-releases. The game checks the releases when it starts and offers **Update** on the start screen (it opens the APK download).
 
-Every push builds an APK with GitHub Actions and publishes it under **Releases** as `v<number>` (file `DustSignal.apk`), marked as the latest release.
-
-The app uses the same app id (`com.abrar.watchtogether`) and signing key as the old WatchTogether app, so it installs as an update over it. The app checks for newer releases when it starts, downloads them in the background, and asks **Update now / Later** before installing.
-
-It shows the same `index.html` full screen in landscape, and needs internet the first time to load three.js from the CDN.
-
-## Graphics
-
-The start screen has **Low** and **High**. Phones start on Low: no real-time shadows, simpler lighting, no clouds, render scale 1x, fewer shrubs and lighter soldiers. High turns those on. Both modes merge the static scenery and each gun into a few meshes to keep draw calls down.
-
-## Your own soldier
-
-On the start screen, tap **Upload soldier file** and choose a Mixamo character downloaded as **FBX Binary, T-pose**. The game converts it in the browser, shrinks the textures, and saves it on that device. **Use standard soldier** switches back.
-
-## Music
-
-**Upload music** picks a song from the device instead. It is saved on that device only and plays on a loop during the mission. **Remove music** turns it off.
-
-## Files
-
-- `index.html`: the whole game (three.js r128 from cdnjs)
-- `sfx/`: the gun sounds, unedited original files
-- `models/soldier.b64.txt`: the standard soldier (Mixamo "Swat Guy", merged into 2 meshes and simplified to about 16k triangles) with 66 Mixamo animations (walk, run, strafe, crouch, prone, grenade throw, kick, hit reactions and several deaths), as a base64 GLB
-- `vendor/`: bundled libraries (three.js r128 and r160 modules, meshoptimizer), MIT licensed, with their licenses
-- `app/`: the Android wrapper (a full-screen WebView)
-- `.github/workflows/build.yml`: builds and releases the APK
+To open the project on a computer, install Godot 4.3 and open `godot/project.godot`.
 
 ## Credits
 
 Soldier character and animations from [Mixamo](https://www.mixamo.com) (Adobe).
 
-Sounds in `sfx/` are unedited sound effects from [Pixabay](https://pixabay.com/sound-effects/), used under the Pixabay Content License:
+Sounds in `godot/assets/sfx/` are unedited sound effects from [Pixabay](https://pixabay.com/sound-effects/), used under the Pixabay Content License:
 - AK-47: "AK-47 sound effect" by sovetsky_rastov72
 - M4A1: "Gun fire" by foisal72 (475286)
 - Pistol: "Gun rifle shots" by dennish18
-- Enemy rifles: "Machin gun AK47 sound effect 6" by beetpro
 - Pistol reload: "1911 reload" by freesound_community
 - M4 and AK-47 reload: "Gun full reload" by melbeebelbee
-- Footsteps, chosen by surface and movement (one recorded step per footfall):
-  - sand: "Footsteps in wet coarse sand" (freesound_community); crouched on sand/dirt and on the road: "Footsteps dirt gravel" (freesound_community)
-  - base concrete: "Concrete footsteps" 6752 (freesound_community); running: "Running on the floor" (thumblegray); crouched: "Concrete footsteps 2" (freesound_community)
-  - inside the bunker: "Footsteps walking boots parquet" (soundreality)
-  - guards near you: "Heavy footsteps walking" (freesound_community)
-- Music and atmosphere, mixed by what is happening:
-  - mission start: "Descent whoosh" (viralaudio) and "Cinematic action epic trailer: Iron Vanguard" (openmindaudio)
-  - sneaking: "Tense suspense ambience" (absolutesound), "Spacecraft orbiting between meteor strikes" (liecio) as a low rumble, "Mid nights sound" (ncprime), and the odd "Raven call" (freesound_community)
-  - spotted: "Scary sound effect" (dragon-studio)
-  - alarm and firefights: "Action loop E 90 BPM" (brvhrtz)
-  - escape to the helicopter: "Action trailer" (arctsound)
-  - low health: "Heartbeat sound" (dragon-studio)
-  - explosions: the impact hit near the end of "Action trailer" (arctsound)
-- Deaths: "Male death scream horror", "Dramatic death collapse" and "Character fall impact" (universfield), "Male death sound" (vinodadora); the player's last breath is the player's own recording `hf_20261108_205549_….mp3`
-
-The game plays only these files, apart from a short synthesized ear-ringing tone after a nearby explosion. Automatic weapons loop the steady full-auto part of their file while FIRE is held.
+- Footsteps: "Footsteps in wet coarse sand" (freesound_community), "Running on the floor" (thumblegray)
