@@ -329,7 +329,7 @@ func _shoot() -> void:
 	var q := PhysicsRayQueryParameters3D.create(from, from + dir * 150.0)
 	q.exclude = [get_rid()]
 	var h := get_world_3d().direct_space_state.intersect_ray(q)
-	main.fx.muzzle_flash(from, dir, "ak")
+	main.fx.muzzle_flash(from, muzzle.global_transform.basis.z, "ak")
 	shot_n += 1
 	var end := from + dir * 120.0
 	if not h.is_empty():

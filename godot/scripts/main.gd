@@ -402,10 +402,13 @@ func check_update_now() -> void:
 
 # =============== effects ===============
 class FX extends Node3D:
-	var flash_tex: Texture2D
+	const TRACER_SPEED := 330.0      # m/s: quick, but a streak you can follow
+	const TRACER_LEN := 3.5
 	var soft_tex: Texture2D
 	var hole_tex: Texture2D
-	var flashes := []
+	var flash_rigs := []             # front star + two crossed side flames, per shot
+	var flash_i := 0
+	var shot_n := 0
 	var light: OmniLight3D
 	var light_t := 0.0
 	var puffs := []
@@ -415,29 +418,57 @@ class FX extends Node3D:
 	var tracers := []
 	var tr_i := 0
 
+	## Unlit, two-sided, full-bright. Blended over (not added to) the background, so fire stays orange and
+	## yellow against bright sand and sky instead of washing out to white.
+	func _glow_mat(tex: Texture2D, billboard := false) -> StandardMaterial3D:
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = tex
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.disable_receive_shadows = true
+		if billboard:
+			m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+			m.billboard_keep_scale = true
+		return m
+
 	func _ready() -> void:
-		flash_tex = _radial(Color(1, 0.95, 0.75, 1), Color(1, 0.55, 0.1, 0))
 		soft_tex = _radial(Color(1, 1, 1, 0.9), Color(1, 1, 1, 0))
 		hole_tex = _radial(Color(0.05, 0.04, 0.03, 1), Color(0.25, 0.2, 0.15, 0), 0.45)
 		light = OmniLight3D.new()
-		light.light_color = Color(1, 0.7, 0.35)
+		light.light_color = Color(1, 0.62, 0.28)
 		light.omni_range = 9.0
 		light.light_energy = 0
 		add_child(light)
-		for i in 3:
-			var s := Sprite3D.new()
-			s.texture = flash_tex
-			s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-			s.shaded = false
-			s.no_depth_test = false
-			s.modulate = Color(1, 0.9, 0.7)
-			s.pixel_size = 0.004
-			s.visible = false
-			s.set_meta("t", 0.0)
-			var m := StandardMaterial3D.new()
-			s.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
-			add_child(s)
-			flashes.append(s)
+		# muzzle flash: a star seen from the front, and the flame leaving the muzzle seen from the side
+		var t_front: Texture2D = load("res://assets/fx/flash_front.png")
+		var t_side: Texture2D = load("res://assets/fx/flash_side.png")
+		var fq := QuadMesh.new()
+		fq.size = Vector2(1, 1)
+		var sq := QuadMesh.new()
+		sq.size = Vector2(1, 0.36)
+		sq.center_offset = Vector3(0.5, 0, 0)      # from the muzzle outward
+		for i in 4:
+			var root := Node3D.new()
+			root.visible = false
+			add_child(root)
+			var front := MeshInstance3D.new()
+			front.mesh = fq
+			front.material_override = _glow_mat(t_front, true)
+			front.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			root.add_child(front)
+			var side_mat := _glow_mat(t_side)
+			var sides := []
+			for b in [Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0)), Basis(Vector3(0, 0, -1), Vector3(1, 0, 0), Vector3(0, -1, 0))]:
+				var sm := MeshInstance3D.new()
+				sm.mesh = sq
+				sm.material_override = side_mat
+				sm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				sm.transform = Transform3D(b, Vector3.ZERO)
+				root.add_child(sm)
+				sides.append(sm)
+			flash_rigs.append({"root": root, "front": front, "sides": sides, "t": 0.0})
 		for i in 16:
 			var s := Sprite3D.new()
 			s.texture = soft_tex
@@ -461,22 +492,19 @@ class FX extends Node3D:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(mi)
 			holes.append(mi)
-		for i in 6:
+		# tracers: a short glowing streak (white-hot head, orange tail) that flies down the bullet's path
+		var tq := QuadMesh.new()
+		tq.size = Vector2(1, 1)
+		var t_mat := _glow_mat(load("res://assets/fx/tracer.png"))
+		t_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR   # no mipmaps: a streak a few pixels wide keeps its bright core
+		for i in 12:
 			var mi := MeshInstance3D.new()
-			var b := BoxMesh.new()
-			b.size = Vector3(0.02, 0.02, 1.0)
-			mi.mesh = b
-			var m := StandardMaterial3D.new()
-			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			m.albedo_color = Color(1, 0.85, 0.45, 0.9)
-			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-			mi.material_override = m
+			mi.mesh = tq
+			mi.material_override = t_mat
 			mi.visible = false
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			mi.set_meta("t", 0.0)
 			add_child(mi)
-			tracers.append(mi)
+			tracers.append({"m": mi, "a": Vector3.ZERO, "dir": Vector3.FORWARD, "total": 0.0, "s": 0.0, "on": false})
 
 	func _radial(c0: Color, c1: Color, mid := 0.0) -> GradientTexture2D:
 		var g := Gradient.new()
@@ -493,17 +521,42 @@ class FX extends Node3D:
 		t.height = 64
 		return t
 
-	func muzzle_flash(p: Vector3, _d: Vector3, gun: String) -> void:
-		var s: Sprite3D = flashes[randi() % flashes.size()]
-		s.global_position = p
-		var size := 0.0035 if gun == "pistol" else (0.008 if gun == "ak" else 0.006)
-		s.pixel_size = size * randf_range(0.8, 1.2)
-		s.rotation.z = randf() * TAU
-		s.visible = true
-		s.set_meta("t", 0.05)
-		light.global_position = p
-		light.light_energy = 2.0 if gun == "pistol" else 4.0
-		light_t = 0.06
+	## Muzzle flash along the shot: random size and roll, about three frames long; smaller close to the eye
+	## (first person); the suppressed pistol only gives a small spark. A thin wisp of smoke follows.
+	func muzzle_flash(p: Vector3, d: Vector3, gun: String) -> void:
+		var f: Dictionary = flash_rigs[flash_i % flash_rigs.size()]
+		flash_i += 1
+		shot_n += 1
+		var root: Node3D = f["root"]
+		var near := 1.0
+		var cam := get_viewport().get_camera_3d()
+		if cam:
+			near = clamp(cam.global_position.distance_to(p) / 1.2, 0.5, 1.0)
+		var size: float = {"pistol": 0.11, "m4": 0.34, "ak": 0.42}.get(gun, 0.34) * near * randf_range(0.8, 1.2)
+		var dn := d.normalized()
+		var up := Vector3.UP if abs(dn.y) < 0.98 else Vector3.FORWARD
+		root.global_transform = Transform3D(Basis.looking_at(dn, up), p)
+		root.rotate_object_local(Vector3.FORWARD, randf() * TAU)
+		root.scale = Vector3.ONE * size
+		f["front"].scale = Vector3.ONE * (0.7 if gun != "pistol" else 1.0) * randf_range(0.85, 1.15)
+		f["front"].material_override.albedo_color = Color(1, 1, 1, randf_range(0.75, 1.0))
+		for sm in f["sides"]:
+			sm.visible = gun != "pistol"
+			sm.scale = Vector3(randf_range(0.8, 1.2), 1, 1)
+		root.visible = true
+		f["t"] = 0.045
+		light.global_position = p + dn * 0.15
+		light.light_energy = 0.8 if gun == "pistol" else 3.5
+		light_t = 0.05
+		if gun != "pistol" and shot_n % 2 == 0:
+			var s: Sprite3D = puffs[puff_i % puffs.size()]
+			puff_i += 1
+			s.global_position = p + dn * 0.12
+			s.modulate = Color(0.82, 0.8, 0.76, 0.3)
+			s.pixel_size = 0.0018 * near
+			s.visible = true
+			s.set_meta("t", 0.7)
+			s.set_meta("max", 0.7)
 
 	func impact(p: Vector3, n: Vector3, col: Object) -> void:
 		var surf := "sand"
@@ -540,25 +593,48 @@ class FX extends Node3D:
 			s.set_meta("max", 0.45)
 
 	func tracer(a: Vector3, b: Vector3) -> void:
-		var m: MeshInstance3D = tracers[tr_i % tracers.size()]
-		tr_i += 1
-		var len := a.distance_to(b)
-		if len < 1.0:
+		var total := a.distance_to(b)
+		if total < 2.0:
 			return
-		m.global_position = (a + b) * 0.5
-		m.look_at(b, Vector3.UP if abs((b - a).normalized().y) < 0.99 else Vector3.FORWARD)
-		m.scale = Vector3(1, 1, len)
-		m.visible = true
-		m.set_meta("t", 0.07)
+		var t: Dictionary = tracers[tr_i % tracers.size()]
+		tr_i += 1
+		t["a"] = a
+		t["dir"] = (b - a) / total
+		t["total"] = total
+		t["s"] = 0.6
+		t["on"] = true
+		t["m"].visible = true
+		_place_tracer(t)
+
+	## A camera-facing ribbon from the tail to the head, a few pixels wide however far away it is.
+	func _place_tracer(t: Dictionary) -> void:
+		var head: float = min(t["s"], t["total"])
+		var tail: float = max(0.0, float(t["s"]) - TRACER_LEN)
+		if head - tail < 0.05:
+			t["on"] = false
+			t["m"].visible = false
+			return
+		var dir: Vector3 = t["dir"]
+		var mid: Vector3 = t["a"] + dir * (head + tail) * 0.5
+		var cam := get_viewport().get_camera_3d()
+		var to_cam := Vector3.UP
+		var dist := 10.0
+		if cam:
+			to_cam = cam.global_position - mid
+			dist = to_cam.length()
+		var side := dir.cross(to_cam)
+		if side.length() < 0.001:
+			side = dir.cross(Vector3.UP)
+		side = side.normalized()
+		var width: float = clamp(dist * 0.008, 0.035, 0.35)
+		t["m"].global_transform = Transform3D(Basis(dir * (head - tail), side * width, dir.cross(side)), mid)
 
 	func _process(dt: float) -> void:
-		for s in flashes:
-			var tt: float = s.get_meta("t")
-			if tt > 0:
-				tt -= dt
-				s.set_meta("t", tt)
-				if tt <= 0:
-					s.visible = false
+		for f in flash_rigs:
+			if f["t"] > 0.0:
+				f["t"] -= dt
+				if f["t"] <= 0.0:
+					f["root"].visible = false
 		if light_t > 0:
 			light_t -= dt
 			if light_t <= 0:
@@ -574,13 +650,10 @@ class FX extends Node3D:
 				s.modulate.a = (1.0 - k) * 0.8
 				if tt <= 0:
 					s.visible = false
-		for m in tracers:
-			var tt: float = m.get_meta("t")
-			if tt > 0:
-				tt -= dt
-				m.set_meta("t", tt)
-				if tt <= 0:
-					m.visible = false
+		for t in tracers:
+			if t["on"]:
+				t["s"] += TRACER_SPEED * dt
+				_place_tracer(t)
 
 
 # =============== sounds (the player's files, played as they are) ===============

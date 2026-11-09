@@ -705,7 +705,7 @@ func _fire() -> void:
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	var mz: Node3D = vm_muzzles[w["gun"]] if view == 2 else muzzles[w["gun"]]
 	var mp := mz.global_position
-	fx.muzzle_flash(mp, d, w["gun"])
+	fx.muzzle_flash(mp, mz.global_transform.basis.z, w["gun"])
 	if fx.get_parent().has_method("noise"):
 		fx.get_parent().noise(global_position, 10.0 if w["gun"] == "pistol" else 32.0)   # the SD-9 is suppressed
 	if hit:
@@ -835,6 +835,7 @@ func _update_arms(dt: float) -> void:
 	vap.seek(0.6, true)                 # the aim pose held still: its breathing looks like shaking this close
 	var vsk: Skeleton3D = vm_rig["skel"]
 	pose_rig_hands(vsk, cur)
+	vsk.set_bone_pose_scale(vsk.find_bone("mixamorigHead"), Vector3.ONE * 0.001)   # no head or helmet in view
 	vm_rig["ik"].interpolation = ik_w
 	ads_k = lerp(ads_k, 1.0 if aiming else 0.0, min(1.0, dt * 12.0))
 	var mv: float = clamp(speed / 3.0, 0.0, 1.0) * (1.0 - ads_k * 0.85)
