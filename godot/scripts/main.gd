@@ -7,6 +7,7 @@ var player: CharacterBody3D
 var ui: Control
 var fx := FX.new()
 var snd := Snd.new()
+var music := Music.new()
 var version := 0
 var playing := false
 var test_mode := ""
@@ -38,6 +39,8 @@ func _ready() -> void:
 	_build_yard()
 	add_child(fx)
 	add_child(snd)
+	music.main = self
+	add_child(music)
 	player = load("res://scripts/player.gd").new()
 	player.name = "Player"
 	add_child(player)
@@ -68,8 +71,9 @@ func _ready() -> void:
 func start_game() -> void:
 	playing = true
 	ui.hide_start()
-	if test_mode == "" or test_mode == "enemies":
+	if test_mode == "" or test_mode == "enemies" or test_mode == "music":
 		_spawn_wave()
+		music.begin()
 	if not ui.is_touch and test_mode == "":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -353,6 +357,7 @@ func on_enemy_killed(_e: Node, headshot: bool) -> void:
 
 func on_player_dead() -> void:
 	ui.message("YOU WERE KILLED", "Back in a moment", 3.5)
+	music.player_died()
 
 
 func on_player_respawn() -> void:
@@ -402,8 +407,8 @@ func check_update_now() -> void:
 
 # =============== effects ===============
 class FX extends Node3D:
-	const TRACER_SPEED := 330.0      # m/s: quick, but a streak you can follow
-	const TRACER_LEN := 3.5
+	const TRACER_SPEED := 260.0      # m/s: quick, but a streak you can follow
+	const TRACER_LEN := 4.5
 	var soft_tex: Texture2D
 	var hole_tex: Texture2D
 	var flash_rigs := []             # front star + two crossed side flames, per shot
@@ -497,14 +502,24 @@ class FX extends Node3D:
 		tq.size = Vector2(1, 1)
 		var t_mat := _glow_mat(load("res://assets/fx/tracer.png"))
 		t_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR   # no mipmaps: a streak a few pixels wide keeps its bright core
-		for i in 12:
+		# and a glowing head, so a round flying straight away from the camera still shows as a bright point
+		var g_mat := _glow_mat(soft_tex, true)
+		g_mat.albedo_color = Color(1.0, 0.72, 0.3)
+		for i in 14:
 			var mi := MeshInstance3D.new()
 			mi.mesh = tq
 			mi.material_override = t_mat
 			mi.visible = false
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(mi)
-			tracers.append({"m": mi, "a": Vector3.ZERO, "dir": Vector3.FORWARD, "total": 0.0, "s": 0.0, "on": false})
+			var gl := MeshInstance3D.new()
+			gl.mesh = tq
+			gl.material_override = g_mat
+			gl.visible = false
+			gl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(gl)
+			tracers.append({"m": mi, "g": gl, "a": Vector3.ZERO, "dir": Vector3.FORWARD, "total": 0.0, "s": 0.0, "on": false,
+				"len": TRACER_LEN, "speed": TRACER_SPEED, "wide": 1.0})
 
 	func _radial(c0: Color, c1: Color, mid := 0.0) -> GradientTexture2D:
 		var g := Gradient.new()
@@ -592,7 +607,9 @@ class FX extends Node3D:
 			s.set_meta("t", 0.45)
 			s.set_meta("max", 0.45)
 
-	func tracer(a: Vector3, b: Vector3) -> void:
+	## mine: the player's own rounds fly away from the shoulder camera and look short end-on, so they get a
+	## longer, slower, thicker streak.
+	func tracer(a: Vector3, b: Vector3, mine := false) -> void:
 		var total := a.distance_to(b)
 		if total < 2.0:
 			return
@@ -602,17 +619,22 @@ class FX extends Node3D:
 		t["dir"] = (b - a) / total
 		t["total"] = total
 		t["s"] = 0.6
+		t["len"] = 8.0 if mine else TRACER_LEN
+		t["speed"] = 200.0 if mine else TRACER_SPEED
+		t["wide"] = 2.2 if mine else 1.0
 		t["on"] = true
 		t["m"].visible = true
+		t["g"].visible = true
 		_place_tracer(t)
 
 	## A camera-facing ribbon from the tail to the head, a few pixels wide however far away it is.
 	func _place_tracer(t: Dictionary) -> void:
 		var head: float = min(t["s"], t["total"])
-		var tail: float = max(0.0, float(t["s"]) - TRACER_LEN)
-		if head - tail < 0.05:
+		var tail: float = max(0.0, float(t["s"]) - float(t["len"]))
+		if head - tail < 0.05 or float(t["s"]) > float(t["total"]) + 0.5:
 			t["on"] = false
 			t["m"].visible = false
+			t["g"].visible = false
 			return
 		var dir: Vector3 = t["dir"]
 		var mid: Vector3 = t["a"] + dir * (head + tail) * 0.5
@@ -626,8 +648,11 @@ class FX extends Node3D:
 		if side.length() < 0.001:
 			side = dir.cross(Vector3.UP)
 		side = side.normalized()
-		var width: float = clamp(dist * 0.008, 0.035, 0.35)
+		var width: float = clamp(dist * 0.008, 0.035, 0.35) * float(t["wide"])
 		t["m"].global_transform = Transform3D(Basis(dir * (head - tail), side * width, dir.cross(side)), mid)
+		var hp: Vector3 = t["a"] + dir * head
+		var hd := cam.global_position.distance_to(hp) if cam else 10.0
+		t["g"].global_transform = Transform3D(Basis().scaled(Vector3.ONE * clamp(hd * 0.018, 0.06, 0.7)), hp)
 
 	func _process(dt: float) -> void:
 		for f in flash_rigs:
@@ -652,7 +677,7 @@ class FX extends Node3D:
 					s.visible = false
 		for t in tracers:
 			if t["on"]:
-				t["s"] += TRACER_SPEED * dt
+				t["s"] += float(t["speed"]) * dt
 				_place_tracer(t)
 
 
@@ -777,3 +802,136 @@ class Snd extends Node:
 		for p in world_shots:
 			if p.playing and p.get_playback_position() >= float(p.get_meta("stop")):
 				p.stop()
+
+
+# =============== music: the player's tracks, mixed softly by what is happening ===============
+## Quiet yard: a low suspense bed and the night sound, the odd raven call. Seen: a short stinger. Firefight: one
+## action piece at a time, faded in and out, with a rest between pieces so it never drums on. Low health: a heartbeat.
+class Music extends Node:
+	const LOOPS := ["amb", "night", "heart"]
+	const PIECES := ["combat", "escape", "intro"]
+	var main: Node
+	var streams := {}
+	var layers := {}
+	var level := {}
+	var piece: AudioStreamPlayer
+	var piece_vol := 0.0
+	var piece_start := 0.0
+	var piece_end := 0.0
+	var piece_i := 0
+	var rest_until := 0.0
+	var shots := []
+	var t := 0.0
+	var on := false
+	var contact_t := -99.0
+	var spotted_t := -99.0
+	var raven_t := 40.0
+
+	func _ready() -> void:
+		for k in ["amb", "night", "heart", "combat", "escape", "intro", "spotted", "raven", "whoosh"]:
+			streams[k] = load("res://assets/music/%s.mp3" % k)
+		for k in LOOPS:
+			streams[k].loop = true
+			var p := AudioStreamPlayer.new()
+			p.stream = streams[k]
+			p.volume_db = -80.0
+			add_child(p)
+			layers[k] = p
+			level[k] = 0.0
+		piece = AudioStreamPlayer.new()
+		add_child(piece)
+		for i in 3:
+			var p := AudioStreamPlayer.new()
+			p.set_meta("stop", -1.0)
+			add_child(p)
+			shots.append(p)
+
+	func _shot(k: String, vol: float, from := 0.0, dur := -1.0) -> void:
+		var best: AudioStreamPlayer = shots[0]
+		for p in shots:
+			if not p.playing:
+				best = p
+				break
+		best.stream = streams[k]
+		best.volume_db = linear_to_db(vol)
+		best.play(from)
+		best.set_meta("stop", from + dur if dur > 0 else 9999.0)
+
+	## Play pressed: a whoosh and the opening of the trailer, softly, then the quiet bed.
+	func begin() -> void:
+		on = true
+		_shot("whoosh", 0.5)
+		_start_piece("intro", 24.0, 0.2)
+		rest_until = t + 30.0
+		for k in ["amb", "night"]:
+			var p: AudioStreamPlayer = layers[k]
+			p.play(randf() * streams[k].get_length() * 0.6)
+
+	func _start_piece(k: String, max_len: float, vol: float) -> void:
+		piece.stream = streams[k]
+		piece.volume_db = -80.0
+		piece.play()
+		piece_vol = vol
+		piece_start = t
+		piece_end = t + min(streams[k].get_length(), max_len)
+
+	func spotted() -> void:
+		if on and t - spotted_t > 15.0:
+			spotted_t = t
+			_shot("spotted", 0.55)
+
+	func player_died() -> void:
+		_shot("whoosh", 0.4)
+		piece_end = min(piece_end, t + 2.0)
+
+	func _process(dt: float) -> void:
+		t += dt
+		for p in shots:
+			if p.playing and p.get_playback_position() >= float(p.get_meta("stop")):
+				p.stop()
+		if not on:
+			return
+		var pl = main.player
+		var fight := false
+		for e in main.enemies:
+			if not e.dead and e.mode == "combat":
+				fight = true
+				if e.sees:
+					contact_t = t
+		fight = fight and t - contact_t < 20.0
+		var dead: bool = pl.dead
+		var want := {"amb": 0.0 if dead else (0.04 if fight else 0.09),
+			"night": 0.0 if dead else (0.06 if fight else 0.18),
+			"heart": (0.1 + clamp((30.0 - pl.hp) / 30.0, 0.0, 1.0) * 0.35) if (not dead and pl.hp < 30.0) else 0.0}
+		for k in LOOPS:
+			var rate := 0.25 if want[k] > level[k] else 0.12
+			level[k] = move_toward(level[k], want[k], rate * dt)
+			var p: AudioStreamPlayer = layers[k]
+			if level[k] > 0.002:
+				if not p.playing:
+					p.play()
+				p.volume_db = linear_to_db(level[k])
+			elif p.playing and want[k] == 0.0:
+				p.stop()
+		# firefight pieces, one at a time with a rest between
+		var fight_on := fight and not dead
+		if fight_on and not piece.playing and t >= rest_until:
+			var k: String = PIECES[piece_i % PIECES.size()]
+			piece_i += 1
+			_start_piece(k, 36.0, 0.17)
+		if piece.playing:
+			# the fight is over: fade the piece out (the opening at the start plays through)
+			if not fight_on and piece_end > t + 3.0 and t - piece_start > 1.0 and piece.stream != streams["intro"]:
+				piece_end = t + 3.0
+			if t >= piece_end:
+				piece.stop()
+				rest_until = t + randf_range(20.0, 32.0)
+			else:
+				var env: float = clamp((t - piece_start) / 1.5, 0.0, 1.0) * clamp((piece_end - t) / 3.0, 0.0, 1.0)
+				piece.volume_db = linear_to_db(max(0.0001, piece_vol * env))
+		# now and then a raven, while it is quiet
+		if not fight and not dead:
+			raven_t -= dt
+			if raven_t <= 0.0:
+				raven_t = randf_range(35.0, 80.0)
+				_shot("raven", 0.5, randf_range(0.0, 15.0), 5.5)

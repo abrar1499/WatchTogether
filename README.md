@@ -11,6 +11,7 @@ A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. So far: t
 - Over-the-shoulder camera with a close and a closer view, a zoomed aim, and first person with the soldier's own arms and gun in view (iron sights on the AK and pistol, through the red dot on the M4).
 - While aiming or firing the chest turns so the rifle stays on the crosshair whichever way the legs are running.
 - Enemy soldiers in the yard (six per wave, desert uniforms, AK-47s): they stand guard or walk a short beat, see the player in front of them (slower to notice a crouched player, quicker up close), hear unsuppressed gunfire, call the soldiers near them, then aim and fire bursts, close in or hunt the last place they saw the player. Headshots kill at once; they die with Mixamo death clips. A new wave comes when the yard is clear.
+- Music from the earlier version, soft and mixed by what is happening: a whoosh and the opening of a trailer when the game starts; while the yard is quiet a low suspense bed, a night sound and now and then a raven; a short stinger when a soldier spots the player; in a firefight one action piece at a time, faded in and out with a rest between pieces; a heartbeat at low health; everything fades when the player is killed.
 - Player health with a hit flash and a mark toward the shooter; health comes back after a few quiet seconds; when killed the player is back at the start a moment later.
 - Practice yard: the reserve ammunition refills, so the rifles never end up at 0 / 0.
 - Phone controls: move with the bottom-left thumb, drag anywhere else to look, FIRE (slide the same finger to aim while firing), AIM, CROUCH, JUMP, RELOAD, SWAP, VIEW, MENU. On a computer: WASD, mouse, left/right click, Shift, C, Space, R, Q or 1/2/3, V, Esc.
@@ -47,4 +48,5 @@ Sounds in `godot/assets/sfx/` are unedited sound effects from [Pixabay](https://
 - M4 and AK-47 reload: "Gun full reload" by melbeebelbee
 - Footsteps: "Footsteps in wet coarse sand" (freesound_community), "Running on the floor" (thumblegray)
 - Enemy rifles: "Machin gun AK47 sound effect 6" (beetpro)
+- Music and atmosphere (`godot/assets/music/`): "Cinematic action epic trailer: Iron Vanguard" (openmindaudio), "Descent whoosh" (viralaudio), "Tense suspense ambience" (absolutesound), "Mid nights sound" (ncprime), "Raven call" (freesound_community), "Scary sound effect" and "Heartbeat sound" (dragon-studio), "Action loop E 90 BPM" (brvhrtz), "Action trailer" (arctsound)
 - Deaths: "Male death scream horror", "Dramatic death collapse" and "Character fall impact" (universfield), "Male death sound" (vinodadora); the player's last breath is the player's own recording

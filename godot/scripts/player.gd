@@ -713,10 +713,10 @@ func _fire() -> void:
 			hit.collider.take_hit(float(w["dmg"]), hit.position, d)
 		else:
 			fx.impact(hit.position, hit.normal, hit.collider)
-		if w["auto"] and int(w["mag"]) % 3 == 0:
-			fx.tracer(mp, hit.position)
-	elif w["auto"] and int(w["mag"]) % 3 == 0:
-		fx.tracer(mp, from + d * 120.0)
+		if int(w["mag"]) % 2 == 0 or not w["auto"]:
+			fx.tracer(mp, hit.position, true)
+	elif int(w["mag"]) % 2 == 0 or not w["auto"]:
+		fx.tracer(mp, from + d * 120.0, true)
 
 
 func _animate(dt: float) -> void:

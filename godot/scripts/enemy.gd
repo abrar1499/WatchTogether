@@ -287,6 +287,7 @@ func _perceive(dt: float) -> void:
 			alert += dt * gain
 			if alert >= 1.0:
 				alarm(player.global_position, true)
+				main.music.spotted()
 	else:
 		seen_t = max(0.0, seen_t - dt * 2.0)
 		lost_t += dt
