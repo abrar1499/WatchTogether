@@ -115,6 +115,7 @@ var left_xf := {}                   # per gun: left hand target on the gun
 var ik_magnet := Vector3.ZERO
 var model_scale := 1.0
 var spawn := Vector3(0, 0.05, 6)
+var ik_tgt: Node3D
 var hp := 100.0
 var dead := false
 var dead_t := 0.0
@@ -221,13 +222,17 @@ func make_rig(tint: Color, keys: Array, fade_near := false) -> Dictionary:
 	k_ik.magnet = ik_magnet
 	sk.add_child(k_ik)
 	r["ik"] = k_ik
+	var tgt := Node3D.new()
+	tgt.top_level = true
+	sk.add_child(tgt)
+	r["ik_target"] = tgt
 	return r
 
 
 func start_rig(r: Dictionary, gun: String) -> void:
 	for k in r["guns"]:
 		r["guns"][k].visible = k == gun
-	r["ik"].target_node = r["ik"].get_path_to(r["guns"][gun].get_node("LeftGrip"))
+	r["ik"].target_node = r["ik"].get_path_to(r["ik_target"])
 	r["ik"].start()
 
 
@@ -439,7 +444,18 @@ func _select_gun() -> void:
 	var k: String = weapons[wi]["gun"]
 	for g in guns:
 		guns[g].visible = g == k
-	ik.target_node = ik.get_path_to(guns[k].get_node("LeftGrip"))
+	if ik_tgt == null:
+		ik_tgt = Node3D.new()
+		ik_tgt.top_level = true
+		skel.add_child(ik_tgt)
+	ik.target_node = ik.get_path_to(ik_tgt)
+
+
+## Where the left hand goes this frame: the gun's handguard as the right hand holds it now. (The gun's own
+## marker only moves after the skeleton has been drawn, a frame late, which made the left hand shake.)
+func place_left_target(sk: Skeleton3D, tgt: Node3D, gun: String) -> void:
+	var hand: Transform3D = sk.global_transform * sk.get_bone_global_pose(sk.find_bone("mixamorigRightHand"))
+	tgt.global_transform = hand * holder_xf[gun] * left_xf[gun]
 
 
 func _build_tree() -> void:
@@ -654,6 +670,7 @@ func _physics_process(dt: float) -> void:
 	tree.advance(dt)
 	_pose_hands()
 	_bend_spine(dt)
+	place_left_target(skel, ik_tgt, weapons[wi]["gun"])
 	_update_camera(dt)
 	_footsteps(dt)
 
@@ -815,7 +832,7 @@ func _update_arms(dt: float) -> void:
 		start_rig(vm_rig, cur)
 	vm_rig["guns"][cur].visible = switching < 0.2
 	var vap: AnimationPlayer = vm_rig["ap"]
-	vap.advance(dt)
+	vap.seek(0.6, true)                 # the aim pose held still: its breathing looks like shaking this close
 	var vsk: Skeleton3D = vm_rig["skel"]
 	pose_rig_hands(vsk, cur)
 	vm_rig["ik"].interpolation = ik_w
@@ -826,6 +843,7 @@ func _update_arms(dt: float) -> void:
 	var hip: Vector3 = ads + (Vector3(0.07, -0.045, 0.0) if cur == "pistol" else Vector3(0.11, -0.085, 0.05))
 	vm.position = hip.lerp(ads, ads_k) + bob + Vector3(0, -0.12 * rl_w, recoil * 0.03 * (1.0 - ads_k * 0.5))
 	vm.rotation = Vector3(recoil * 0.035 - 0.45 * rl_w, 0.07 * (1.0 - ads_k), 0.03 * (1.0 - ads_k))
+	place_left_target(vsk, vm_rig["ik_target"], cur)
 
 
 func _footsteps(dt: float) -> void:

@@ -245,6 +245,7 @@ func _physics_process(dt: float) -> void:
 		if not sees:
 			chest = last_seen + Vector3(0, 1.2, 0)
 		player.aim_chest(skel, (chest - muzzle.global_position).normalized(), aim_w)
+	player.place_left_target(skel, rig["ik_target"], "ak")
 
 
 func _eye() -> Vector3:
