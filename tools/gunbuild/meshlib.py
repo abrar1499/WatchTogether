@@ -181,9 +181,12 @@ def write_glb(path, mesh, materials, images, nodes_extra):
     img_ids = {}
     gl_images = []
     for name, png in images.items():
+        mime = "image/png"
+        if isinstance(png, tuple):
+            png, mime = png
         vi = add_view(png)
         img_ids[name] = len(gl_images)
-        gl_images.append({"bufferView": vi, "mimeType": "image/png"})
+        gl_images.append({"bufferView": vi, "mimeType": mime})
     textures = [{"sampler": 0, "source": i} for i in range(len(gl_images))]
     mats, prims = [], []
     for mname, P in mesh.parts.items():
@@ -194,6 +197,8 @@ def write_glb(path, mesh, materials, images, nodes_extra):
         mat = {"name": mname, "pbrMetallicRoughness": {"baseColorFactor": list(md["color"]) + [1.0], "metallicFactor": md["metal"], "roughnessFactor": md["rough"]}}
         if md.get("tex"):
             mat["pbrMetallicRoughness"]["baseColorTexture"] = {"index": img_ids[md["tex"]]}
+        if md.get("ntex"):
+            mat["normalTexture"] = {"index": img_ids[md["ntex"]], "scale": md.get("nscale", 1.0)}
         if md.get("unlit"):
             mat["extensions"] = {"KHR_materials_unlit": {}}
         if md.get("emissive"):

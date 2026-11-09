@@ -609,7 +609,7 @@ func _build_camera() -> void:
 	cam = Camera3D.new()
 	cam.fov = 62
 	cam.near = 0.05
-	cam.far = 900
+	cam.far = 1400
 	cam_arm.add_child(cam)
 	cam.current = true
 	# first person: a second soldier in the aim pose on the camera; only the arms and the gun come into view

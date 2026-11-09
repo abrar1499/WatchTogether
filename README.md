@@ -4,6 +4,7 @@ A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. So far: t
 
 ## What is in phase 1
 
+- The practice yard: rippled sand with gentle dunes beyond the yard and hazy rocky mountains on the horizon, corrugated shipping containers (one stack two high), wooden crates, concrete T-wall barriers, a sandbag wall laid bag by bag, ribbed fuel drums, a plastered building with door, barred windows, air conditioner and roof tank, boulders, steel targets and a barbed-wire fence. Neutral daylight: white sun, blue sky, a soft fill light, so everything keeps its real colour.
 - Mixamo "Swat Guy" with walk, run, strafe, walk/run backwards, crouch walk, kneel, aim and jump clips, driven by an AnimationTree: one direction clip at a time with a short crossfade, and the aim or reload pose on the arms and chest while the legs keep walking.
 - Each gun's pistol grip sits inside the closed right hand (index finger on the trigger), the barrel lined up with the crosshair; IK puts the left palm under the rifle's handguard, fingers wrapped round it, or over the right hand on the pistol (off while reloading or switching).
 - Crouch-running plays the crouch walk faster (the crouch-run clip carried the body 1.8 m behind itself).
@@ -25,6 +26,7 @@ A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. So far: t
   - `scripts/touch.gd`: on-screen controls, keyboard/mouse, HUD, start and pause menus
   - `assets/soldier.glb`: the soldier with its Mixamo animations
   - `assets/guns/`: the AK-47, M4A1 (with red-dot sight) and suppressed SD-9 pistol, `assets/sfx/`: the sound files (unedited)
+- `tools/envbuild/`: the script that builds the yard's props and textures in `godot/assets/env/` (shipping containers, wooden crates, concrete T-walls, fuel drums, sandbags, the building; sand, rock and concrete textures)
 - `tools/charbuild/`: how the enemy characters in `godot/assets/chars/` were made from the original Mixamo FBX files
 - `tools/fxbuild/`: the script that draws the muzzle-flash and tracer textures in `godot/assets/fx/`
 - `tools/gunbuild/`: the Python script that builds the three gun models (real size, rounded edges, wood-grain and metal textures); run `python3 build_guns.py ../../godot/assets/guns` (needs numpy, Pillow, mapbox_earcut)

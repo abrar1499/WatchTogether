@@ -145,26 +145,32 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
 	var sm := ProceduralSkyMaterial.new()
-	sm.sky_top_color = Color(0.22, 0.36, 0.6)
-	sm.sky_horizon_color = Color(0.95, 0.72, 0.52)
-	sm.ground_horizon_color = Color(0.9, 0.7, 0.5)
-	sm.ground_bottom_color = Color(0.55, 0.45, 0.33)
+	# a clear desert day: deep blue overhead, pale blue-grey haze at the horizon, neutral (not orange) light
+	sm.sky_top_color = Color(0.2, 0.38, 0.66)
+	sm.sky_horizon_color = Color(0.7, 0.78, 0.86)
+	sm.ground_horizon_color = Color(0.68, 0.66, 0.62)
+	sm.ground_bottom_color = Color(0.45, 0.42, 0.38)
 	sm.sun_angle_max = 20.0
 	sky.sky_material = sm
 	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.4
+	# a fixed, soft fill light instead of the sky's: the sky's own was strong and blue and greyed every colour
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.66, 0.68, 0.72)
+	env.ambient_light_energy = 0.55
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_white = 4.0         # room for the bright desert: sunlit sand no longer burns out to flat white
+	env.tonemap_exposure = 0.95
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.93, 0.72, 0.52)
-	env.fog_density = 0.0035
+	env.fog_light_color = Color(0.72, 0.74, 0.76)
+	env.fog_density = 0.0011
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-32, -135, 0)
-	sun.light_color = Color(1.0, 0.86, 0.68)
-	sun.light_energy = 1.15
+	sun.light_color = Color(1.0, 0.96, 0.9)
+	sun.light_energy = 1.2
 	sun.shadow_enabled = true
 	sun.shadow_opacity = 0.78          # soft, not black
 	sun.shadow_blur = 1.6
@@ -219,95 +225,326 @@ func _box(pos: Vector3, size: Vector3, mat: Material, rot := 0.0, surf := "concr
 	return b
 
 
-func _build_yard() -> void:
+const YARD_CENTRE := Vector2(0, -8)
+var ground_h := PackedFloat32Array()
+const GROUND_N := 128
+const GROUND_CELL := 5.0
+
+
+## Height of the ground at (x, z): flat in the yard, dunes beyond it.
+func ground_height(x: float, z: float) -> float:
+	var half := GROUND_N * GROUND_CELL * 0.5
+	var fx: float = clamp((x + half) / GROUND_CELL, 0.0, GROUND_N - 0.001)
+	var fz: float = clamp((z + half) / GROUND_CELL, 0.0, GROUND_N - 0.001)
+	var i := int(fx)
+	var j := int(fz)
+	var u := fx - i
+	var v := fz - j
+	var w := GROUND_N + 1
+	var h0: float = lerp(ground_h[j * w + i], ground_h[j * w + i + 1], u)
+	var h1: float = lerp(ground_h[(j + 1) * w + i], ground_h[(j + 1) * w + i + 1], u)
+	return lerp(h0, h1, v)
+
+
+func _tex_mat(albedo: String, normal: String, uv_scale: float, rough := 0.95, triplanar := false) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load(albedo)
+	m.normal_enabled = true
+	m.normal_texture = load(normal)
+	m.roughness = rough
+	m.uv1_scale = Vector3.ONE * uv_scale
+	m.uv1_triplanar = triplanar
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return m
+
+
+## Sand: rippled sand texture tiling every 4 m, broken up by slow colour changes in the vertex colours;
+## flat where the yard is, low dunes rising beyond about 60 m. Collides as a height map.
+func _build_ground() -> void:
+	var n := GROUND_N
+	var cell := GROUND_CELL
+	var half := n * cell * 0.5
+	var dunes := FastNoiseLite.new()
+	dunes.seed = 7
+	dunes.frequency = 0.011
+	dunes.fractal_octaves = 3
+	var tone := FastNoiseLite.new()
+	tone.seed = 11
+	tone.frequency = 0.035
+	var tone2 := FastNoiseLite.new()
+	tone2.seed = 12
+	tone2.frequency = 0.13
+	var w := n + 1
+	ground_h.resize(w * w)
+	for j in w:
+		for i in w:
+			var x := -half + i * cell
+			var z := -half + j * cell
+			var r := Vector2(x, z).distance_to(YARD_CENTRE)
+			var d := dunes.get_noise_2d(x, z) * 0.5 + 0.5
+			ground_h[j * w + i] = smoothstep(58.0, 125.0, r) * (d * d * 11.0 + 0.8)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for j in w:
+		for i in w:
+			var x := -half + i * cell
+			var z := -half + j * cell
+			var h: float = ground_h[j * w + i]
+			var tn := tone.get_noise_2d(x, z) + tone2.get_noise_2d(x, z) * 0.6
+			var k = 0.92 + 0.08 * tn - min(h, 8.0) * 0.004
+			st.set_color(Color(k, k * (0.985 + 0.015 * tn), k * (0.97 + 0.03 * tn)))
+			st.set_uv(Vector2(x, z) / 4.0)
+			st.add_vertex(Vector3(x, h, z))
+	for j in n:
+		for i in n:
+			var a := j * w + i
+			st.add_index(a)
+			st.add_index(a + 1)
+			st.add_index(a + w)
+			st.add_index(a + 1)
+			st.add_index(a + w + 1)
+			st.add_index(a + w)
+	st.generate_normals()
+	st.generate_tangents()
+	var gm := MeshInstance3D.new()
+	gm.mesh = st.commit()
+	var sand := _tex_mat("res://assets/env/sand_albedo.jpg", "res://assets/env/sand_normal.png", 1.0, 1.0)
+	sand.vertex_color_use_as_albedo = true
+	sand.normal_scale = 0.8
+	gm.material_override = sand
+	gm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var ground := StaticBody3D.new()
 	ground.set_meta("surf", "sand")
-	var gm := MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(400, 400)
-	gm.mesh = pm
-	var sand := StandardMaterial3D.new()
-	sand.albedo_texture = _noise_tex(Color(0.6, 0.48, 0.34), Color(0.74, 0.62, 0.46), 0.015, 512)
-	sand.uv1_scale = Vector3(60, 60, 60)
-	sand.roughness = 1.0
-	sand.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
-	gm.material_override = sand
 	ground.add_child(gm)
-	var gcs := CollisionShape3D.new()
-	gcs.shape = WorldBoundaryShape3D.new()
-	ground.add_child(gcs)
+	var hs := HeightMapShape3D.new()
+	hs.map_width = w
+	hs.map_depth = w
+	hs.map_data = ground_h
+	var cs := CollisionShape3D.new()
+	cs.shape = hs
+	cs.scale = Vector3(cell, 1.0, cell)
+	ground.add_child(cs)
 	add_child(ground)
 
-	var crate := _mat(Color(0.45, 0.32, 0.18), Color(0.62, 0.46, 0.28), 0.8)
-	var concrete := _mat(Color(0.7, 0.68, 0.62), Color(0.85, 0.83, 0.78), 0.5)
-	var metal := _mat(Color(0.35, 0.37, 0.33), Color(0.5, 0.52, 0.46), 0.6, 0.55, 0.35)
-	var sandbag := _mat(Color(0.6, 0.52, 0.36), Color(0.72, 0.64, 0.46), 1.5)
-	var rockm := _mat(Color(0.55, 0.42, 0.3), Color(0.72, 0.58, 0.42), 0.4)
-	# crates and cover
-	for p in [Vector3(-3, 0, -2), Vector3(-1.6, 0, -2), Vector3(4, 0, -6), Vector3(6, 0, 3), Vector3(-7, 0, 4), Vector3(-7, 1.3, 4)]:
-		_box(p, Vector3(1.3, 1.3, 1.3), crate, 0.0, "wood")
-	for i in 6:
-		_box(Vector3(-4 + i * 1.1, 0, -10), Vector3(1.05, 0.45, 0.6), sandbag, 0.0, "sandbag")
-		_box(Vector3(-4 + i * 1.1, 0.45, -10), Vector3(1.05, 0.45, 0.6), sandbag, 0.0, "sandbag")
-	# a concrete wall with a gap and a small building
-	_box(Vector3(10, 0, -14), Vector3(8, 2.6, 0.4), concrete)
-	_box(Vector3(-2, 0, -14), Vector3(8, 2.6, 0.4), concrete)
-	_box(Vector3(-14, 0, -4), Vector3(0.4, 2.6, 12), concrete)
-	_box(Vector3(14, 0, -24), Vector3(10, 3.2, 7), concrete)
-	# fuel drums and a container
-	for p in [Vector3(8, 0, -2), Vector3(8.7, 0, -2.6), Vector3(8.1, 0, -3.3)]:
+
+## A ring of rocky desert mountains from about half a kilometre out, fading into the haze.
+func _build_mountains() -> void:
+	var ridges := FastNoiseLite.new()
+	ridges.seed = 3
+	ridges.frequency = 0.0035
+	ridges.fractal_type = FastNoiseLite.FRACTAL_RIDGED
+	ridges.fractal_octaves = 5
+	var segs := 200
+	var rings := 18
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in rings + 1:
+		var r: float = lerp(480.0, 1150.0, pow(float(k) / rings, 0.85))
+		for s in segs + 1:
+			var a := TAU * s / segs
+			var x := cos(a) * r
+			var z := sin(a) * r
+			var n := ridges.get_noise_2d(x, z) * 0.5 + 0.5
+			var rise := smoothstep(480.0, 640.0, r)
+			var h := rise * (pow(n, 1.8) * 120.0 + 10.0 * sin(a * 3.0 + 1.0) + 22.0)
+			var rock: float = clamp(h / 45.0, 0.0, 1.0)
+			var c := Color(0.52, 0.45, 0.37).lerp(Color(0.34, 0.3, 0.27), rock)
+			st.set_color(c)
+			st.add_vertex(Vector3(x, h - 2.0, z))
+	var w := segs + 1
+	for k in rings:
+		for s in segs:
+			var a := k * w + s
+			st.add_index(a)
+			st.add_index(a + w)
+			st.add_index(a + 1)
+			st.add_index(a + 1)
+			st.add_index(a + w)
+			st.add_index(a + w + 1)
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var m := _tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.02, 1.0, true)
+	m.uv1_world_triplanar = true
+	m.vertex_color_use_as_albedo = true
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+
+
+## Boulders: a sphere pushed in and out by noise, flattened underneath, rock texture all round.
+var rock_meshes := []
+func _rock_mesh(seed: int) -> ArrayMesh:
+	var sm := SphereMesh.new()
+	sm.radial_segments = 18
+	sm.rings = 10
+	var arr := sm.get_mesh_arrays()
+	var nz := FastNoiseLite.new()
+	nz.seed = seed
+	nz.frequency = 1.4
+	nz.fractal_octaves = 3
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	for i in idx:
+		var v: Vector3 = verts[i]
+		var d := 1.0 + nz.get_noise_3dv(v * 1.3) * 0.45
+		var p := v * d
+		p.y = max(p.y, -0.25) * 0.75
+		st.add_vertex(p)
+	st.index()
+	st.generate_normals()
+	return st.commit()
+
+
+func _build_rocks(rock_mat: Material) -> void:
+	for s in 3:
+		rock_meshes.append(_rock_mesh(40 + s))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2024
+	var placed := 0
+	var tries := 0
+	while placed < 22 and tries < 400:
+		tries += 1
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(32.0, 95.0)
+		var x := YARD_CENTRE.x + cos(a) * r
+		var z := YARD_CENTRE.y + sin(a) * r
+		if z > 24.0 and z < 36.0:
+			continue          # keep the fence line clear
+		var size := rng.randf_range(0.8, 3.2)
 		var b := StaticBody3D.new()
-		b.position = p + Vector3(0, 0.47, 0)
-		b.set_meta("surf", "metal")
-		var mi := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.32
-		cm.bottom_radius = 0.32
-		cm.height = 0.95
-		mi.mesh = cm
-		mi.material_override = metal
-		b.add_child(mi)
-		var cs := CollisionShape3D.new()
-		var cy := CylinderShape3D.new()
-		cy.radius = 0.32
-		cy.height = 0.95
-		cs.shape = cy
-		b.add_child(cs)
-		add_child(b)
-	_box(Vector3(-10, 0, -22), Vector3(2.4, 2.5, 6), metal, 0.3, "metal")
-	# rocks
-	for i in 14:
-		var a := randf() * TAU
-		var r := randf_range(18, 60)
-		var s := randf_range(0.6, 2.2)
-		var b := StaticBody3D.new()
-		b.position = Vector3(cos(a) * r, s * 0.35, sin(a) * r)
 		b.set_meta("surf", "rock")
+		b.position = Vector3(x, ground_height(x, z) - size * 0.12, z)
+		b.rotation.y = rng.randf() * TAU
 		var mi := MeshInstance3D.new()
-		var sm := SphereMesh.new()
-		sm.radial_segments = 9
-		sm.rings = 5
-		sm.radius = s
-		sm.height = s * 1.4
-		mi.mesh = sm
-		mi.material_override = rockm
-		mi.rotation = Vector3(randf(), randf() * 3, randf())
+		mi.mesh = rock_meshes[placed % rock_meshes.size()]
+		mi.material_override = rock_mat
+		mi.scale = Vector3(size * rng.randf_range(0.9, 1.4), size * rng.randf_range(0.7, 1.0), size)
 		b.add_child(mi)
 		var cs := CollisionShape3D.new()
 		var sp := SphereShape3D.new()
-		sp.radius = s * 0.9
+		sp.radius = size * 0.85
 		cs.shape = sp
+		cs.position.y = size * 0.15
 		b.add_child(cs)
 		add_child(b)
+		placed += 1
+
+
+## A prop model with a plain box (or cylinder) to collide with.
+func _prop(path: String, pos: Vector3, rot := 0.0, col := Vector3.ZERO, surf := "concrete", cylinder := false) -> Node3D:
+	var b := StaticBody3D.new()
+	b.position = pos
+	b.rotation.y = rot
+	b.set_meta("surf", surf)
+	var n: Node3D = load(path).instantiate()
+	b.add_child(n)
+	if col != Vector3.ZERO:
+		var cs := CollisionShape3D.new()
+		if cylinder:
+			var cy := CylinderShape3D.new()
+			cy.radius = col.x
+			cy.height = col.y
+			cs.shape = cy
+		else:
+			var sh := BoxShape3D.new()
+			sh.size = col
+			cs.shape = sh
+		cs.position.y = col.y * 0.5
+		b.add_child(cs)
+	add_child(b)
+	return b
+
+
+func _build_yard() -> void:
+	_build_ground()
+	_build_mountains()
+	var metal := _mat(Color(0.35, 0.37, 0.33), Color(0.5, 0.52, 0.46), 0.6, 0.55, 0.35)
+	var rock_mat := _tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true)
+	# wooden crates
+	for p in [Vector3(-3, 0, -2), Vector3(-1.6, 0, -2), Vector3(4, 0, -6), Vector3(6, 0, 3), Vector3(-7, 0, 4), Vector3(-7, 1.3, 4)]:
+		_prop("res://assets/env/crate.glb", p, randf_range(-0.06, 0.06), Vector3(1.3, 1.3, 1.3), "wood")
+	# sandbag wall: the old two rows of boxes, now 144 bags laid like bricks
+	for i in 6:
+		for y in [0.0, 0.45]:
+			var sb := StaticBody3D.new()
+			sb.position = Vector3(-4 + i * 1.1, y + 0.225, -10)
+			sb.set_meta("surf", "sandbag")
+			var cs := CollisionShape3D.new()
+			var sh := BoxShape3D.new()
+			sh.size = Vector3(1.05, 0.45, 0.6)
+			cs.shape = sh
+			sb.add_child(cs)
+			add_child(sb)
+	var bag_scene: Node3D = load("res://assets/env/sandbag.glb").instantiate()
+	var bag_mesh: Mesh = bag_scene.find_children("*", "MeshInstance3D", true, false)[0].mesh
+	bag_scene.free()
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = bag_mesh
+	var xforms := []
+	var brng := RandomNumberGenerator.new()
+	brng.seed = 77
+	for layer in 6:
+		var off := 0.0 if layer % 2 == 0 else 0.275
+		for row in 2:
+			var x := -4.53 + off
+			while x < 1.95:
+				var t := Transform3D(Basis(Vector3.UP, PI * 0.5 + brng.randf_range(-0.06, 0.06)).scaled(Vector3(brng.randf_range(0.95, 1.05), 1.0, 1.0)),
+					Vector3(x + 0.27, layer * 0.15, -10.15 + row * 0.3))
+				xforms.append(t)
+				x += 0.55
+	mm.instance_count = xforms.size()
+	for i in xforms.size():
+		mm.set_instance_transform(i, xforms[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	add_child(mmi)
+	# concrete T-wall barriers in place of the old walls (2 m segments)
+	for wall in [[Vector3(10, 0, -14), 0.0, 4], [Vector3(-2, 0, -14), 0.0, 4], [Vector3(-14, 0, -4), PI * 0.5, 6]]:
+		var c: Vector3 = wall[0]
+		var rot: float = wall[1]
+		var nseg: int = wall[2]
+		var along := Vector3(cos(rot), 0, -sin(rot))
+		for k in nseg:
+			var p: Vector3 = c + along * ((k - (nseg - 1) * 0.5) * 2.0)
+			_prop("res://assets/env/barrier.glb", p, rot + randf_range(-0.015, 0.015), Vector3(2.0, 2.6, 0.3), "concrete")
+	# the building, fuel drums, containers
+	_prop("res://assets/env/building.glb", Vector3(14, 0, -24), 0.0, Vector3(10, 3.2, 7), "concrete")
+	var di := 0
+	for p in [Vector3(8, 0, -2), Vector3(8.7, 0, -2.6), Vector3(8.1, 0, -3.3)]:
+		_prop("res://assets/env/drum_%s.glb" % ["blue", "red"][di % 2], p, randf() * TAU, Vector3(0.3, 0.88, 0), "metal", true)
+		di += 1
+	_prop("res://assets/env/container_green.glb", Vector3(-10, 0, -22), 0.3, Vector3(2.44, 2.59, 6.06), "metal")
+	_prop("res://assets/env/container_red.glb", Vector3(24, 0, -14), 0.0, Vector3(2.44, 2.59, 6.06), "metal")
+	_prop("res://assets/env/container_blue.glb", Vector3(-24, 0, -18), PI * 0.5, Vector3(2.44, 2.59, 6.06), "metal")
+	_prop("res://assets/env/container_red.glb", Vector3(-24, 2.59, -18.1), PI * 0.5 + 0.03, Vector3(2.44, 2.59, 6.06), "metal")
+	_build_rocks(rock_mat)
 	# practice targets: steel plates on posts
 	for i in 5:
 		var x := -8.0 + i * 4.0
 		var z := -30.0 - (i % 2) * 6.0
 		_box(Vector3(x, 0, z), Vector3(0.08, 1.2, 0.08), metal, 0.0, "metal")
 		_box(Vector3(x, 1.2, z), Vector3(0.6, 0.8, 0.05), metal, 0.0, "metal")
-	# fence line
+	# fence line: posts and three strands of barbed wire
+	var wire := StandardMaterial3D.new()
+	wire.albedo_color = Color(0.18, 0.17, 0.16)
+	wire.metallic = 0.5
+	wire.roughness = 0.6
 	for i in 30:
-		_box(Vector3(-40 + i * 3.0, 0, 30), Vector3(0.08, 2.2, 0.08), metal, 0.0, "metal")
+		var post := _box(Vector3(-40 + i * 3.0, 0, 30), Vector3(0.07, 2.0, 0.07), metal, 0.0, "metal")
+		post.rotation.z = randf_range(-0.04, 0.04)
+	for hgt in [0.7, 1.3, 1.9]:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(87.0, 0.012, 0.012)
+		mi.mesh = bm
+		mi.material_override = wire
+		mi.position = Vector3(3.5, hgt, 30)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
 
 
 # ---------------- enemies ----------------
