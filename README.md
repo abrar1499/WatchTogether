@@ -5,9 +5,11 @@ A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. This is p
 ## What is in phase 1
 
 - Mixamo "Swat Guy" with walk, run, strafe, walk/run backwards, crouch walk, kneel, aim and jump clips, driven by an AnimationTree: one direction clip at a time with a short crossfade, and the aim or reload pose on the arms and chest while the legs keep walking.
-- The rifle sits in the right hand exactly as in the aim pose; IK puts the left hand on the handguard in every pose (off while reloading or switching).
+- Each gun's pistol grip sits inside the closed right hand (index finger on the trigger), the barrel lined up with the crosshair; IK puts the left palm under the rifle's handguard, fingers wrapped round it, or over the right hand on the pistol (off while reloading or switching).
+- Crouch-running plays the crouch walk faster (the crouch-run clip carried the body 1.8 m behind itself).
 - SD-9 pistol, M4A1 and AK-47 with their own sounds, recoil, muzzle flash, tracers and bullet holes.
-- Over-the-shoulder camera with a close and a closer view, a zoomed aim, and first person.
+- Over-the-shoulder camera with a close and a closer view, a zoomed aim, and first person with the gun in view.
+- Practice yard: the reserve ammunition refills, so the rifles never end up at 0 / 0.
 - Phone controls: move with the bottom-left thumb, drag anywhere else to look, FIRE (slide the same finger to aim while firing), AIM, CROUCH, JUMP, RELOAD, SWAP, VIEW, MENU. On a computer: WASD, mouse, left/right click, Shift, C, Space, R, Q or 1/2/3, V, Esc.
 
 ## Project

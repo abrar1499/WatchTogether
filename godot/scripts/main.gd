@@ -38,8 +38,9 @@ func _ready() -> void:
 	ui.set_anchors_preset(Control.PRESET_FULL_RECT)
 	if test_mode != "":
 		start_game()
-		if test_mode == "diag":
-			var d = load("res://scripts/diag.gd").new()
+		var tpath := "res://scripts/%s.gd" % test_mode
+		if test_mode != "walk" and ResourceLoader.exists(tpath):
+			var d = load(tpath).new()
 			d.main = self
 			add_child(d)
 			d.run()
