@@ -452,7 +452,7 @@ func _generator(c: Vector3, rot: float, obj: int) -> StaticBody3D:
 	hum.volume_db = -6.0
 	g.add_child(hum)
 	hum.position = Vector3(0, 1, 0)
-	hum.play()
+	# (the hum is switched off: a constant buzz)
 	g.set_meta("hum", hum)
 	return g
 

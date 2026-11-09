@@ -523,7 +523,7 @@ func shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node, power := 
 		var tt: float = clamp((head - from).dot(dir), 0.0, from.distance_to(end))
 		var near: float = (from + dir * tt).distance_to(head)
 		if near < 2.2 and near > 0.25 and tt < from.distance_to(end) - 0.5:
-			snd.whiz(from + dir * tt, near)
+			pass   # (the crack of a round going past: switched off, it was a tiresome hiss)
 	return end
 
 
@@ -2379,6 +2379,9 @@ class Snd extends Node:
 		var cam := get_viewport().get_camera_3d()
 		if cam and cam.global_position.distance_to(pos) > 40.0:
 			return
+		# rounds into sand, sandbags, concrete and rock make no sound of their own (the noise bursts hissed)
+		if surf not in ["metal", "wood", "flesh"]:
+			return
 		var k := "s_sand"
 		var vol := -6.0
 		match surf:
@@ -2423,6 +2426,7 @@ class Snd extends Node:
 
 	## A fire's roar and crackle, following `parent` (a burning drum).
 	func fire_on(parent: Node3D) -> AudioStreamPlayer3D:
+		return null    # (the fire's roar: switched off, a constant hiss)
 		var p := AudioStreamPlayer3D.new()
 		p.stream = streams["s_fire"]
 		p.unit_size = 3.0
