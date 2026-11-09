@@ -9,7 +9,8 @@ extends CharacterBody3D
 
 const STATES := {"idle": "idle", "walk": "walk", "run": "run", "aim": "aim", "kneel_aim": "crouchFire", "kneel": "kneel", "hit": "hit",
 	"react": "reactBig", "nade": "grenade",
-	"die": "die", "dieFront": "dieFront", "dieLeft": "dieLeft", "dieBackHS": "dieBackHS", "dieKnock": "knockback", "dieBlast": "blastback"}
+	"die": "die", "dieFront": "dieFront", "dieLeft": "dieLeft", "dieBackHS": "dieBackHS", "dieKnock": "knockback", "dieBlast": "blastback",
+	"dieFall": "fallback"}
 const WALK := 1.15
 const RUN := 3.0
 const FOV_COS := 0.34          # about 70 degrees either side
@@ -33,7 +34,9 @@ var home := Vector3.ZERO
 var beat := Vector3.ZERO       # the other end of his beat (same as home: stands guard)
 var to_beat := true
 var wait_t := 2.0
-var mode := "guard"            # guard, combat
+var mode := "guard"            # guard, search (heard something: goes to look), combat (has seen the player)
+var search_pos := Vector3.ZERO
+var search_t := 0.0
 var alert := 0.0               # 0..1, combat at 1
 var sees := false
 var last_seen := Vector3.ZERO
@@ -125,8 +128,6 @@ func _build_tree() -> void:
 				continue
 			var tr := AnimationNodeStateMachineTransition.new()
 			tr.xfade_time = 0.15 if b.begins_with("die") else 0.25
-			if b == "dieKnock" or b == "dieBlast":
-				tr.xfade_time = 0.08
 			tr.switch_mode = AnimationNodeStateMachineTransition.SWITCH_MODE_IMMEDIATE
 			sm.add_transition(a, b, tr)
 	var bt := AnimationNodeBlendTree.new()
@@ -176,6 +177,24 @@ func _physics_process(dt: float) -> void:
 			else:
 				target_v = to.normalized() * WALK
 				face = atan2(-to.x, -to.z)
+	elif mode == "search":
+		# heard shots or a call: walk over with the rifle up and look round; back on guard if nothing turns up
+		search_t -= dt
+		var to_s := search_pos - global_position
+		to_s.y = 0.0
+		want_aim = true
+		if wait_t > 0.0:
+			wait_t -= dt
+			face = atan2(-to_s.x, -to_s.z)
+		elif to_s.length() > 3.0 and not perch:
+			target_v = to_s.normalized() * WALK * 1.25
+			face = atan2(-to_s.x, -to_s.z)
+		else:
+			face = atan2(-to_s.x, -to_s.z) + sin(search_t * 0.9) * 1.1
+		if search_t <= 0.0:
+			mode = "guard"
+			alert = 0.3
+			wait_t = 1.0
 	else:
 		var dist := to_p.length()
 		if sees and dist > 30.0:
@@ -282,7 +301,7 @@ func _physics_process(dt: float) -> void:
 	# aim and shoot
 	var facing_ok: bool = abs(wrapf(face - yaw, -PI, PI)) < 0.35
 	aim_w = lerp(aim_w, 1.0 if (want_aim and facing_ok) else 0.0, min(1.0, dt * 5.0))
-	if want_aim and sees and aim_w > 0.85 and not player.dead:
+	if want_aim and sees and mode == "combat" and aim_w > 0.85 and not player.dead:
 		if shots_left > 0:
 			shot_t -= dt
 			if shot_t <= 0.0:
@@ -381,7 +400,7 @@ func _relocate() -> void:
 			continue
 		var away: Vector3 = o - player.global_position
 		away.y = 0.0
-		var cp: Vector3 = o + away.normalized() * (float(cv[1]) + 0.55)
+		var cp: Vector3 = o + away.normalized() * (float(cv[1]) + 0.8)
 		cp.y = global_position.y
 		cands.append(cp)
 	for c in cands:
@@ -432,8 +451,8 @@ func _perceive(dt: float) -> void:
 		flee_t = 2.2
 		moving = false
 		shots_left = 0
-		if mode != "combat":
-			alarm(near[0], true)
+		if mode == "guard":
+			investigate(near[0])
 	sees = false
 	if player.dead:
 		if mode == "combat":
@@ -450,14 +469,15 @@ func _perceive(dt: float) -> void:
 	if d < (COMBAT_RANGE if mode == "combat" else SIGHT_RANGE):
 		var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
 		var flat := Vector3(to.x, 0, to.z).normalized()
-		if (mode == "combat" or fwd.dot(flat) > FOV_COS) and _clear(eye, target):
+		var cone := FOV_COS if mode == "guard" else -0.25      # searching: looking all round
+		if (mode == "combat" or fwd.dot(flat) > cone) and _clear(eye, target):
 			sees = true
 	if sees:
 		lost_t = 0.0
 		seen_t += dt
 		last_seen = player.global_position
 		if mode != "combat":
-			var gain := (2.0 if d < 12.0 else 1.0) * (0.55 if player.crouch else 1.0) * (1.4 if player.speed > 2.5 else 1.0)
+			var gain := (2.0 if d < 12.0 else 1.0) * (0.55 if player.crouch else 1.0) * (1.4 if player.speed > 2.5 else 1.0) * (2.5 if mode == "search" else 1.0)
 			alert += dt * gain
 			if alert >= 1.0:
 				alarm(player.global_position, true)
@@ -484,11 +504,28 @@ func alarm(pos: Vector3, spread := false) -> void:
 			main.enemy_alarm(self)
 
 
+## Gunfire or a blast within earshot: he does not know where the player is, only where the noise came from.
 func hear(pos: Vector3, radius: float) -> void:
 	if dead or grace > 0.0:
 		return
 	if global_position.distance_to(pos) < radius:
-		alarm(pos, true)
+		investigate(pos)
+
+
+func investigate(pos: Vector3) -> void:
+	if dead or mode == "combat":
+		return
+	if mode != "search":
+		wait_t = randf_range(0.4, 1.2)     # a moment to react
+	mode = "search"
+	search_pos = pos + Vector3(randf_range(-3, 3), 0, randf_range(-3, 3))
+	search_t = randf_range(9.0, 14.0)
+	alert = max(alert, 0.4)
+
+
+## Can he see this point from where he is (for a call from another soldier)?
+func can_see(p: Vector3) -> bool:
+	return _sight(_eye(), p)
 
 
 func _shoot() -> void:
@@ -510,15 +547,12 @@ func _shoot() -> void:
 
 ## Hit by the player. A round whose line passes the head kills at once. power: how hard the round hits (shotgun,
 ## SVD more); close up it knocks him back off his feet if it kills him, or staggers him if it does not.
-func take_hit(dmg: float, pos: Vector3, dir: Vector3, power := 1.0) -> void:
+func take_hit(dmg: float, pos: Vector3, dir: Vector3, power := 1.0, part := "torso") -> void:
 	if dead:
 		return
-	var head: Vector3 = (skel.global_transform * skel.get_bone_global_pose(head_b)).origin + Vector3(0, 0.07, 0)
-	var rel := head - pos
-	var along := rel.dot(dir)
-	var headshot := along > -0.15 and (rel - dir * along).length() < 0.13
+	var headshot := part == "head"
 	main.fx.blood(pos, -dir)
-	hp -= 999.0 if headshot else dmg
+	hp -= 999.0 if headshot else (dmg * (0.65 if part == "limb" else 1.0))
 	var d: float = player.global_position.distance_to(global_position)
 	var force: float = power * clamp(1.0 - (d - 3.0) / 9.0, 0.0, 1.0)
 	if hp <= 0.0:
@@ -587,25 +621,49 @@ func _throw_nade() -> void:
 	main.spawn_grenade(from, v, self)
 
 
+## Falls the way the round (or blast) pushed him. Each death clip falls one way relative to the body (forward,
+## to his left, or back for the knock-back clips); the one that needs the least turn of the body to fall along the
+## push is used, and only where there is room to fall (not into a crate or a wall, not off the roof).
 func _die(headshot: bool, blasted := false, push := Vector3.ZERO, force := 0.0) -> void:
 	dead = true
 	hp = 0.0
 	collision_layer = 0
 	shots_left = 0
-	var clip: String = "dieBackHS" if (headshot or blasted) else ["die", "dieFront", "dieLeft"][randi() % 3]
 	var flat := Vector3(push.x, 0, push.z)
-	if force > 0.45 and flat.length() > 0.01:
-		flat = flat.normalized()
-		if _room_behind(flat, 3.4 if blasted else 1.6):
-			# thrown back along the shot: the clip turns him to face where it came from and throws him along +z
-			clip = "dieBlast" if blasted else "dieKnock"
-			yaw = atan2(-flat.x, -flat.z)
-			rotation.y = yaw
+	if flat.length() < 0.01:
+		flat = global_position - player.global_position
+		flat.y = 0.0
+	flat = flat.normalized()
+	var back: String = "dieBlast" if blasted else ("dieKnock" if force > 0.45 else "dieFall")
+	var fwd_clip: String = "dieBackHS" if headshot else ["die", "dieFront", "dieBackHS"][randi() % 3]
+	# [clip, yaw offset from the fall direction, where the body faces at the start relative to that yaw, distance]
+	var opts := [[fwd_clip, 0.0, 0.0, 1.3], ["dieLeft", -PI * 0.5, 0.0, 1.3], [back, 0.0, -2.02, 3.0 if blasted else 1.3]]
+	var best := []
+	var best_cost := INF
+	for k in 9:
+		# the push direction first, then turned further and further off it if there is no room that way
+		var off: float = 0.0 if k == 0 else PI * 0.25 * ceil(k / 2.0) * (1.0 if k % 2 == 1 else -1.0)
+		var dir := flat.rotated(Vector3.UP, off)
+		var fall_yaw := atan2(-dir.x, -dir.z)
+		for o in opts:
+			var y: float = fall_yaw + float(o[1])
+			var spin: float = abs(wrapf(y + float(o[2]) - yaw, -PI, PI))
+			var cost: float = spin + abs(off) * 1.5
+			if cost < best_cost and _room_behind(dir, float(o[3])):
+				best_cost = cost
+				best = [o[0], y]
+		if not best.is_empty() and k >= 2:
+			break
+	var clip: String = fwd_clip
+	if not best.is_empty():
+		clip = best[0]
+		yaw = best[1]
+		rotation.y = yaw
 	if nade_t >= 0.0:
 		nade_t = -1.0
 		rig["guns"]["ak"].visible = true
 	playback.travel(clip)
-	tree.set("parameters/speed/scale", 1.15 if clip.begins_with("dieK") else 1.0)
+	tree.set("parameters/speed/scale", 1.15 if clip == "dieKnock" else 1.0)
 	rig["ik"].interpolation = 0.0
 	main.snd.death(global_position, "blast" if blasted else ("head" if headshot else "body"))
 	main.on_enemy_killed(self, headshot)

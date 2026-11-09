@@ -202,8 +202,9 @@ func _build_model() -> void:
 	sc.rotation.y = PI
 	_skin(sc, Color(1, 1, 1))
 	head_bone = skel.find_bone("mixamorigHead")
-	_cut_clip("knockout", "knockback", 2.05, 0.38)
-	_cut_clip("knockout", "blastback", 2.05, 0.8)
+	_cut_clip("knockout", "knockback", 2.05, 0.25)    # about 1 m back
+	_cut_clip("knockout", "fallback", 2.05, 0.12)     # half a metre: shot from further off
+	_cut_clip("knockout", "blastback", 2.05, 0.55)    # thrown by an explosion
 	for n in ["idle", "aim", "kneel", "crouchFire", "walk", "walkBack", "walkR", "walkL", "run", "runBack", "runStrafeR", "runStrafeL", "crouchWalk2", "crouchBack", "reload"]:
 		if ap.has_animation(n):
 			ap.get_animation(n).loop_mode = Animation.LOOP_LINEAR
@@ -1035,6 +1036,7 @@ func _physics_process(dt: float) -> void:
 		velocity = vel
 		move_and_slide()
 		vel = velocity
+		_step_up(target, dt)
 	speed = Vector2(vel.x, vel.z).length()
 	rotation.y = yaw
 	climb_check_t -= dt
@@ -1093,6 +1095,78 @@ func _physics_process(dt: float) -> void:
 	_footsteps(dt)
 
 
+var stuck_t := 0.0
+## Walking into a low edge (a step, a kerb, the lip of a ramp) and not moving: lift over it if there is room.
+func _step_up(target: Vector3, dt: float) -> void:
+	var want := Vector2(target.x, target.z).length()
+	if want < 0.5 or Vector2(vel.x, vel.z).length() > want * 0.35 or not (is_on_floor() or is_on_wall()):
+		stuck_t = 0.0
+		return
+	stuck_t += dt
+	if stuck_t < 0.12:
+		return
+	stuck_t = 0.0
+	var fwd := Vector3(target.x, 0, target.z).normalized() * 0.18
+	for h in [0.22, 0.38]:
+		var up := Vector3(0, h, 0)
+		if not test_move(global_transform, up) and not test_move(global_transform.translated(up), fwd):
+			global_position += up + fwd
+			return
+
+
+## Where a round along `dir` through `p` (a point on the body capsule) really hits this skeleton: "head", "torso",
+## "limb", or "" when it only passes close by. Bones as capsules round the limbs, chest and head.
+const HITBOX := [["Hips", "Spine2", 0.17, "torso"], ["Spine2", "Neck", 0.16, "torso"], ["Neck", "Head", 0.075, "torso"],
+	["Head", "HeadTop_End", 0.105, "head"],
+	["LeftArm", "LeftForeArm", 0.065, "limb"], ["LeftForeArm", "LeftHand", 0.055, "limb"],
+	["RightArm", "RightForeArm", 0.065, "limb"], ["RightForeArm", "RightHand", 0.055, "limb"],
+	["LeftUpLeg", "LeftLeg", 0.095, "limb"], ["LeftLeg", "LeftFoot", 0.07, "limb"],
+	["RightUpLeg", "RightLeg", 0.095, "limb"], ["RightLeg", "RightFoot", 0.07, "limb"]]
+func hit_part(sk: Skeleton3D, p: Vector3, dir: Vector3) -> String:
+	var o := p - dir * 1.0
+	var best := ""
+	var best_t := INF
+	var gt := sk.global_transform
+	for hb in HITBOX:
+		var ia := sk.find_bone("mixamorig" + hb[0])
+		var ib := sk.find_bone("mixamorig" + hb[1])
+		if ia < 0:
+			continue
+		var a: Vector3 = gt * sk.get_bone_global_pose(ia).origin
+		var b: Vector3
+		if ib >= 0:
+			b = gt * sk.get_bone_global_pose(ib).origin
+		else:
+			b = a + (a - gt * sk.get_bone_global_pose(sk.get_bone_parent(ia)).origin).normalized() * 0.18
+		var r := _ray_seg(o, dir, a, b)
+		var rad: float = hb[2]
+		if r[0] < rad:
+			var t_in: float = r[1] - sqrt(rad * rad - r[0] * r[0])    # where the round enters this part
+			if t_in < best_t:
+				best_t = t_in
+				best = hb[3]
+	return best
+
+
+## Closest approach of the ray o + t*d (t >= 0, d unit) to the segment ab: [distance, t].
+func _ray_seg(o: Vector3, d: Vector3, a: Vector3, b: Vector3) -> Array:
+	var u := b - a
+	var c := u.dot(u)
+	var w := o - a
+	var bd := d.dot(u)
+	var dd := d.dot(w)
+	var s := 0.0
+	if c > 1e-8:
+		var den := c - bd * bd
+		var e := u.dot(w)
+		s = clamp((e - bd * dd) / den, 0.0, 1.0) if den > 1e-8 else clamp(e / c, 0.0, 1.0)
+	var t: float = max(0.0, (a + u * s - o).dot(d))
+	if c > 1e-8:
+		s = clamp((o + d * t - a).dot(u) / c, 0.0, 1.0)
+		t = max(0.0, (a + u * s - o).dot(d))
+	return [(o + d * t - (a + u * s)).length(), t]
+
+
 ## The shotgun's pump: back and forward again just after each shot.
 func pump_slide() -> float:
 	if weapons[wi]["gun"] != "shotgun":
@@ -1146,7 +1220,7 @@ func _fire() -> void:
 	var mp := mz.global_position
 	fx.muzzle_flash(mp, mz.global_transform.basis.z, gun)
 	var world: Node = fx.get_parent()
-	world.noise(global_position, 10.0 if gun == "pistol" else 32.0)   # the SD-9 is suppressed
+	world.noise(global_position, 10.0 if gun == "pistol" else (24.0 if w["auto"] else 30.0))   # the SD-9 is suppressed
 	if w.has("rocket"):
 		# the rocket leaves the tube toward whatever is under the crosshair
 		var q := PhysicsRayQueryParameters3D.create(from, from + d0 * 300.0)
@@ -1174,6 +1248,21 @@ func _fire() -> void:
 	if gun == "shotgun":
 		pump_t = 0.0
 		get_tree().create_timer(0.24).timeout.connect(func(): snd.pump())
+		get_tree().create_timer(0.36).timeout.connect(func(): _eject("shotgun"))
+	else:
+		_eject(gun)
+
+
+## A spent case out of the ejection port on the right of the receiver (a red shell from the shotgun's pump).
+func _eject(gun: String) -> void:
+	var g: Node3D = vm_rig["guns"][gun] if view == 2 else guns[gun]
+	if not g.is_visible_in_tree():
+		return
+	var gt := g.global_transform
+	var port: Vector3 = gt * (Vector3(-0.02, 0.05, 0.04) if gun != "pistol" else Vector3(-0.01, 0.045, -0.02))
+	var right: Vector3 = -gt.basis.x.normalized()
+	var v: Vector3 = right * randf_range(2.2, 3.2) + Vector3.UP * randf_range(1.2, 2.0) - gt.basis.z.normalized() * 0.4 + Vector3(vel.x, 0, vel.z)
+	fx.casing(port, v, gun)
 
 
 func _animate(dt: float) -> void:
@@ -1364,7 +1453,7 @@ func hit(dmg: float, from: Vector3) -> void:
 	quiet_t = 0.0
 	shake = max(shake, 0.2 if dmg < 30.0 else 0.6)
 	if groan_t <= 0.0 and hp > 0.0:
-		groan_t = randf_range(1.6, 2.6)
+		groan_t = 0.12
 		snd.hurt(dmg >= 30.0)
 	var to := from - global_position
 	hurt_dir = atan2(to.dot(Vector3(cos(yaw), 0, -sin(yaw))), to.dot(Vector3(-sin(yaw), 0, -cos(yaw))))

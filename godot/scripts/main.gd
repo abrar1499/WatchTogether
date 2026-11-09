@@ -458,16 +458,20 @@ var scorches := []
 func _restore_breakables() -> void:
 	for b in breakables:
 		if b["node"] != null and is_instance_valid(b["node"]):
+			var old: Node3D = b["node"]
+			old.position = b["pos"]          # a crate that came down off a broken one goes back up
+			old.rotation = Vector3(0, b["rot"], 0)
 			continue
 		var n: StaticBody3D
 		if b["kind"] == "crate":
 			n = _prop("res://assets/env/crate.glb", b["pos"], b["rot"], Vector3(1.3, 1.3, 1.3), "wood")
-			n.set_meta("hp", 140.0)
+			n.set_meta("hp", 300.0)
 			n.set_meta("pierce", "wood")
 		else:
 			n = _prop("res://assets/env/drum_%s.glb" % b["color"], b["pos"], b["rot"], Vector3(0.3, 0.88, 0), "metal", true)
-			n.set_meta("hp", 60.0)
+			n.set_meta("hp", 220.0)
 			n.set_meta("pierce", "drum")
+			n.set_meta("color", b["color"])
 		n.set_meta("kind", b["kind"])
 		b["node"] = n
 	for d in debris:
@@ -484,6 +488,18 @@ func _restore_breakables() -> void:
 ## and drums with less force each time; hurts what it hits. Enemy rounds pass through other enemies.
 ## Returns where it ended (for the tracer).
 func shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node, power := 1.0) -> Vector3:
+	var end := _shoot_ray(from, dir, dmg, shooter, power)
+	if shooter != player and not player.dead:
+		# a round that went past close to the player's head cracks by
+		var head: Vector3 = player.global_position + Vector3(0, 1.5, 0)
+		var tt: float = clamp((head - from).dot(dir), 0.0, from.distance_to(end))
+		var near: float = (from + dir * tt).distance_to(head)
+		if near < 2.2 and near > 0.25 and tt < from.distance_to(end) - 0.5:
+			snd.whiz(from + dir * tt, near)
+	return end
+
+
+func _shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node, power := 1.0) -> Vector3:
 	var space := get_world_3d().direct_space_state
 	var exclude := [shooter.get_rid()]
 	var start := from
@@ -496,21 +512,29 @@ func shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node, power := 
 			return end
 		var col = h.collider
 		var p: Vector3 = h.position
-		if col == player:
-			if shooter != player:
-				player.hit(dmg, shooter.global_position)
-			return p
-		if col.has_method("take_hit"):
-			if shooter == player:
+		# people: the round has to meet the body itself (head, chest, arms, legs), not just the space round it
+		if col == player or col.has_method("take_hit"):
+			var part := ""
+			if col == player:
+				if shooter != player and not player.dead:
+					part = player.hit_part(player.skel, p, dir)
+			elif shooter == player:
+				part = player.hit_part(col.skel, p, dir)
+			if part == "":
+				exclude.append(col.get_rid())
+				start = p
+				continue
+			if col == player:
+				player.hit(dmg * (1.4 if part == "head" else (0.7 if part == "limb" else 1.0)), shooter.global_position)
+			else:
 				var was_dead: bool = col.dead
-				col.take_hit(dmg, p, dir, power)
+				snd.impact(p, "flesh", true)
+				col.take_hit(dmg, p, dir, power, part)
 				if not was_dead:
 					ui.hit_marker(col.dead)
-				return p
-			exclude.append(col.get_rid())
-			start = p
-			continue
+			return p
 		fx.impact(p, h.normal, col)
+		snd.impact(p, str(col.get_meta("surf", "sand")) if col.has_meta("surf") else "sand", shooter == player)
 		if col.has_meta("hp"):
 			damage_prop(col, dmg, p, h.normal)
 		var keep: float = PIERCE.get(str(col.get_meta("pierce", "")), 0.0)
@@ -522,6 +546,8 @@ func shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node, power := 
 	return end
 
 
+## Rounds wear crates and drums down. A crate splinters and at last falls apart; a drum holed a few times starts
+## leaking fuel that catches fire, burns a few seconds and blows up (at once if it is hit hard enough).
 func damage_prop(col: Node, dmg: float, p: Vector3, n: Vector3) -> void:
 	if not is_instance_valid(col) or col.get_meta("gone", false):
 		return
@@ -530,31 +556,67 @@ func damage_prop(col: Node, dmg: float, p: Vector3, n: Vector3) -> void:
 	if col.get_meta("kind") == "crate":
 		fx.chips(p, n, "wood", 4)
 		if hp <= 0.0:
-			_break_crate(col)
+			_break_crate(col, p)
 	else:
 		fx.chips(p, n, "metal", 3)
 		if hp <= 0.0:
 			col.set_meta("gone", true)
-			get_tree().create_timer(0.12).timeout.connect(func(): _explode_drum(col))
+			get_tree().create_timer(0.2).timeout.connect(func(): _explode_drum(col))
+		elif hp < 90.0 and not col.get_meta("burning", false):
+			_ignite(col, p)
 
 
-## A crate gives way: planks fly, dust, and whatever stood on it comes down too.
-func _break_crate(col: Node) -> void:
+func _ignite(col: Node3D, hole: Vector3) -> void:
+	col.set_meta("burning", true)
+	var local: Vector3 = col.to_local(hole)
+	fx.fire(col, Vector3(0, 0.9, 0), 1.0)
+	fx.fire(col, Vector3(local.x, clamp(local.y, 0.2, 0.8), local.z) * 1.05, 0.45)   # the jet out of the bullet hole
+	snd.fire_on(col)
+	get_tree().create_timer(randf_range(3.0, 4.2)).timeout.connect(func():
+		if is_instance_valid(col) and not col.get_meta("gone", false):
+			col.set_meta("gone", true)
+			_explode_drum(col))
+
+
+## A crate gives way: its sides and lid come apart into boards that fly and fall, splinters and dust; a crate
+## stacked on it drops to the ground.
+func _break_crate(col: Node, hit := Vector3.ZERO, force := 1.0) -> void:
 	if not is_instance_valid(col) or col.get_meta("gone", false):
 		return
 	col.set_meta("gone", true)
-	var pos: Vector3 = col.global_position
+	var xf: Transform3D = col.global_transform
+	var pos: Vector3 = xf.origin
 	var mat: Material = null
 	for m in col.find_children("*", "MeshInstance3D", true, false):
 		mat = m.mesh.surface_get_material(0)
 		break
 	col.queue_free()
 	fx.dust(pos + Vector3(0, 0.6, 0), 1.6)
-	for i in 12:
+	fx.chips(pos + Vector3(0, 0.7, 0), Vector3.UP, "wood", 14, 4.0)
+	snd.impact(pos + Vector3(0, 0.6, 0), "wood", true)
+	snd.thud(pos, -4.0)
+	var away := Vector3.ZERO
+	if hit != Vector3.ZERO:
+		away = (pos + Vector3(0, 0.65, 0) - hit)
+		away.y = 0.0
+		away = away.normalized() * 1.2
+	# (centre, size, outward) in the crate's frame: four sides in two halves each, the lid in two
+	var pieces := []
+	for side in [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1)]:
+		for half in [0.33, 0.98]:
+			var c: Vector3 = side * 0.62 + Vector3(0, half, 0)
+			var sz := Vector3(0.06, 0.64, 1.25) if side.x != 0 else Vector3(1.25, 0.64, 0.06)
+			pieces.append([c, sz, side])
+	for half in [-0.32, 0.32]:
+		pieces.append([Vector3(half, 1.27, 0), Vector3(0.62, 0.05, 1.25), Vector3(half, 1.0, 0).normalized()])
+	for i in 6:
+		pieces.append([Vector3(randf_range(-0.4, 0.4), randf_range(0.2, 1.1), randf_range(-0.4, 0.4)), Vector3(randf_range(0.4, 0.9), 0.025, 0.11), Vector3(randf_range(-1, 1), 0.5, randf_range(-1, 1)).normalized()])
+	for pc in pieces:
+		var size: Vector3 = pc[1]
 		var rb := RigidBody3D.new()
 		rb.collision_layer = 2
 		rb.collision_mask = 1
-		var size := Vector3(randf_range(0.5, 1.2), 0.03, randf_range(0.09, 0.14))
+		rb.mass = 3.0 if size.y > 0.1 or size.x > 1.0 else 0.6
 		var mi := MeshInstance3D.new()
 		var bm := BoxMesh.new()
 		bm.size = size
@@ -567,16 +629,98 @@ func _break_crate(col: Node) -> void:
 		cs.shape = sh
 		rb.add_child(cs)
 		add_child(rb)
-		rb.global_position = pos + Vector3(randf_range(-0.5, 0.5), randf_range(0.1, 1.2), randf_range(-0.5, 0.5))
-		rb.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
-		rb.linear_velocity = Vector3(randf_range(-2.5, 2.5), randf_range(1.0, 3.5), randf_range(-2.5, 2.5))
-		rb.angular_velocity = Vector3(randf_range(-6, 6), randf_range(-6, 6), randf_range(-6, 6))
+		rb.global_transform = Transform3D(xf.basis.rotated(Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)).normalized(), randf_range(0.0, 0.25)), xf * pc[0])
+		var out: Vector3 = xf.basis * pc[2]
+		rb.linear_velocity = (out * randf_range(1.0, 2.6) + Vector3(0, randf_range(0.8, 2.2), 0) + away) * force
+		rb.angular_velocity = Vector3(randf_range(-4, 4), randf_range(-4, 4), randf_range(-4, 4)) * force
 		debris.append(rb)
+		_settle(rb)
 	for b in breakables:
 		var n = b["node"]
 		if b["kind"] == "crate" and n != null and is_instance_valid(n) and n != col and not n.get_meta("gone", false):
 			if n.global_position.y > pos.y + 1.0 and Vector2(n.global_position.x - pos.x, n.global_position.z - pos.z).length() < 0.8:
-				get_tree().create_timer(0.15).timeout.connect(func(): if is_instance_valid(n): _break_crate(n))
+				_drop(n, pos.y)
+
+
+## A crate whose support has gone: falls (accelerating) to the floor, tips a little, lands with a thump and dust.
+func _drop(n: Node3D, floor_y: float) -> void:
+	var h: float = n.global_position.y - floor_y
+	var t: float = sqrt(2.0 * h / 9.8)
+	var tw := create_tween()
+	tw.tween_property(n, "global_position:y", floor_y, t).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(n, "rotation", n.rotation + Vector3(randf_range(-0.05, 0.05), randf_range(-0.2, 0.2), randf_range(-0.05, 0.05)), t)
+	tw.tween_callback(func():
+		fx.dust(n.global_position + Vector3(0, 0.2, 0), 1.2)
+		snd.thud(n.global_position, 2.0))
+
+
+## Debris stops costing anything once it has come to rest.
+func _settle(rb: RigidBody3D) -> void:
+	get_tree().create_timer(7.0).timeout.connect(func():
+		if is_instance_valid(rb):
+			rb.freeze = true)
+
+
+## What is left of a drum: the shell, torn open and blackened, thrown up and landing nearby, still burning a while.
+func _drum_wreck(pos: Vector3, color: String) -> void:
+	var rb := RigidBody3D.new()
+	rb.collision_layer = 2
+	rb.collision_mask = 1
+	rb.mass = 12.0
+	var shell: Node3D = load("res://assets/env/drum_%s.glb" % color).instantiate()
+	var burnt := StandardMaterial3D.new()
+	burnt.albedo_color = Color(0.1, 0.085, 0.075)
+	burnt.roughness = 1.0
+	burnt.metallic = 0.3
+	for m in shell.find_children("*", "MeshInstance3D", true, false):
+		m.material_override = burnt
+	shell.scale = Vector3(randf_range(1.05, 1.18), randf_range(0.55, 0.7), randf_range(0.85, 1.0))
+	shell.rotation = Vector3(randf_range(-0.2, 0.2), 0, randf_range(-0.2, 0.2))
+	shell.position = Vector3(0, -0.28, 0)
+	rb.add_child(shell)
+	var cs := CollisionShape3D.new()
+	var cy := CylinderShape3D.new()
+	cy.radius = 0.32
+	cy.height = 0.56
+	cs.shape = cy
+	rb.add_child(cs)
+	add_child(rb)
+	rb.global_position = pos + Vector3(0, 0.4, 0)
+	rb.linear_velocity = Vector3(randf_range(-2.0, 2.0), randf_range(5.5, 8.0), randf_range(-2.0, 2.0))
+	rb.angular_velocity = Vector3(randf_range(-5, 5), randf_range(-3, 3), randf_range(-5, 5))
+	debris.append(rb)
+	var f := fx.fire(rb, Vector3(0, 0.1, 0), 0.7)
+	get_tree().create_timer(randf_range(6.0, 9.0)).timeout.connect(func():
+		if is_instance_valid(f):
+			f.queue_free())
+	get_tree().create_timer(1.3).timeout.connect(func():
+		if is_instance_valid(rb):
+			snd.thud(rb.global_position, 3.0))
+	_settle(rb)
+	# the lid, spinning off
+	var lid := RigidBody3D.new()
+	lid.collision_layer = 2
+	lid.collision_mask = 1
+	var lm := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.29
+	cm.bottom_radius = 0.29
+	cm.height = 0.02
+	lm.mesh = cm
+	lm.material_override = burnt
+	lid.add_child(lm)
+	var lc := CollisionShape3D.new()
+	var lcy := CylinderShape3D.new()
+	lcy.radius = 0.29
+	lcy.height = 0.02
+	lc.shape = lcy
+	lid.add_child(lc)
+	add_child(lid)
+	lid.global_position = pos + Vector3(0, 0.9, 0)
+	lid.linear_velocity = Vector3(randf_range(-3.5, 3.5), randf_range(9.0, 12.0), randf_range(-3.5, 3.5))
+	lid.angular_velocity = Vector3(randf_range(-15, 15), randf_range(-15, 15), randf_range(-15, 15))
+	debris.append(lid)
+	_settle(lid)
 
 
 ## A fuel drum blows up: fireball, smoke, light, debris, a scorch mark, a blast that hurts whoever is close and
@@ -586,8 +730,10 @@ func _explode_drum(col: Node) -> void:
 		return
 	var pos: Vector3 = col.global_position + Vector3(0, 0.45, 0)
 	var rid: RID = col.get_rid()
+	var color: String = col.get_meta("color", "red")
 	col.queue_free()
 	explode_at(pos, 7.0, 260.0, 120.0, [rid], col)
+	_drum_wreck(col.global_position, color)
 
 
 ## Any explosion (drum, grenade, rocket): hurts soldiers in the open within `radius` (more the closer), throws them
@@ -597,7 +743,7 @@ func explode_at(pos: Vector3, radius := 7.0, e_dmg := 260.0, p_dmg := 120.0, ign
 	if pos.y < 1.3:
 		scorches.append(fx.scorch(Vector3(pos.x, 0.02, pos.z)))
 	snd.explosion(pos)
-	noise(pos, 60.0)
+	noise(pos, 35.0)
 	var space := get_world_3d().direct_space_state
 	var in_open := func(target: Vector3, rid: RID) -> bool:
 		var q := PhysicsRayQueryParameters3D.create(pos, target)
@@ -625,7 +771,7 @@ func explode_at(pos: Vector3, radius := 7.0, e_dmg := 260.0, p_dmg := 120.0, ign
 		if b["kind"] == "drum" and dn < radius * 0.64:
 			damage_prop(n, 999.0, n.global_position + Vector3(0, 0.5, 0), Vector3.UP)
 		elif b["kind"] == "crate" and dn < radius * 0.46:
-			_break_crate(n)
+			_break_crate(n, pos, 2.2)
 
 
 # ---------------- grenades and rockets ----------------
@@ -849,10 +995,44 @@ func _build_stairs() -> void:
 	var n := Vector3(0, 4.8, 3.2).normalized()
 	var mid := base + Vector3(0, 1.6, -2.1)
 	var tilt := Basis(Vector3(1, 0, 0), n, Vector3(1, 0, 0).cross(n))
-	_coll(Transform3D(tilt, mid - n * 0.1), Vector3(1.1, 0.2, 5.77), "concrete")
-	_coll(Transform3D(Basis(), base + Vector3(0, 3.09, -5.2)), Vector3(1.1, 0.22, 1.6), "concrete")
-	_coll(Transform3D(tilt, mid + Vector3(0.52, 0, 0) + n * 0.6), Vector3(0.06, 1.0, 5.77), "metal")
-	_coll(Transform3D(Basis(), base + Vector3(0.52, 3.7, -5.4)), Vector3(0.06, 1.0, 1.2), "metal")
+	# the flight is solid down to the ground (as it looks), its top a smooth slope along the nosings
+	var wedge := StaticBody3D.new()
+	wedge.set_meta("surf", "concrete")
+	var wc := CollisionShape3D.new()
+	var cv := ConvexPolygonShape3D.new()
+	var pts := PackedVector3Array()
+	for x in [-0.56, 0.56]:
+		pts.append(Vector3(x, 0.0, 0.3))
+		pts.append(Vector3(x, 0.0, -4.5))
+		pts.append(Vector3(x, 3.2, -4.5))
+	cv.points = pts
+	wc.shape = cv
+	wedge.add_child(wc)
+	add_child(wedge)
+	wedge.global_position = base
+	_coll(Transform3D(Basis(), base + Vector3(0, 3.09, -5.2)), Vector3(1.12, 0.22, 1.6), "concrete")
+	# the building's front corner beside the foot of the stairs, bevelled so a shoulder slides off it onto the steps
+	_coll(Transform3D(Basis(Vector3.UP, PI * 0.25), Vector3(18.9, 1.5, -20.35)), Vector3(0.06, 3.0, 0.42), "concrete")
+	# the railing up the open side: a thin slab following the slope, from the second step to the landing
+	var rail := StaticBody3D.new()
+	rail.set_meta("surf", "metal")
+	var rc := CollisionShape3D.new()
+	var rv := ConvexPolygonShape3D.new()
+	var rp := PackedVector3Array()
+	for x in [0.57, 0.63]:
+		for z in [-0.3, -4.75]:
+			var y: float = 0.2 - z * 2.0 / 3.0
+			rp.append(Vector3(x, y + 0.15, z))
+			rp.append(Vector3(x, y + 1.05, z))
+	# its foot flares out, so a shoulder that meets it slides in onto the steps instead of stopping
+	rp.append(Vector3(0.95, 0.15, 0.1))
+	rp.append(Vector3(0.95, 1.05, 0.1))
+	rv.points = rp
+	rc.shape = rv
+	rail.add_child(rc)
+	add_child(rail)
+	rail.global_position = base
+	_coll(Transform3D(Basis(), base + Vector3(0.6, 3.7, -5.4)), Vector3(0.06, 1.0, 1.2), "metal")
 	_coll(Transform3D(Basis(), base + Vector3(0, 3.7, -5.97)), Vector3(1.1, 1.0, 0.06), "metal")
 	# roof: parapet (with the gap where the stairs come up) and the tank
 	for c in [[Vector3(14, 3.4, -20.62), Vector3(10, 0.4, 0.24)], [Vector3(14, 3.4, -27.38), Vector3(10, 0.4, 0.24)],
@@ -916,10 +1096,14 @@ func noise(pos: Vector3, radius: float) -> void:
 
 
 ## A soldier who has seen the player calls the ones near him.
+## Only the ones close by, or who can see him, hear the call; they come to look, they do not know where the player is.
 func enemy_alarm(src: Node) -> void:
 	for e in enemies:
-		if e != src and not e.dead and e.global_position.distance_to(src.global_position) < 22.0:
-			e.alarm(src.last_seen)
+		if e == src or e.dead or e.mode == "combat":
+			continue
+		var d: float = e.global_position.distance_to(src.global_position)
+		if d < 7.0 or (d < 15.0 and e.can_see(src.global_position + Vector3(0, 1.5, 0))):
+			e.investigate(src.last_seen)
 
 
 func on_enemy_killed(_e: Node, headshot: bool) -> void:
@@ -1197,7 +1381,7 @@ class FX extends Node3D:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(mi)
 			chip_list.append({"m": mi, "v": Vector3.ZERO, "t": 0.0, "spin": Vector3.ZERO})
-		for i in 40:
+		for i in 110:
 			var s := Sprite3D.new()
 			s.texture = soft_tex
 			s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -1285,6 +1469,105 @@ class FX extends Node3D:
 		mi.global_position = p
 		mi.rotation.y = randf() * TAU
 		return mi
+
+	# ---- spent cases ----
+	var cases := []
+	var case_i := 0
+	func casing(p: Vector3, v: Vector3, gun: String) -> void:
+		if cases.is_empty():
+			var brass := StandardMaterial3D.new()
+			brass.albedo_color = Color(0.78, 0.58, 0.25)
+			brass.metallic = 0.85
+			brass.roughness = 0.35
+			var shell := StandardMaterial3D.new()
+			shell.albedo_color = Color(0.6, 0.1, 0.07)
+			shell.roughness = 0.6
+			var cm := CylinderMesh.new()
+			cm.top_radius = 0.0055
+			cm.bottom_radius = 0.0058
+			cm.height = 0.039
+			cm.radial_segments = 6
+			cm.rings = 0
+			for i in 24:
+				var mi := MeshInstance3D.new()
+				mi.mesh = cm
+				mi.material_override = brass
+				mi.visible = false
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				add_child(mi)
+				cases.append({"m": mi, "v": Vector3.ZERO, "t": 0.0, "spin": Vector3.ZERO, "brass": brass, "shell": shell})
+		var c: Dictionary = cases[case_i % cases.size()]
+		case_i += 1
+		var mi: MeshInstance3D = c["m"]
+		mi.material_override = c["shell"] if gun == "shotgun" else c["brass"]
+		mi.scale = Vector3(2.1, 1.75, 2.1) if gun == "shotgun" else (Vector3(1, 0.55, 1) if gun == "pistol" else Vector3.ONE)
+		mi.global_position = p
+		mi.rotation = Vector3(randf() * TAU, randf() * TAU, 0)
+		mi.visible = true
+		c["v"] = v
+		c["spin"] = Vector3(randf_range(-25, 25), randf_range(-25, 25), randf_range(-25, 25))
+		c["t"] = 6.0
+
+	func _cases(dt: float) -> void:
+		for c in cases:
+			if c["t"] <= 0.0:
+				continue
+			c["t"] -= dt
+			var mi: MeshInstance3D = c["m"]
+			if c["v"] != Vector3.ZERO:
+				c["v"] += Vector3(0, -9.8, 0) * dt
+				mi.global_position += c["v"] * dt
+				mi.rotation += c["spin"] * dt
+				var gy: float = get_parent().ground_height(mi.global_position.x, mi.global_position.z) + 0.006
+				if mi.global_position.y < gy:
+					mi.global_position.y = gy
+					if c["v"].length() > 1.5:
+						c["v"] = Vector3(c["v"].x * 0.3, -c["v"].y * 0.25, c["v"].z * 0.3)
+					else:
+						c["v"] = Vector3.ZERO
+						mi.rotation = Vector3(PI * 0.5, randf() * TAU, 0)
+			if c["t"] <= 0.0:
+				mi.visible = false
+
+	## Flames and smoke rising off a burning drum (or wreck): soft orange tongues and grey smoke puffed out every
+	## few hundredths of a second from a marker on it, with a flickering light. Free the marker to put it out.
+	var fires := []
+	func fire(parent: Node3D, at: Vector3, size := 1.0) -> Node3D:
+		if chip_list.is_empty():
+			_make_chips()
+		var root := Node3D.new()
+		parent.add_child(root)
+		root.position = at
+		var l := OmniLight3D.new()
+		l.light_color = Color(1.0, 0.55, 0.2)
+		l.light_energy = 1.6 * size
+		l.omni_range = 4.0 * size
+		l.position = Vector3(0, 0.3, 0)
+		root.add_child(l)
+		fires.append({"n": root, "size": size, "f": 0.0, "s": 0.0, "light": l})
+		return root
+
+	func _fires(dt: float) -> void:
+		for i in range(fires.size() - 1, -1, -1):
+			var f: Dictionary = fires[i]
+			var n = f["n"]
+			if not is_instance_valid(n) or not n.is_inside_tree():
+				fires.remove_at(i)
+				continue
+			var p: Vector3 = n.global_position
+			var sz: float = f["size"]
+			f["light"].light_energy = sz * randf_range(1.2, 2.0)
+			f["f"] -= dt
+			if f["f"] <= 0.0:
+				f["f"] = 0.03
+				_big(p + Vector3(randf_range(-0.14, 0.14), randf_range(0.0, 0.12), randf_range(-0.14, 0.14)) * sz, randf_range(0.6, 0.85) * sz, -0.2 * sz,
+					randf_range(0.4, 0.6), Vector3(randf_range(-0.2, 0.2), randf_range(1.3, 2.0), randf_range(-0.2, 0.2)) * sz,
+					Color(1.0, randf_range(0.55, 0.75), 0.18, 1.0), Color(0.75, 0.12, 0.02, 0.0))
+			f["s"] -= dt
+			if f["s"] <= 0.0:
+				f["s"] = 0.12
+				_big(p + Vector3(0, 0.6, 0) * sz, 0.6 * sz, 2.4 * sz, randf_range(2.4, 3.2), Vector3(randf_range(-0.15, 0.3), randf_range(1.0, 1.5), randf_range(-0.15, 0.15)),
+					Color(0.16, 0.15, 0.14, 0.6), Color(0.38, 0.37, 0.35, 0.0))
 
 	## A frag grenade: dark olive egg, fuse on top, the spoon down one side (metres).
 	func grenade_mesh() -> Node3D:
@@ -1459,6 +1742,8 @@ class FX extends Node3D:
 				s.modulate = (b["c0"] as Color).lerp(b["c1"], k)
 				if b["t"] <= 0.0:
 					s.visible = false
+		_cases(dt)
+		_fires(dt)
 		if boom_t > 0.0:
 			boom_t -= dt
 			boom_light.light_energy = max(0.0, boom_t / 0.55) * 9.0
@@ -1509,11 +1794,14 @@ class Snd extends Node:
 
 	func _ready() -> void:
 		for k in ["ak", "m4", "pistol", "reload_rifle", "reload_pistol", "steps_sand", "steps_run",
-				"enemy_ak", "die_male", "die_collapse", "die_scream", "die_fall", "die_breath", "hurt_groan", "cry_pain", "grunts"]:
+				"enemy_ak", "die_male", "die_collapse", "die_fall", "die_breath", "grunts"]:
 			streams[k] = load("res://assets/sfx/%s.mp3" % k)
 		streams["whoosh"] = load("res://assets/music/whoosh.mp3")
 		streams["boom"] = load("res://assets/music/escape.mp3")   # the impact hit near the end of "Action trailer"
+		_outdoor_bus()
+		_synth_all()
 		auto = AudioStreamPlayer.new()
+		auto.bus = "Outdoor"
 		add_child(auto)
 		for i in 8:
 			var p := AudioStreamPlayer.new()
@@ -1525,16 +1813,168 @@ class Snd extends Node:
 			p.set_meta("stop", -1.0)
 			p.unit_size = 9.0
 			p.max_distance = 140.0
+			p.attenuation_filter_cutoff_hz = 2600.0     # far off: duller, as in the open air
+			p.attenuation_filter_db = -30.0
 			add_child(p)
 			world_shots.append(p)
+		for i in 8:
+			var p := AudioStreamPlayer3D.new()
+			p.set_meta("stop", -1.0)
+			p.unit_size = 4.0
+			p.max_distance = 45.0
+			p.bus = "Outdoor"
+			add_child(p)
+			imp_players.append(p)
+
+	var imp_players := []
+	var imp_i := 0
+
+	## Gunfire and explosions go through an "outdoor" bus: a little open-air reverb and two late echoes off the hills.
+	func _outdoor_bus() -> void:
+		if AudioServer.get_bus_index("Outdoor") >= 0:
+			return
+		var idx := AudioServer.bus_count
+		AudioServer.add_bus(idx)
+		AudioServer.set_bus_name(idx, "Outdoor")
+		AudioServer.set_bus_send(idx, "Master")
+		var rv := AudioEffectReverb.new()
+		rv.room_size = 0.7
+		rv.damping = 0.65
+		rv.spread = 1.0
+		rv.predelay_msec = 70.0
+		rv.hipass = 0.2
+		rv.wet = 0.14
+		rv.dry = 1.0
+		AudioServer.add_bus_effect(idx, rv)
+		var dl := AudioEffectDelay.new()
+		dl.dry = 1.0
+		dl.tap1_active = true
+		dl.tap1_delay_ms = 430.0
+		dl.tap1_level_db = -17.0
+		dl.tap1_pan = -0.3
+		dl.tap2_active = true
+		dl.tap2_delay_ms = 950.0
+		dl.tap2_level_db = -25.0
+		dl.tap2_pan = 0.35
+		dl.feedback_active = false
+		AudioServer.add_bus_effect(idx, dl)
+
+	# ---- short sounds made here from noise and tones (no recordings of these) ----
+	const SR := 22050
+	var rng := RandomNumberGenerator.new()
+
+	func _wav(a: PackedFloat32Array, loop := false) -> AudioStreamWAV:
+		var b := PackedByteArray()
+		b.resize(a.size() * 2)
+		for i in a.size():
+			b.encode_s16(i * 2, int(clamp(a[i], -1.0, 1.0) * 30000.0))
+		var w := AudioStreamWAV.new()
+		w.format = AudioStreamWAV.FORMAT_16_BITS
+		w.mix_rate = SR
+		w.stereo = false
+		w.data = b
+		if loop:
+			w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			w.loop_end = a.size()
+		return w
+
+	## noise through a one-pole low-pass (k small: darker)
+	func _noise(n: int, k: float) -> PackedFloat32Array:
+		var a := PackedFloat32Array()
+		a.resize(n)
+		var y := 0.0
+		for i in n:
+			y += (rng.randf_range(-1.0, 1.0) - y) * k
+			a[i] = y
+		return a
+
+	func _synth_all() -> void:
+		rng.seed = 4242
+		# ricochet off steel: a click and a few ringing partials
+		for v in 3:
+			var n := int(SR * 0.5)
+			var a := _noise(n, 0.9)
+			var fs := [1850.0, 2930.0, 4410.0, 6120.0]
+			var am := [1.0, 0.6, 0.4, 0.25]
+			var dec := [8.0, 11.0, 15.0, 21.0]
+			var sc: float = [0.82, 1.0, 1.22][v]
+			for i in n:
+				var t := float(i) / SR
+				var x: float = a[i] * exp(-t * 400.0) * 0.8
+				for k in 4:
+					x += sin(TAU * fs[k] * sc * t) * am[k] * exp(-t * dec[k]) * 0.22
+				a[i] = x
+			streams["s_metal%d" % v] = _wav(a)
+		# into wood: a dull knock with a splintering crack
+		var nw := int(SR * 0.2)
+		var wd := _noise(nw, 0.3)
+		var hi := _noise(nw, 0.95)
+		for i in nw:
+			var t := float(i) / SR
+			wd[i] = wd[i] * exp(-t * 32.0) * 1.3 + sin(TAU * 170.0 * t) * exp(-t * 28.0) * 0.5 + hi[i] * exp(-t * 160.0) * 0.5
+		streams["s_wood"] = _wav(wd)
+		# into sand: a soft thup
+		var ns := int(SR * 0.16)
+		var sd := _noise(ns, 0.1)
+		for i in ns:
+			var t := float(i) / SR
+			sd[i] = sd[i] * exp(-t * 26.0) * 2.2 + sin(TAU * 75.0 * t) * exp(-t * 30.0) * 0.4
+		streams["s_sand"] = _wav(sd)
+		# into concrete or rock: a sharp crack and grit
+		var nc := int(SR * 0.18)
+		var cc := _noise(nc, 0.55)
+		var hc := _noise(nc, 0.98)
+		for i in nc:
+			var t := float(i) / SR
+			cc[i] = cc[i] * exp(-t * 45.0) * 1.1 + hc[i] * exp(-t * 220.0) * 0.7
+			if rng.randf() < 0.004:
+				cc[i] += rng.randf_range(-0.5, 0.5) * exp(-t * 15.0)
+		streams["s_conc"] = _wav(cc)
+		# a round into a body
+		var nf := int(SR * 0.14)
+		var fl := _noise(nf, 0.07)
+		for i in nf:
+			var t := float(i) / SR
+			fl[i] = fl[i] * exp(-t * 40.0) * 2.5 + sin(TAU * 105.0 * t) * exp(-t * 35.0) * 0.6
+		streams["s_flesh"] = _wav(fl)
+		# a round going past: the sharp crack of the bullet and a short tearing hiss
+		var nz := int(SR * 0.32)
+		var zl := _noise(nz, 0.6)
+		var zlo := _noise(nz, 0.06)
+		for i in nz:
+			var t := float(i) / SR
+			var env: float = sin(clamp(t / 0.22, 0.0, 1.0) * PI)
+			var crack := 0.0
+			if t < 0.003:
+				crack = 1.0 - t / 0.0015
+			zl[i] = crack * 0.9 + (zl[i] - zlo[i]) * env * 0.7
+		streams["s_whiz"] = _wav(zl)
+		# something heavy landing: a low thump
+		var nt := int(SR * 0.35)
+		var th := _noise(nt, 0.08)
+		for i in nt:
+			var t := float(i) / SR
+			th[i] = th[i] * exp(-t * 18.0) * 2.0 + sin(TAU * 62.0 * t) * exp(-t * 12.0) * 0.7
+		streams["s_thud"] = _wav(th)
+		# a fire: low roar with crackles (loops)
+		var nfi := int(SR * 2.0)
+		var fi := _noise(nfi, 0.03)
+		var pop := 0.0
+		for i in nfi:
+			if rng.randf() < 0.0018:
+				pop = rng.randf_range(0.3, 0.9) * (1.0 if rng.randf() < 0.5 else -1.0)
+			pop *= 0.93
+			fi[i] = fi[i] * 1.6 + pop * rng.randf_range(0.2, 1.0)
+		streams["s_fire"] = _wav(fi, true)
 
 	## from/dur in the file's own seconds; pitch only changes how it is played back; fade: the last seconds faded out
-	func _play(k: String, from: float, dur: float, vol_db := 0.0, pitch := 1.0, fade := 0.0) -> void:
+	func _play(k: String, from: float, dur: float, vol_db := 0.0, pitch := 1.0, fade := 0.0, echo := false) -> void:
 		var best: AudioStreamPlayer = one_shots[0]
 		for p in one_shots:
 			if not p.playing:
 				best = p
 				break
+		best.bus = "Outdoor" if echo else "Master"
 		best.stream = streams[k]
 		best.volume_db = vol_db
 		best.pitch_scale = pitch
@@ -1543,12 +1983,13 @@ class Snd extends Node:
 		best.set_meta("vol", vol_db)
 		best.set_meta("fade", fade)
 
-	func _play3d(k: String, pos: Vector3, from: float, dur: float, vol_db := 0.0, pitch := 1.0, fade := 0.0) -> void:
+	func _play3d(k: String, pos: Vector3, from: float, dur: float, vol_db := 0.0, pitch := 1.0, fade := 0.0, echo := false) -> void:
 		var best: AudioStreamPlayer3D = world_shots[0]
 		for p in world_shots:
 			if not p.playing:
 				best = p
 				break
+		best.bus = "Outdoor" if echo else "Master"
 		best.stream = streams[k]
 		best.volume_db = vol_db
 		best.pitch_scale = pitch
@@ -1563,11 +2004,11 @@ class Snd extends Node:
 		var at: float = AK_SINGLE[randi() % AK_SINGLE.size()]
 		match gun:
 			"svd":
-				_play("ak", at, 0.85, 3.0, 0.8, 0.2)
+				_play("ak", at, 0.85, 3.0, 0.8, 0.2, true)
 			"shotgun":
-				_play("ak", at, 0.85, 5.0, 0.62, 0.25)
+				_play("ak", at, 0.85, 5.0, 0.62, 0.25, true)
 			"rpg":
-				_play("ak", at, 0.85, 2.0, 0.48, 0.3)
+				_play("ak", at, 0.85, 2.0, 0.48, 0.3, true)
 
 	func rocket(_pos: Vector3) -> void:
 		_play("whoosh", 0.0, 2.5, 2.0, 1.0, 0.8)
@@ -1583,26 +2024,95 @@ class Snd extends Node:
 		_play("steps_run", RUN_STEPS[randi() % RUN_STEPS.size()], 0.28, -3.0)
 		get_tree().create_timer(0.3).timeout.connect(func(): _play("steps_run", RUN_STEPS[randi() % RUN_STEPS.size()], 0.28, -5.0))
 
-	## The player hit: a short groan (the first one in the file), a longer one for a heavy hit.
+	## The player hit: the thud of the round (no voice).
 	func hurt(heavy: bool) -> void:
-		if heavy:
-			_play("hurt_groan", 1.45, 1.1, 0.0, 1.0, 0.35)
-		else:
-			_play("hurt_groan", 0.1, 0.88, -2.0, 1.0, 0.15)
+		var p: AudioStreamPlayer = one_shots[0]
+		for q in one_shots:
+			if not q.playing:
+				p = q
+				break
+		p.bus = "Master"
+		p.stream = streams["s_flesh"]
+		p.volume_db = 2.0 if heavy else -2.0
+		p.pitch_scale = randf_range(0.85, 1.05)
+		p.play()
+		p.set_meta("stop", 9.0)
+		p.set_meta("fade", 0.0)
 
-	## An enemy hit but not killed: one of the grunts, from where he is.
+	## An enemy hit but not killed: now and then one of the short grunts, quietly.
 	func grunt(pos: Vector3) -> void:
+		if randf() < 0.45:
+			return
 		var g: Array = GRUNTS[randi() % GRUNTS.size()]
-		_play3d("grunts", pos, g[0], g[1] - g[0] + 0.05, 2.0, randf_range(0.92, 1.05))
+		_play3d("grunts", pos, g[0], g[1] - g[0] + 0.05, -4.0, randf_range(0.92, 1.05))
 
 	## A drum going up: the impact hit near the end of the action trailer, from where it happened.
 	func explosion(pos: Vector3) -> void:
-		_play3d("boom", pos, 20.0, 4.2, 4.0)
+		_play3d("boom", pos, 20.0, 4.2, 4.0, 1.0, 0.0, true)
 
 	## An enemy burst: the enemy rifle recording from where he stands, a little quieter than the player's gun.
 	func enemy_burst(pos: Vector3, shots: int) -> void:
 		var long := shots > 4
-		_play3d("enemy_ak", pos, 0.595 if long else 0.78, 0.97 if long else 0.79, -7.0)
+		_play3d("enemy_ak", pos, 0.595 if long else 0.78, 0.97 if long else 0.79, -7.0, 1.0, 0.0, true)
+
+	## A round striking something: the sound of what it hit, from there (not from far off).
+	func impact(pos: Vector3, surf: String, _mine: bool) -> void:
+		var cam := get_viewport().get_camera_3d()
+		if cam and cam.global_position.distance_to(pos) > 40.0:
+			return
+		var k := "s_sand"
+		var vol := -6.0
+		match surf:
+			"metal":
+				k = "s_metal%d" % (randi() % 3)
+				vol = -9.0
+			"wood":
+				k = "s_wood"
+				vol = -4.0
+			"concrete", "rock":
+				k = "s_conc"
+				vol = -5.0
+			"flesh":
+				k = "s_flesh"
+				vol = -3.0
+		var p: AudioStreamPlayer3D = imp_players[imp_i % imp_players.size()]
+		imp_i += 1
+		p.stream = streams[k]
+		p.volume_db = vol
+		p.pitch_scale = randf_range(0.9, 1.1)
+		p.global_position = pos
+		p.play()
+
+	## An enemy round past the player's head: louder the closer.
+	func whiz(pos: Vector3, near: float) -> void:
+		var p: AudioStreamPlayer3D = imp_players[imp_i % imp_players.size()]
+		imp_i += 1
+		p.stream = streams["s_whiz"]
+		p.volume_db = lerp(2.0, -10.0, near / 2.2)
+		p.pitch_scale = randf_range(0.85, 1.15)
+		p.global_position = pos
+		p.play()
+
+	func thud(pos: Vector3, vol := 0.0) -> void:
+		var p: AudioStreamPlayer3D = imp_players[imp_i % imp_players.size()]
+		imp_i += 1
+		p.stream = streams["s_thud"]
+		p.volume_db = vol
+		p.pitch_scale = randf_range(0.85, 1.1)
+		p.global_position = pos
+		p.play()
+
+	## A fire's roar and crackle, following `parent` (a burning drum).
+	func fire_on(parent: Node3D) -> AudioStreamPlayer3D:
+		var p := AudioStreamPlayer3D.new()
+		p.stream = streams["s_fire"]
+		p.unit_size = 3.0
+		p.max_distance = 35.0
+		p.volume_db = -2.0
+		parent.add_child(p)
+		p.position = Vector3(0, 0.9, 0)
+		p.play()
+		return p
 
 	## A death cry (none for most headshots), then the body hitting the ground.
 	func death(pos: Vector3, kind: String) -> void:
@@ -1610,16 +2120,12 @@ class Snd extends Node:
 		var voice := ""
 		if pl:
 			voice = "die_male" if randf() < 0.5 else "die_collapse"
-		elif kind == "head":
-			voice = "die_collapse" if randf() < 0.3 else ""
-		elif kind == "blast":
-			voice = "die_scream" if randf() < 0.5 else "cry_pain"
+		elif kind == "head" or kind == "blast":
+			voice = ""
 		else:
 			var r := randf()
-			voice = "die_male" if r < 0.35 else ("die_collapse" if r < 0.6 else ("cry_pain" if r < 0.85 else "die_scream"))
-		if voice == "cry_pain":
-			_play3d(voice, pos, 0.05, 2.6, 0.0, 1.0, 0.6)    # the cry of pain, its first breath and the loud part
-		elif voice != "":
+			voice = "die_male" if r < 0.3 else ("die_collapse" if r < 0.55 else "")
+		if voice != "":
 			if pl:
 				_play(voice, 0.0, 4.0)
 			else:
