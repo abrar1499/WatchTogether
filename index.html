@@ -2519,12 +2519,12 @@ function updatePlayerBody(dt,tps,sprint){
   BL.m=lerp(BL.m,moving?1:0,Math.min(1,dt*(moving?7:5)));
   if(moving){const f=(P.mvF||0)/spd,sd=(P.mvS||0)/spd;const dF=Math.max(0,f),dB=Math.max(0,-f),dR=Math.max(0,sd),dL=Math.max(0,-sd),t=dF+dB+dR+dL||1;
     BL.dF=lerp(BL.dF,dF/t,k8);BL.dB=lerp(BL.dB,dB/t,k8);BL.dR=lerp(BL.dR,dR/t,k8);BL.dL=lerp(BL.dL,dL/t,k8);}
-  BL.r=lerp(BL.r,crouchOn?clamp((spd-1.25)/0.4,0,1):clamp((spd-1.9)/1.3,0,1),Math.min(1,dt*6));
+  BL.r=lerp(BL.r,crouchOn?clamp((spd-1.2)/0.35,0,1):clamp((spd-1.6)/1.4,0,1),Math.min(1,dt*6));
   BL.c=lerp(BL.c,crouchOn?1:0,Math.min(1,dt*7));
   BL.u=lerp(BL.u,(aimNow||reloading>0)&&!sp?1:0,Math.min(1,dt*9));
   BL.rl=lerp(BL.rl,reloading>0?1:0,Math.min(1,dt*9));
   // which clip each direction uses, standing and crouched
-  const SET=[['F','walk','run','crouchWalk','crouchRun'],['B','walkBack','runBack','crouchBack','crouchBack'],['R','walkR','runStrafeR','strafeR','strafeR'],['L','walkL','runStrafeL','strafeL','strafeL']];
+  const SET=[['F',PL.actions.walk2?'walk2':'walk','run',PL.actions.crouchWalk2?'crouchWalk2':'crouchWalk','crouchRun'],['B','walkBack','runBack','crouchBack','crouchBack'],['R','walkR','runStrafeR','strafeR','strafeR'],['L','walkL','runStrafeL','strafeL','strafeL']];
   const W={};const add=(n,w)=>{if(w>0&&PL.actions[n])W[n]=(W[n]||0)+w;};
   let strideSum=0,strideW=0;
   for(const [d,w0,r0,cw,cr] of SET){const dw=BL['d'+d];if(dw<0.001)continue;
@@ -2549,7 +2549,7 @@ function updatePlayerBody(dt,tps,sprint){
   if(PL.actions.reload)PL.actions.reload.timeScale=1.5;if(PL.actions.reload_up)PL.actions.reload_up.timeScale=1.5;
   if(PL.actions.crouchFire)PL.actions.crouchFire.timeScale=shooting?1:0;
   // all walking clips share one stride phase so their footfalls line up
-  if(strideW>0){BL.ph=(BL.ph+dt*spd/(strideSum/strideW))%1;}
+  if(strideW>0){const dp=dt*spd/(strideSum/strideW);BL.ph=(BL.ph+dp)%1;BL.tot=(BL.tot||0)+dp;}
   for(const n of BL.loco){const ac=PL.actions[n];if(ac)ac.time=BL.ph*ac.getClip().duration;}
   // apply weights to every managed clip
   for(const n of BL.all){const ac=PL.actions[n];if(!ac)continue;const w=W[n]||0;if(w>0.0005){if(!ac.isRunning()&&!BL.sw[n]){ac.play();}ac.setEffectiveWeight(w);}else ac.setEffectiveWeight(0);}
@@ -2559,7 +2559,7 @@ function updatePlayerBody(dt,tps,sprint){
   PL.crK=crouchOn&&!sp?BL.c*BL.m*(BL.dL+BL.dR):0;
   // lean into turns and forward when running
   const yr=angDiff(PL.prevYaw==null?P.yaw:PL.prevYaw,P.yaw)/Math.max(dt,1e-3);PL.prevYaw=P.yaw;
-  PL.roll=lerp(PL.roll||0,clamp(-yr*0.035,-0.14,0.14)*clamp(P.speed/2,0.25,1),Math.min(1,dt*6));
+  PL.roll=lerp(PL.roll||0,clamp(-yr*0.012,-0.06,0.06)*clamp((P.speed-1.5)/2,0,1),Math.min(1,dt*4));
   PL.group.rotation.set(0,P.yaw,PL.roll);
   PL.aimK=lerp(PL.aimK||0,aimNow?1:0.35,Math.min(1,dt*8));
   const leanF=0.14*clamp((P.speed-2)/2,0,1);
@@ -2592,11 +2592,11 @@ function updatePlayerBody(dt,tps,sprint){
     PL.pistol.lookAt(pB.copy(pA).addScaledVector(pC,30));
   }
 }
-const STRIDE={walk:1.37,run:2.24,walkBack:1.54,runBack:1.38,walkR:1.92,walkL:1.9,strafeR:1.09,strafeL:1.36,runStrafeR:2.2,runStrafeL:1.48,crouchWalk:2.04,crouchRun:1.47,crouchBack:1.23,proneFwd:0.6,proneBack:0.42,proneTurn:0.4};
+const STRIDE={walk2:1.54,crouchWalk2:1.43,walk:1.37,run:2.21,walkBack:1.54,runBack:1.38,walkR:1.92,walkL:1.9,strafeR:1.09,strafeL:1.36,runStrafeR:2.2,runStrafeL:1.48,crouchWalk:2.04,crouchRun:1.47,crouchBack:1.23,proneFwd:0.6,proneBack:0.42,proneTurn:0.4};
 function initBlend(){
   const BL={m:0,dF:1,dB:0,dR:0,dL:0,r:0,c:0,u:0,rl:0,ph:0,iw:{idle:1},sw:{},spPrev:null,loco:[],all:[]};
   const UPB=/Spine|Neck|Head|Shoulder|Arm|Hand/;const split=(c,up,n)=>new THREE.AnimationClip(n,c.duration,c.tracks.filter(t=>UPB.test(t.name.split('.')[0])===up));
-  for(const k of ['walk','run','walkBack','runBack','walkR','walkL','runStrafeR','runStrafeL','strafeR','strafeL','crouchWalk','crouchRun','crouchBack']){
+  for(const k of ['walk','walk2','run','walkBack','runBack','walkR','walkL','runStrafeR','runStrafeL','strafeR','strafeL','crouchWalk','crouchWalk2','crouchRun','crouchBack']){
     if(!SOLDIER.clips[k])continue;if(!PL.actions[k+'_lo'])PL.actions[k+'_lo']=PL.mixer.clipAction(split(SOLDIER.clips[k],false,k+'_lo'));
     BL.loco.push(k,k+'_lo');}
   if(SOLDIER.clips.aim&&!PL.actions.aim_up)PL.actions.aim_up=PL.upA||PL.mixer.clipAction(split(SOLDIER.clips.aim,true,'aim_up'));
@@ -3008,10 +3008,10 @@ function step(dt){
   let tgt=0;
   if(mv.lengthSq()>0){
     mv.normalize();const fw=mv.x*f.x+mv.z*f.z;
-    tgt=P.crouch?((keys.ShiftLeft||keys.ShiftRight)?1.7:1.1):wantRun?(fw<-0.3?2.8:fw<0.5?3.4:4.2):1.6;
-    if(jm&&P.crouch)tgt=jm<0.45?0.7:jm<0.88?1.1:1.7;
-    else if(jm&&!wantRun)tgt=sneak?0.9:1.6;
-    if(ads&&tgt>1.6)tgt=1.6;
+    tgt=P.crouch?((keys.ShiftLeft||keys.ShiftRight)?1.6:1.1):wantRun?(fw<-0.3?2.6:fw<0.5?3.2:3.6):(fw<-0.3?1.15:1.35);
+    if(jm&&P.crouch)tgt=jm<0.45?0.75:jm<0.88?1.1:1.6;
+    else if(jm&&!wantRun)tgt=sneak?0.9:(fw<-0.3?1.15:1.35);
+    if(ads&&tgt>1.35)tgt=1.35;
     if(P.prone)tgt=fw<-0.3?0.38:0.5;
   }
   const sprint=wantRun&&tgt>2.5;
@@ -3026,7 +3026,7 @@ function step(dt){
   if(P.crHeld&&!P.prone&&time-P.crDown>=0.45){P.prone=true;P.crouch=true;P.crHeld=false;}
   P.eye+=((P.prone?0.42:P.crouch?1.05:P.sneak?1.3:1.7)-P.eye)*Math.min(1,dt*(P.prone?4:10));
   if(P.speed>0.1&&P.jy===0)P.bob+=dt*(4+P.speed*1.3);
-  const stepN=Math.floor(P.bob/Math.PI);if(stepN!==P.lastStep){P.lastStep=stepN;if(P.speed>0.3&&P.jy===0)playerStep(false);}
+  const stepN=(isTPS()&&PL.blend)?Math.floor((PL.blend.tot||0)*2+0.25):Math.floor(P.bob/Math.PI);if(stepN!==P.lastStep){P.lastStep=stepN;if(P.speed>0.3&&P.jy===0)playerStep(false);}
   const moving=P.speed>0.1?1:0;
   const bobA=moving*(sprint?1.7:P.prone?0.3:P.crouch?0.45:P.sneak?0.6:1)*clamp(P.speed/1.6,0.4,1.2);
   const bob=Math.sin(P.bob*2)*0.028*bobA,bobX=Math.cos(P.bob)*0.016*bobA;
