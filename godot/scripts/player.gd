@@ -29,7 +29,8 @@ const UPPER := ["mixamorigSpine", "mixamorigSpine1", "mixamorigSpine2", "mixamor
 	"mixamorigRightShoulder", "mixamorigRightArm", "mixamorigRightForeArm", "mixamorigRightHand"]
 
 # the gun models are built to real size (metres)
-const GUN_SCALE := {"pistol": 1.0, "m4": 1.0, "ak": 1.0}
+const GUN_SCALE := {"pistol": 1.0, "m4": 1.0, "ak": 1.0, "svd": 1.0, "shotgun": 1.0, "rpg": 1.0}
+const GUNS := ["pistol", "m4", "ak", "svd", "shotgun", "rpg"]
 # left hand, in the gun's own units (x left, y up, z along the barrel): the way the palm faces (n), the way the
 # fingers point (d), and either the knuckle joints (k) or where the palm presses (p). Rifles: palm up under the
 # handguard, knuckles under its middle so the fingers wrap up round the far side. Pistol: palm over the right
@@ -37,12 +38,16 @@ const GUN_SCALE := {"pistol": 1.0, "m4": 1.0, "ak": 1.0}
 const LEFT_HOLD := {
 	"pistol": {"p": Vector3(0.04, -0.05, -0.005), "n": Vector3(-1.0, 0.35, 0.0), "d": Vector3(0.0, -0.5, 0.85)},
 	"m4": {"k": Vector3(-0.006, 0.008, 0.24), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.86},
-	"ak": {"k": Vector3(-0.01, -0.018, 0.26), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.9}}
+	"ak": {"k": Vector3(-0.01, -0.018, 0.26), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.9},
+	"svd": {"k": Vector3(-0.01, -0.024, 0.3), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.9},
+	"shotgun": {"k": Vector3(-0.008, -0.016, 0.35), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.84},
+	"rpg": {"k": Vector3(-0.008, 0.038, 0.25), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.84}}
 const GRIP_DOWN := Vector3(0, -0.94, -0.34)   # down the pistol grip (same rake on all three)
 # first person, aiming: eye on the sight line (AK irons, M4 through the red dot, pistol irons)
 # first person: the point on each gun the eye looks along (gun units), and how far behind it the eye sits
-const SIGHT := {"pistol": Vector3(0, 0.066, 0.0), "m4": Vector3(0, 0.127, 0.0), "ak": Vector3(0, 0.077, 0.19)}
-const EYE_BACK := {"pistol": 0.24, "m4": 0.14, "ak": 0.4}
+const SIGHT := {"pistol": Vector3(0, 0.066, 0.0), "m4": Vector3(0, 0.127, 0.0), "ak": Vector3(0, 0.077, 0.19),
+	"svd": Vector3(0.018, 0.112, 0.0), "shotgun": Vector3(0, 0.074, 0.0), "rpg": Vector3(0.046, 0.13, 0.0)}
+const EYE_BACK := {"pistol": 0.24, "m4": 0.14, "ak": 0.4, "svd": 0.24, "shotgun": 0.32, "rpg": 0.2}
 # finger curl (degrees) of segments 1..3: right hand round the pistol grip with the index on the trigger,
 # left hand round the handguard
 # (spread over the three joints: the glove mesh creases into spikes if one joint bends too far)
@@ -54,6 +59,12 @@ var weapons := [
 	{"name": "SD-9 PISTOL", "gun": "pistol", "res0": 48, "mag": 12, "size": 12, "res": 48, "dmg": 42, "rate": 0.26, "spread": 0.006, "auto": false, "kick": 0.9},
 	{"name": "M4A1 CARBINE", "gun": "m4", "res0": 90, "mag": 30, "size": 30, "res": 90, "dmg": 34, "rate": 0.085, "spread": 0.014, "auto": true, "kick": 1.0},
 	{"name": "AK-47", "gun": "ak", "res0": 90, "mag": 30, "size": 30, "res": 90, "dmg": 41, "rate": 0.105, "spread": 0.021, "auto": true, "kick": 1.45},
+	# Dragunov: one heavy round, 4x PSO-1 scope
+	{"name": "DRAGUNOV SVD", "gun": "svd", "res0": 30, "mag": 10, "size": 10, "res": 30, "dmg": 140, "rate": 0.42, "spread": 0.003, "auto": false, "kick": 2.6, "scope": 13.0, "power": 1.6, "reload": 2.0},
+	# 12 gauge pump: nine pellets, pumped after every shot
+	{"name": "PUMP SHOTGUN", "gun": "shotgun", "res0": 28, "mag": 7, "size": 7, "res": 28, "dmg": 20, "rate": 0.85, "spread": 0.01, "auto": false, "kick": 2.8, "pellets": 9, "cone": 0.055, "power": 2.2, "reload": 2.3},
+	# RPG-7: a rocket that flies and blows up on whatever it hits
+	{"name": "RPG-7", "gun": "rpg", "res0": 4, "mag": 1, "size": 1, "res": 4, "dmg": 0, "rate": 1.0, "spread": 0.002, "auto": false, "kick": 3.2, "rocket": true, "scope": 34.0, "reload": 2.6},
 ]
 var wi := 2
 
@@ -127,6 +138,32 @@ var dead_t := 0.0
 var hurt_t := 0.0                   # red flash on the screen when hit
 var quiet_t := 0.0                  # time since the last hit (health comes back after 5 s)
 var hurt_dir := 0.0                 # where the last hit came from (screen angle)
+var groan_t := 0.0                  # the player's pain groan: not more than one at a time
+var grenades := 4
+var throw_t := -1.0                 # grenade throw: time into it (-1: not throwing)
+var thrown := false
+var nade_hand: Node3D               # the grenade in the right hand until it is thrown
+var holstered := false              # the gun is on the back (the pistol in its thigh holster)
+var hol_t := -1.0                   # putting the gun away (hol_dir 1) or drawing it (-1): time into it
+var hol_dir := 0
+var back_guns := {}                 # per gun: the copy on the back / thigh
+var parts := {}                     # per gun: moving parts (shotgun pump, RPG rocket), for both rigs
+var pump_t := 9.0                   # time since the last shotgun shot (the pump slides back and forward)
+var climb_t := -1.0                 # climbing onto / over something: time into it
+var climb_a := Vector3.ZERO
+var climb_b := Vector3.ZERO
+var climb_top := 0.0
+var climb_dur := 0.6
+var climb_vault := false
+var can_climb := false              # something climbable just ahead (the JUMP button says CLIMB)
+var climb_check_t := 0.0
+var scope_k := 0.0                  # 0..1: looking through the SVD / RPG sight
+var act_w := 0.0                    # upper body: grenade / holster clips over everything else
+const HOL_SPEED := 1.9              # putBack clip played this much faster
+const DRAW_SPEED := 1.6
+const NADE_FROM := 0.25             # grenade clip: start (s), release, end; played 1.5x
+const NADE_RELEASE := 1.12
+const NADE_END := 2.0
 
 
 func setup(fx_node: Node, snd_node: Node) -> void:
@@ -165,11 +202,51 @@ func _build_model() -> void:
 	sc.rotation.y = PI
 	_skin(sc, Color(1, 1, 1))
 	head_bone = skel.find_bone("mixamorigHead")
+	_cut_clip("knockout", "knockback", 2.05, 0.38)
+	_cut_clip("knockout", "blastback", 2.05, 0.8)
 	for n in ["idle", "aim", "kneel", "crouchFire", "walk", "walkBack", "walkR", "walkL", "run", "runBack", "runStrafeR", "runStrafeL", "crouchWalk2", "crouchBack", "reload"]:
 		if ap.has_animation(n):
 			ap.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	_calibrate_and_attach()
 	_build_tree()
+
+
+## A shorter copy of a clip for a powerful hit: starts at `from` and the hips travel only k of the way (the
+## "knockout" clip throws the soldier 4 m back; a close shot should put him down a little way off).
+func _cut_clip(src: String, dst: String, from: float, k: float) -> void:
+	var lib: AnimationLibrary = ap.get_animation_library("")
+	if lib.has_animation(dst) or not lib.has_animation(src):
+		return
+	var a: Animation = lib.get_animation(src).duplicate(true)
+	for i in a.get_track_count():
+		var ty := a.track_get_type(i)
+		var hips := str(a.track_get_path(i)).ends_with(":mixamorigHips")
+		var v0 = null
+		if ty == Animation.TYPE_POSITION_3D:
+			v0 = a.position_track_interpolate(i, from)
+		elif ty == Animation.TYPE_ROTATION_3D:
+			v0 = a.rotation_track_interpolate(i, from)
+		elif ty == Animation.TYPE_SCALE_3D:
+			v0 = a.scale_track_interpolate(i, from)
+		for key in range(a.track_get_key_count(i) - 1, -1, -1):
+			if a.track_get_key_time(i, key) <= from + 0.0001:
+				a.track_remove_key(i, key)
+		for key in a.track_get_key_count(i):
+			var tk: float = a.track_get_key_time(i, key) - from
+			a.track_set_key_time(i, key, tk)
+			if hips and ty == Animation.TYPE_POSITION_3D:
+				var v: Vector3 = a.track_get_key_value(i, key)
+				a.track_set_key_value(i, key, Vector3(v0.x + (v.x - v0.x) * k, v.y, v0.z + (v.z - v0.z) * k))
+		if v0 != null:
+			if ty == Animation.TYPE_POSITION_3D:
+				a.position_track_insert_key(i, 0.0, v0)
+			elif ty == Animation.TYPE_ROTATION_3D:
+				a.rotation_track_insert_key(i, 0.0, v0)
+			else:
+				a.scale_track_insert_key(i, 0.0, v0)
+	a.length = a.length - from
+	a.loop_mode = Animation.LOOP_NONE
+	lib.add_animation(dst, a)
 
 
 ## Soldier materials. They cast soft shadows (on themselves and lightly on the ground), except the first-person
@@ -202,7 +279,7 @@ func make_rig(tint: Color, keys: Array, fade_near := false, kind := "soldier") -
 	var sk: Skeleton3D = sc.find_children("*", "Skeleton3D", true, false)[0]
 	var cap: AnimationPlayer = _rig_player(sc, kind)
 	var d: Dictionary = info["data"]
-	var r := {"root": sc, "skel": sk, "ap": cap, "guns": {}, "muzzles": {}, "data": d, "kind": kind}
+	var r := {"root": sc, "skel": sk, "ap": cap, "guns": {}, "muzzles": {}, "parts": {}, "data": d, "kind": kind}
 	var att := BoneAttachment3D.new()
 	att.bone_name = "mixamorigRightHand"
 	sk.add_child(att)
@@ -219,6 +296,7 @@ func make_rig(tint: Color, keys: Array, fade_near := false, kind := "soldier") -
 		holder.add_child(tgt)
 		r["guns"][k] = holder
 		r["muzzles"][k] = g.find_child("muzzle", true, false)
+		r["parts"][k] = {"pump": g.find_child("pump", true, false), "warhead": g.find_child("warhead", true, false)}
 	var k_ik := SkeletonIK3D.new()
 	k_ik.root_bone = "mixamorigLeftArm"
 	k_ik.tip_bone = "mixamorigLeftHand"
@@ -423,7 +501,7 @@ func calibrate(sk: Skeleton3D, cap: AnimationPlayer, ahead: Vector3) -> Dictiona
 		"holder": {}, "left": {}, "gib": Basis(), "fingers": _finger_set(sk),
 		"magnet": elbow_skel + Vector3(0, -sk.get_bone_rest(sk.find_bone("mixamorigHips")).origin.y * 0.16, 0)}
 	print("grip: wrist turn %.1f deg" % rad_to_deg(best))
-	for k in ["pistol", "m4", "ak"]:
+	for k in GUNS:
 		var gs: float = GUN_SCALE[k]
 		var grip_c := GRIP_DOWN.normalized() * 0.05 * gs
 		var wrist_g := grip_c - d_best * (r_len * 0.78) - n_best * 0.03
@@ -454,7 +532,7 @@ func _calibrate_and_attach() -> void:
 	var att := BoneAttachment3D.new()
 	att.bone_name = "mixamorigRightHand"
 	skel.add_child(att)
-	for k in ["pistol", "m4", "ak"]:
+	for k in GUNS:
 		var holder := Node3D.new()
 		holder.name = k
 		holder.transform = holder_xf[k]
@@ -465,6 +543,14 @@ func _calibrate_and_attach() -> void:
 		guns[k] = holder
 		muzzles[k] = mz
 		holder.visible = false
+		parts[k] = [{"pump": g.find_child("pump", true, false), "warhead": g.find_child("warhead", true, false)}]
+	# the grenade in the hand (in the palm, where the pistol grip sits)
+	nade_hand = fx.grenade_mesh()
+	nade_hand.position = holder_xf["pistol"] * (GRIP_DOWN.normalized() * 0.05)
+	nade_hand.scale = Vector3.ONE / skel.global_transform.basis.get_scale().x
+	att.add_child(nade_hand)
+	nade_hand.visible = false
+	_build_back_guns()
 	ik = SkeletonIK3D.new()
 	ik.root_bone = "mixamorigLeftArm"
 	ik.tip_bone = "mixamorigLeftHand"
@@ -474,6 +560,43 @@ func _calibrate_and_attach() -> void:
 	skel.add_child(ik)
 	_select_gun()
 	ik.start()
+
+
+## The guns slung on the back (diagonal, muzzle up over the left shoulder, flat against the back) and the pistol in a
+## holster on the right thigh, worked out on the rest pose with the soldier facing -Z.
+func _build_back_guns() -> void:
+	var back := BoneAttachment3D.new()
+	back.bone_name = "mixamorigSpine2"
+	skel.add_child(back)
+	var leg := BoneAttachment3D.new()
+	leg.bone_name = "mixamorigRightUpLeg"
+	skel.add_child(leg)
+	var w_back: Transform3D = skel.global_transform * skel.get_bone_global_rest(skel.find_bone("mixamorigSpine2"))
+	var w_leg: Transform3D = skel.global_transform * skel.get_bone_global_rest(skel.find_bone("mixamorigRightUpLeg"))
+	var mid := {"m4": 0.07, "ak": 0.02, "svd": 0.22, "shotgun": 0.15, "rpg": 0.12}
+	for k in GUNS:
+		var d: Transform3D
+		var att: Node3D = back
+		var w := w_back
+		if k == "pistol":
+			var z := Vector3(0, -1, 0)
+			var y := Vector3(0, 0, -1)
+			d = Transform3D(Basis(y.cross(z), y, z), w_leg.origin + Vector3(0.13, -0.1, 0.0))
+			att = leg
+			w = w_leg
+		else:
+			var b := Vector3(-0.5 if k != "rpg" else -0.35, 1.0, 0.0).normalized()
+			var x := Vector3(0, 0, 1)
+			var c: Vector3 = w_back.origin + Vector3(0, -0.02, 0.19 if k != "rpg" else 0.21)
+			d = Transform3D(Basis(x, b.cross(x), b), c - b * float(mid[k]))
+		var holder := Node3D.new()
+		holder.name = "back_" + k
+		holder.transform = w.affine_inverse() * d
+		att.add_child(holder)
+		var g := _load_gun(k)
+		holder.add_child(g)
+		holder.visible = false
+		back_guns[k] = holder
 
 
 ## Finger curls, measured once from the rest pose: each joint turns about the line square to the finger and the palm.
@@ -512,6 +635,8 @@ var rh_bone := -1
 func _pose_hands() -> void:
 	if rh_bone < 0:
 		rh_bone = skel.find_bone("mixamorigRightHand")
+	if holstered or (hol_t >= 0.0 and hol_dir == 1 and hol_t * HOL_SPEED > 2.3):
+		return
 	pose_rig_hands(skel, weapons[wi]["gun"])
 
 
@@ -528,10 +653,10 @@ func _select_gun() -> void:
 
 ## Where the left hand goes this frame: the gun's handguard as the right hand holds it now. (The gun's own
 ## marker only moves after the skeleton has been drawn, a frame late, which made the left hand shake.)
-func place_left_target(sk: Skeleton3D, tgt: Node3D, gun: String, d := {}) -> void:
+func place_left_target(sk: Skeleton3D, tgt: Node3D, gun: String, d := {}, slide := 0.0) -> void:
 	var dd: Dictionary = main_data if d.is_empty() else d
 	var hand: Transform3D = sk.global_transform * sk.get_bone_global_pose(sk.find_bone("mixamorigRightHand"))
-	tgt.global_transform = hand * Transform3D(dd["holder"][gun]) * Transform3D(dd["left"][gun])
+	tgt.global_transform = hand * Transform3D(dd["holder"][gun]) * Transform3D(Basis(), Vector3(0, 0, -slide)) * Transform3D(dd["left"][gun])
 
 
 func _build_tree() -> void:
@@ -575,6 +700,27 @@ func _build_tree() -> void:
 	bt.add_node("pick", pick)
 	bt.connect_node("pick", 0, "aim_up")
 	bt.connect_node("pick", 1, "rspeed")
+	# grenade throw (-1), putting the gun away / holstered (0), drawing it (+1): each clip held at a time set
+	# every frame (seek, then time scale 0)
+	var acts := AnimationNodeBlend3.new()
+	bt.add_node("acts", acts)
+	var port := 0
+	for c in [["nade", "grenade"], ["hol", "putBack"], ["draw", "pullOut"]]:
+		var an := AnimationNodeAnimation.new()
+		an.animation = c[1]
+		bt.add_node(c[0] + "_a", an)
+		var sk_ := AnimationNodeTimeSeek.new()
+		bt.add_node(c[0] + "_seek", sk_)
+		bt.connect_node(c[0] + "_seek", 0, c[0] + "_a")
+		var hold := AnimationNodeTimeScale.new()
+		bt.add_node(c[0] + "_hold", hold)
+		bt.connect_node(c[0] + "_hold", 0, c[0] + "_seek")
+		bt.connect_node("acts", port, c[0] + "_hold")
+		port += 1
+	var act := AnimationNodeBlend2.new()
+	bt.add_node("act", act)
+	bt.connect_node("act", 0, "pick")
+	bt.connect_node("act", 1, "acts")
 	var upper := AnimationNodeBlend2.new()
 	upper.filter_enabled = true
 	var sp: String = str(model.get_path_to(skel))
@@ -582,13 +728,15 @@ func _build_tree() -> void:
 		upper.set_filter_path(NodePath(sp + ":" + b), true)
 	bt.add_node("upper", upper)
 	bt.connect_node("upper", 0, "speed")
-	bt.connect_node("upper", 1, "pick")
+	bt.connect_node("upper", 1, "act")
 	bt.connect_node("output", 0, "upper")
 	tree.tree_root = bt
 	tree.active = true
 	tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	playback = tree.get("parameters/loco/playback")
 	tree.set("parameters/rspeed/scale", 1.4)
+	for c in ["nade", "hol", "draw"]:
+		tree.set("parameters/%s_hold/scale" % c, 0.0)
 
 
 func _build_camera() -> void:
@@ -615,9 +763,11 @@ func _build_camera() -> void:
 	# first person: a second soldier in the aim pose on the camera; only the arms and the gun come into view
 	vm = Node3D.new()
 	cam.add_child(vm)
-	vm_rig = make_rig(Color(1, 1, 1), ["pistol", "m4", "ak"], true)
+	vm_rig = make_rig(Color(1, 1, 1), GUNS, true)
 	vm.add_child(vm_rig["root"])
 	vm_muzzles = vm_rig["muzzles"]
+	for k in GUNS:
+		parts[k].append(vm_rig["parts"][k])
 	var vap: AnimationPlayer = vm_rig["ap"]
 	vap.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	vap.play("aim")
@@ -636,6 +786,8 @@ func _build_camera() -> void:
 
 func look(dx: float, dy: float) -> void:
 	var s := 0.0042 * (0.55 if aiming else 1.0)
+	if scope_k > 0.5:
+		s *= cam.fov / 50.0    # through a scope the view turns no faster on screen than without
 	yaw -= dx * s
 	pitch = clamp(pitch - dy * s, -1.2, 1.1)
 
@@ -644,28 +796,183 @@ func toggle_crouch() -> void:
 	crouch = not crouch
 
 
+## JUMP: climbs onto (or over) whatever is just ahead if it can be climbed, else an ordinary jump.
 func jump() -> void:
-	if is_on_floor() and not crouch and not dead:
+	if dead or climb_t >= 0.0:
+		return
+	if _climb_probe(true):
+		return
+	if is_on_floor() and not crouch:
 		vel.y = JUMP_V
 
 
+func busy() -> bool:
+	return dead or climb_t >= 0.0 or throw_t >= 0.0 or hol_t >= 0.0
+
+
 func swap() -> void:
-	if reloading > 0 or switching > 0 or dead:
+	select_weapon((wi + 1) % weapons.size())
+
+
+func select_weapon(i: int) -> void:
+	if reloading > 0 or switching > 0 or busy() or i == wi:
 		return
-	wi = (wi + 1) % weapons.size()
+	wi = i
 	switching = 0.4
 	snd.stop_auto()
 	_select_gun()
+	if holstered:
+		_start_draw()
 
 
 func reload() -> void:
 	var w: Dictionary = weapons[wi]
-	if reloading > 0 or w["mag"] == w["size"] or w["res"] <= 0:
+	if reloading > 0 or w["mag"] == w["size"] or w["res"] <= 0 or busy() or holstered:
 		return
-	reloading = 1.6
+	reloading = float(w.get("reload", 1.6))
 	snd.stop_auto()
 	snd.reload(w["gun"])
 	tree.set("parameters/rseek/seek_request", 0.0)
+	tree.set("parameters/rspeed/scale", 1.4 * 1.6 / reloading)
+
+
+## HOLSTER: the gun goes onto the back (the pistol into its thigh holster) and the arms hang free; again, or FIRE,
+## draws it.
+func toggle_holster() -> void:
+	if busy():
+		return
+	if holstered:
+		_start_draw()
+	else:
+		reloading = 0.0
+		firing = false
+		snd.stop_auto()
+		hol_dir = 1
+		hol_t = 0.0
+		snd.holster()
+
+
+func _start_draw() -> void:
+	hol_dir = -1
+	hol_t = 0.0
+	snd.holster()
+
+
+## GRENADE: the gun goes out of the hand, the grenade comes out, the arm swings it, it flies (bouncing) and goes
+## off 2.4 s later.
+func throw_grenade() -> void:
+	if grenades <= 0 or busy():
+		return
+	grenades -= 1
+	throw_t = 0.0
+	thrown = false
+	reloading = 0.0
+	snd.stop_auto()
+
+
+func _release_grenade() -> void:
+	thrown = true
+	var d := aim_dir()
+	var from: Vector3
+	if view == 2:
+		from = cam.global_position + d * 0.4 + cam.global_transform.basis.x * 0.15
+	else:
+		from = nade_hand.global_position
+	var v := d * 15.0 + Vector3.UP * (3.2 - d.y * 2.0) + Vector3(vel.x, 0, vel.z) * 0.5
+	fx.get_parent().spawn_grenade(from, v, self)
+
+
+## Something to climb straight ahead: a wall face at knee to chest height whose top (0.45-2.75 m up) has room to
+## stand on (climb up), or which is thin with ground behind it (vault over). start: begin climbing.
+func _climb_probe(start: bool) -> bool:
+	var space := get_world_3d().direct_space_state
+	var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
+	var base := global_position
+	var face := Vector3.ZERO
+	var n := Vector3.ZERO
+	for h in [0.45, 0.9, 1.4, 1.9]:
+		var q := PhysicsRayQueryParameters3D.create(base + Vector3(0, h, 0), base + Vector3(0, h, 0) + fwd * 1.3)
+		q.exclude = [get_rid()]
+		q.collision_mask = 1
+		var r := space.intersect_ray(q)
+		if not r.is_empty() and abs(r.normal.y) < 0.35 and not r.collider.has_method("take_hit"):
+			face = r.position
+			n = Vector3(r.normal.x, 0, r.normal.z).normalized()
+			break
+	if n == Vector3.ZERO or n.dot(fwd) > -0.5:
+		return false
+	var inward := -n
+	# the top: 0.4 m in from the face, or just behind it for a thin wall
+	var probe := Vector3.ZERO
+	var top := {}
+	var h_top := 0.0
+	var thin := false
+	for depth in [0.4, 0.12]:
+		thin = depth < 0.2
+		probe = face + inward * depth
+		var q2 := PhysicsRayQueryParameters3D.create(Vector3(probe.x, base.y + 3.0, probe.z), Vector3(probe.x, base.y + 0.2, probe.z))
+		q2.exclude = [get_rid()]
+		q2.collision_mask = 1
+		top = space.intersect_ray(q2)
+		if top.is_empty() or top.normal.y < 0.7:
+			continue
+		h_top = top.position.y - base.y
+		if h_top >= 0.45 and h_top <= 2.75:
+			break
+		top = {}
+	if top.is_empty():
+		return false
+	var cap: CapsuleShape3D = $Body.shape
+	var fits := func(p: Vector3) -> bool:
+		var sq := PhysicsShapeQueryParameters3D.new()
+		sq.shape = cap
+		sq.collision_mask = 1
+		sq.transform = Transform3D(Basis(), p + Vector3(0, 0.92, 0))
+		sq.exclude = [get_rid()]
+		return space.intersect_shape(sq, 1).is_empty()
+	var stand: Vector3 = Vector3(probe.x, top.position.y + 0.03, probe.z) + inward * 0.12
+	var vault := false
+	if thin or not fits.call(stand):
+		# too narrow to stand on: is there ground just behind it to drop onto?
+		var over: Vector3 = face + inward * 1.25
+		var q3 := PhysicsRayQueryParameters3D.create(Vector3(over.x, top.position.y + 0.3, over.z), Vector3(over.x, base.y - 1.5, over.z))
+		q3.exclude = [get_rid()]
+		q3.collision_mask = 1
+		var g := space.intersect_ray(q3)
+		if g.is_empty() or top.position.y - g.position.y < 0.4:
+			return false
+		stand = Vector3(over.x, top.position.y + 0.08, over.z)
+		if not fits.call(stand + Vector3(0, 0.05, 0)):
+			return false
+		vault = true
+	if not start:
+		return true
+	climb_a = global_position
+	climb_b = stand
+	climb_top = top.position.y + (0.08 if vault else 0.03)
+	climb_vault = vault
+	climb_dur = 0.42 + h_top * 0.28
+	climb_t = 0.0
+	vel = Vector3.ZERO
+	reloading = 0.0
+	snd.stop_auto()
+	snd.climb()
+	return true
+
+
+func _climb_step(dt: float) -> void:
+	climb_t += dt
+	var k: float = clamp(climb_t / climb_dur, 0.0, 1.0)
+	var up_k: float = smoothstep(0.0, 0.62, k)
+	var over_k: float = smoothstep(0.45, 1.0, k)
+	var flat := Vector3(climb_a.x, 0, climb_a.z).lerp(Vector3(climb_b.x, 0, climb_b.z), 0.12 * up_k + 0.88 * over_k)
+	var y: float = lerp(climb_a.y, climb_top, up_k)
+	global_position = Vector3(flat.x, y, flat.z)
+	if k >= 1.0:
+		climb_t = -1.0
+		global_position = climb_b
+		vel = Vector3.ZERO
+		velocity = Vector3.ZERO
 
 
 func cycle_view() -> void:
@@ -675,6 +982,8 @@ func cycle_view() -> void:
 func _physics_process(dt: float) -> void:
 	t += dt
 	hurt_t = max(0.0, hurt_t - dt)
+	groan_t = max(0.0, groan_t - dt)
+	pump_t += dt
 	quiet_t += dt
 	if not dead and quiet_t > 5.0 and hp < 100.0:
 		hp = min(100.0, hp + dt * 6.0)
@@ -688,41 +997,71 @@ func _physics_process(dt: float) -> void:
 			_respawn()
 	var w: Dictionary = weapons[wi]
 	# ---- movement: camera-relative, speeds that match the clips ----
-	var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
-	var right := Vector3(cos(yaw), 0, -sin(yaw))
-	var m := move_in
-	var mag: float = min(1.0, m.length())
-	var target := Vector3.ZERO
-	if mag > 0.12:
-		var md := (fwd * m.y + right * m.x).normalized()
-		var fw := m.normalized().y
-		var running := (run_in or mag > 0.88) and not crouch and not aiming
-		var spd: float
-		if crouch:
-			spd = CROUCH_RUN if mag > 0.88 else CROUCH
-		elif running:
-			spd = RUN_BACK if fw < -0.3 else (RUN_SIDE if fw < 0.5 else RUN)
-		else:
-			spd = WALK_BACK if fw < -0.3 else WALK
-		if aiming:
-			spd = min(spd, AIM_WALK)
-		target = md * spd
-	var accel := 5.0 if target.length() > Vector2(vel.x, vel.z).length() else 9.0
-	var hv := Vector3(vel.x, 0, vel.z).lerp(target, min(1.0, dt * accel))
-	if hv.length() < 0.02:
-		hv = Vector3.ZERO
-	vel.x = hv.x
-	vel.z = hv.z
-	if is_on_floor():
-		if vel.y < 0:
-			vel.y = 0
+	if climb_t >= 0.0:
+		_climb_step(dt)
 	else:
-		vel.y -= GRAVITY * dt
-	velocity = vel
-	move_and_slide()
-	vel = velocity
+		var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
+		var right := Vector3(cos(yaw), 0, -sin(yaw))
+		var m := move_in
+		var mag: float = min(1.0, m.length())
+		var target := Vector3.ZERO
+		if mag > 0.12:
+			var md := (fwd * m.y + right * m.x).normalized()
+			var fw := m.normalized().y
+			var running := (run_in or mag > 0.88) and not crouch and not aiming
+			var spd: float
+			if crouch:
+				spd = CROUCH_RUN if mag > 0.88 else CROUCH
+			elif running:
+				spd = RUN_BACK if fw < -0.3 else (RUN_SIDE if fw < 0.5 else RUN)
+				if holstered:
+					spd *= 1.2    # nothing in the hands: a little quicker
+			else:
+				spd = WALK_BACK if fw < -0.3 else WALK
+			if aiming:
+				spd = min(spd, AIM_WALK)
+			target = md * spd
+		var accel := 5.0 if target.length() > Vector2(vel.x, vel.z).length() else 9.0
+		var hv := Vector3(vel.x, 0, vel.z).lerp(target, min(1.0, dt * accel))
+		if hv.length() < 0.02:
+			hv = Vector3.ZERO
+		vel.x = hv.x
+		vel.z = hv.z
+		if is_on_floor():
+			if vel.y < 0:
+				vel.y = 0
+		else:
+			vel.y -= GRAVITY * dt
+		velocity = vel
+		move_and_slide()
+		vel = velocity
 	speed = Vector2(vel.x, vel.z).length()
 	rotation.y = yaw
+	climb_check_t -= dt
+	if climb_check_t <= 0.0:
+		climb_check_t = 0.25
+		can_climb = not busy() and is_on_floor() and _climb_probe(false)
+
+	# ---- holster, grenade ----
+	if hol_t >= 0.0:
+		hol_t += dt
+		if hol_dir == 1:
+			if hol_t * HOL_SPEED >= 2.1:
+				holstered = true
+			if hol_t * HOL_SPEED >= 3.4:
+				hol_t = -1.0
+		else:
+			if hol_t * DRAW_SPEED >= 0.6:
+				holstered = false
+			if hol_t * DRAW_SPEED >= 1.5:
+				hol_t = -1.0
+	if throw_t >= 0.0:
+		throw_t += dt
+		var ct := NADE_FROM + throw_t * 1.5
+		if ct >= NADE_RELEASE and not thrown:
+			_release_grenade()
+		if ct >= NADE_END:
+			throw_t = -1.0
 
 	# ---- weapons ----
 	switching = max(0.0, switching - dt)
@@ -734,21 +1073,43 @@ func _physics_process(dt: float) -> void:
 			w["res"] -= n
 			if w["res"] < w["size"]:
 				w["res"] = w["res0"]   # practice yard: the reserve never runs dry
-	if firing and (w["auto"] or t - last_shot > 0.35):
+	if firing and holstered and not busy():
+		_start_draw()
+	if firing and not busy() and not holstered and (w["auto"] or t - last_shot > 0.35):
 		_fire()
-	if not firing or reloading > 0 or switching > 0 or w["mag"] <= 0:
+	if not firing or reloading > 0 or switching > 0 or w["mag"] <= 0 or busy():
 		snd.stop_auto()
 	recoil = max(0.0, recoil - dt * 7.0)
 	kick_p *= exp(-dt * 13.0)
 	shake = max(0.0, shake - dt * 0.8)
+	_parts()
 
 	_animate(dt)
 	tree.advance(dt)
 	_pose_hands()
 	_bend_spine(dt)
-	place_left_target(skel, ik_tgt, weapons[wi]["gun"])
+	place_left_target(skel, ik_tgt, weapons[wi]["gun"], {}, pump_slide())
 	_update_camera(dt)
 	_footsteps(dt)
+
+
+## The shotgun's pump: back and forward again just after each shot.
+func pump_slide() -> float:
+	if weapons[wi]["gun"] != "shotgun":
+		return 0.0
+	return sin(clamp((pump_t - 0.22) / 0.38, 0.0, 1.0) * PI) * 0.075
+
+
+## Moving parts on both rigs: the pump, and the rocket in the RPG (gone once fired, back after the reload).
+func _parts() -> void:
+	var slide := pump_slide()
+	var loaded: bool = weapons[5]["mag"] > 0
+	for set in parts["shotgun"]:
+		if set["pump"]:
+			set["pump"].position.z = 0.27 - slide
+	for set in parts["rpg"]:
+		if set["warhead"]:
+			set["warhead"].visible = loaded
 
 
 func _fire() -> void:
@@ -760,6 +1121,7 @@ func _fire() -> void:
 	if w["mag"] <= 0:
 		reload()
 		return
+	var gun: String = w["gun"]
 	w["last"] = t
 	w["mag"] -= 1
 	last_shot = t
@@ -767,28 +1129,57 @@ func _fire() -> void:
 	recoil = min(recoil + (0.45 if w["auto"] else 0.8) * kk, 1.6)
 	yaw += randf_range(-0.003, 0.003) * kk
 	kick_p += 0.006 * kk
+	shake = max(shake, 0.05 * kk if not w["auto"] else 0.0)
 	if w["auto"]:
-		snd.start_auto(w["gun"])
-	else:
+		snd.start_auto(gun)
+	elif gun == "pistol":
 		snd.pistol()
+	else:
+		snd.shot(gun)
 	# the shot goes through the crosshair (centre of the camera)
 	var sp: float = w["spread"] * (1.5 if speed > 2.6 else (1.2 if speed > 0.5 else 1.0)) * (0.6 if crouch else 1.0) * (0.35 if aiming else 1.0) * (1.0 + recoil * 0.6)
+	if scope_k > 0.5:
+		sp = w["spread"] * (1.0 + recoil * 0.3)
 	var from := cam.global_position
-	var d := -cam.global_transform.basis.z
-	d = (d + Vector3(randf_range(-sp, sp), randf_range(-sp, sp), randf_range(-sp, sp))).normalized()
-	var mz: Node3D = vm_muzzles[w["gun"]] if view == 2 else muzzles[w["gun"]]
+	var d0 := -cam.global_transform.basis.z
+	var mz: Node3D = vm_muzzles[gun] if view == 2 else muzzles[gun]
 	var mp := mz.global_position
-	fx.muzzle_flash(mp, mz.global_transform.basis.z, w["gun"])
+	fx.muzzle_flash(mp, mz.global_transform.basis.z, gun)
 	var world: Node = fx.get_parent()
-	world.noise(global_position, 10.0 if w["gun"] == "pistol" else 32.0)   # the SD-9 is suppressed
-	var end: Vector3 = world.shoot_ray(from, d, float(w["dmg"]), self)
-	if int(w["mag"]) % 2 == 0 or not w["auto"]:
-		fx.tracer(mp, end, true)
+	world.noise(global_position, 10.0 if gun == "pistol" else 32.0)   # the SD-9 is suppressed
+	if w.has("rocket"):
+		# the rocket leaves the tube toward whatever is under the crosshair
+		var q := PhysicsRayQueryParameters3D.create(from, from + d0 * 300.0)
+		q.exclude = [get_rid()]
+		var h := get_world_3d().direct_space_state.intersect_ray(q)
+		var aim_at: Vector3 = h.position if not h.is_empty() else from + d0 * 300.0
+		var rd: Vector3 = (aim_at - mp).normalized()
+		if rd.dot(d0) < 0.8:
+			rd = d0
+		world.fire_rocket(mp + rd * 0.1, rd, self)
+		fx.backblast(mp - mz.global_transform.basis.z * 1.5, -mz.global_transform.basis.z)
+		return
+	var n: int = w.get("pellets", 1)
+	var cone: float = w.get("cone", 0.0)
+	for i in n:
+		var d := (d0 + Vector3(randf_range(-sp, sp), randf_range(-sp, sp), randf_range(-sp, sp))).normalized()
+		if cone > 0.0:
+			d = (d + Vector3(randf_range(-cone, cone), randf_range(-cone, cone) * 0.8, randf_range(-cone, cone))).normalized()
+		var end: Vector3 = world.shoot_ray(from, d, float(w["dmg"]), self, float(w.get("power", 1.0)))
+		if n == 1:
+			if int(w["mag"]) % 2 == 0 or not w["auto"]:
+				fx.tracer(mp, end, true)
+		elif i < 3:
+			fx.tracer(mp, end, true)
+	if gun == "shotgun":
+		pump_t = 0.0
+		get_tree().create_timer(0.24).timeout.connect(func(): snd.pump())
 
 
 func _animate(dt: float) -> void:
 	var w: Dictionary = weapons[wi]
-	var aim_now := aiming or firing or t - last_shot < 2.5
+	var acting := throw_t >= 0.0 or hol_t >= 0.0 or holstered
+	var aim_now := (aiming or firing or t - last_shot < 2.5) and not acting and climb_t < 0.0
 	var moving := speed > 0.25
 	var local := Vector2(vel.dot(Vector3(cos(yaw), 0, -sin(yaw))), vel.dot(Vector3(-sin(yaw), 0, -cos(yaw))))  # x right, y forward
 	if moving:
@@ -799,6 +1190,9 @@ func _animate(dt: float) -> void:
 	var nat := 0.0
 	if dead:
 		st = "dead"
+	elif climb_t >= 0.0:
+		st = "jump" if climb_t < climb_dur * 0.5 else "kneel"
+		moving = false
 	elif not is_on_floor() and vel.y > 0.5:
 		st = "jump"
 	elif moving:
@@ -821,20 +1215,36 @@ func _animate(dt: float) -> void:
 	elif st == "kneel_aim":
 		scale = 1.0 if (firing or t - last_shot < 0.3) else 0.0
 	tree.set("parameters/speed/scale", scale)
-	# arms and chest: aim pose (or reload) while the legs keep walking
+	# arms and chest: aim pose (or reload) while the legs keep walking; grenade and holster clips over all of it
 	var want_up := 1.0 if (moving and (aim_now or reloading > 0) and st != "jump" and not dead) else 0.0
 	if reloading > 0 and not moving:
 		want_up = 1.0
+	if acting and not dead and climb_t < 0.0:
+		want_up = 1.0
 	up_w = lerp(up_w, want_up, min(1.0, dt * 9.0))
 	rl_w = lerp(rl_w, 1.0 if reloading > 0 else 0.0, min(1.0, dt * 9.0))
+	act_w = lerp(act_w, 1.0 if acting else 0.0, min(1.0, dt * 12.0))
 	tree.set("parameters/upper/blend_amount", up_w)
 	tree.set("parameters/pick/blend_amount", rl_w)
-	# left hand on the gun except while reloading or switching
-	var free = reloading > 0 or switching > 0 or dead
+	tree.set("parameters/act/blend_amount", act_w)
+	if throw_t >= 0.0:
+		tree.set("parameters/acts/blend_amount", -1.0)
+		tree.set("parameters/nade_seek/seek_request", NADE_FROM + throw_t * 1.5)
+	elif hol_t >= 0.0 and hol_dir == -1:
+		tree.set("parameters/acts/blend_amount", 1.0)
+		tree.set("parameters/draw_seek/seek_request", min(hol_t * DRAW_SPEED, 1.95))
+	elif acting or act_w > 0.01:
+		tree.set("parameters/acts/blend_amount", 0.0)
+		tree.set("parameters/hol_seek/seek_request", min(hol_t * HOL_SPEED, 3.9) if hol_t >= 0.0 else 3.9)
+	# left hand on the gun except while reloading, switching, throwing, slinging or climbing
+	var free = reloading > 0 or switching > 0 or dead or acting or climb_t >= 0.0
 	ik_w = lerp(ik_w, 0.0 if free else 1.0, min(1.0, dt * 10.0))
 	ik.interpolation = ik_w
+	var in_hand := not holstered and throw_t < 0.0
 	for g in guns:
-		guns[g].visible = g == w["gun"] and switching < 0.2 and view != 2
+		guns[g].visible = g == w["gun"] and switching < 0.2 and view != 2 and in_hand
+		back_guns[g].visible = g == w["gun"] and holstered
+	nade_hand.visible = throw_t >= 0.0 and not thrown and view != 2
 
 
 var aim_k := 0.0
@@ -842,13 +1252,13 @@ var aim_k := 0.0
 ## crosshair line whatever the legs are doing (the strafe and run clips twist and tip the hips, which used to
 ## carry the rifle off to the side and down).
 func _bend_spine(dt: float) -> void:
-	var aim_now: bool = (aiming or firing or t - last_shot < 2.5) and not dead
+	var aim_now: bool = (aiming or firing or t - last_shot < 2.5) and not dead and not holstered and throw_t < 0.0 and hol_t < 0.0 and climb_t < 0.0
 	aim_k = lerp(aim_k, 1.0 if aim_now else 0.0, min(1.0, dt * 10.0))
 	var sk_inv: Basis = skel.global_transform.basis.orthonormalized().inverse()
 	var lean: float = clamp(pitch, -0.9, 0.9) * 0.35 * (1.0 - aim_k)
 	if abs(lean) > 0.001 and not dead:
 		turn_chest(skel, Quaternion((sk_inv * global_transform.basis.x).normalized(), lean))
-	aim_chest(skel, aim_dir_now(), aim_k * (1.0 - rl_w))
+	aim_chest(skel, aim_dir_now(), aim_k * (1.0 - rl_w) * (1.0 - act_w))
 
 
 func aim_dir_now() -> Vector3:
@@ -862,6 +1272,11 @@ func _update_camera(dt: float) -> void:
 	var tl: float = cfg[0]
 	var ts: float = cfg[1]
 	var th: float = cfg[2]
+	var w: Dictionary = weapons[wi]
+	# SVD / RPG: aiming brings the eye to the sight (scope view, any camera)
+	var want_scope: bool = aiming and w.has("scope") and not busy() and not holstered and reloading <= 0.0 and switching <= 0.0
+	scope_k = move_toward(scope_k, 1.0 if want_scope else 0.0, dt * 5.0)
+	var scoped := scope_k > 0.6
 	if crouch:
 		th -= 0.32
 	if aiming and view != 2:
@@ -870,7 +1285,11 @@ func _update_camera(dt: float) -> void:
 		th += 0.02
 	cam_len = lerp(cam_len, tl, min(1.0, dt * 10.0))
 	cam_side = lerp(cam_side, ts, min(1.0, dt * 10.0))
-	cam_h = lerp(cam_h, th, min(1.0, dt * 8.0))
+	cam_h = lerp(cam_h, th, min(1.0, dt * (14.0 if climb_t >= 0.0 else 8.0)))
+	if scoped:
+		cam_len = 0.0
+		cam_side = 0.0
+		cam_h = 1.62 - (0.32 if crouch else 0.0)
 	cam_pivot.global_position = global_position + Vector3(0, cam_h, 0)
 	var shk := Vector2(sin(t * 37.0), sin(t * 53.0)) * shake * 0.05
 	cam_pivot.rotation = Vector3(pitch + kick_p + shk.y, yaw + shk.x, 0)
@@ -882,11 +1301,17 @@ func _update_camera(dt: float) -> void:
 	elif speed > 3.0:
 		fov = 66.0
 	cam.fov = lerp(cam.fov, fov, min(1.0, dt * 10.0))
-	var fp := view == 2 and not dead
+	if scoped:
+		cam.fov = float(w["scope"])
+	var fp := (view == 2 or scoped) and not dead
 	model.visible = not fp
-	vm.visible = fp
-	if fp:
+	vm.visible = fp and not scoped and not (holstered and act_w > 0.9)
+	if vm.visible:
 		_update_arms(dt)
+
+
+func scoped() -> bool:
+	return scope_k > 0.6 and not dead
 
 
 var vm_gun := ""
@@ -897,7 +1322,7 @@ func _update_arms(dt: float) -> void:
 	if cur != vm_gun:
 		vm_gun = cur
 		start_rig(vm_rig, cur)
-	vm_rig["guns"][cur].visible = switching < 0.2
+	vm_rig["guns"][cur].visible = switching < 0.2 and not holstered and throw_t < 0.0
 	var vap: AnimationPlayer = vm_rig["ap"]
 	vap.seek(0.6, true)                 # the aim pose held still: its breathing looks like shaking this close
 	var vsk: Skeleton3D = vm_rig["skel"]
@@ -909,9 +1334,10 @@ func _update_arms(dt: float) -> void:
 	var bob := Vector3(sin(t * 7.0) * 0.008, -abs(cos(t * 7.0)) * 0.01, 0.0) * mv
 	var ads: Vector3 = vm_ads[cur]
 	var hip: Vector3 = ads + (Vector3(0.07, -0.045, 0.0) if cur == "pistol" else Vector3(0.11, -0.085, 0.05))
-	vm.position = hip.lerp(ads, ads_k) + bob + Vector3(0, -0.12 * rl_w, recoil * 0.03 * (1.0 - ads_k * 0.5))
-	vm.rotation = Vector3(recoil * 0.035 - 0.45 * rl_w, 0.07 * (1.0 - ads_k), 0.03 * (1.0 - ads_k))
-	place_left_target(vsk, vm_rig["ik_target"], cur)
+	var low: float = max(rl_w, act_w)
+	vm.position = hip.lerp(ads, ads_k) + bob + Vector3(0, -0.12 * low - 0.2 * act_w, recoil * 0.03 * (1.0 - ads_k * 0.5))
+	vm.rotation = Vector3(recoil * 0.035 - 0.45 * low, 0.07 * (1.0 - ads_k), 0.03 * (1.0 - ads_k))
+	place_left_target(vsk, vm_rig["ik_target"], cur, {}, pump_slide())
 
 
 func _footsteps(dt: float) -> void:
@@ -936,7 +1362,10 @@ func hit(dmg: float, from: Vector3) -> void:
 	hp -= dmg
 	hurt_t = 0.6
 	quiet_t = 0.0
-	shake = max(shake, 0.2)
+	shake = max(shake, 0.2 if dmg < 30.0 else 0.6)
+	if groan_t <= 0.0 and hp > 0.0:
+		groan_t = randf_range(1.6, 2.6)
+		snd.hurt(dmg >= 30.0)
 	var to := from - global_position
 	hurt_dir = atan2(to.dot(Vector3(cos(yaw), 0, -sin(yaw))), to.dot(Vector3(-sin(yaw), 0, -cos(yaw))))
 	if hp <= 0:
@@ -968,6 +1397,11 @@ func _respawn() -> void:
 	crouch = false
 	reloading = 0.0
 	view = view_before
+	grenades = 4
+	holstered = false
+	hol_t = -1.0
+	throw_t = -1.0
+	climb_t = -1.0
 	for w in weapons:
 		w["mag"] = w["size"]
 		w["res"] = w["res0"]

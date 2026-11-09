@@ -1,6 +1,6 @@
 # Operation Dust Signal (Godot)
 
-A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. So far: the soldier, the rifles and a practice yard with enemy soldiers. The Hadra base mission, grenades and the rest of the earlier browser version come back in later phases.
+A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. So far: the soldier, the rifles and a practice yard with enemy soldiers. The Hadra base mission and the rest of the earlier browser version come back in later phases.
 
 ## What is in phase 1
 
@@ -15,9 +15,14 @@ A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. So far: t
 - Music from the earlier version, soft and mixed by what is happening: a whoosh and the opening of a trailer when the game starts; while the yard is quiet a low suspense bed, a night sound and now and then a raven; a short stinger when a soldier spots the player; in a firefight one action piece at a time, faded in and out with a rest between pieces; a heartbeat at low health; everything fades when the player is killed.
 - Rounds go through wooden crates, container walls and drums (with less force each time) and stop in concrete, sandbags, rock and the building. Crates splinter and break into flying planks after a few hits (whatever stands on them comes down); fuel drums blow up after two or three hits: fireball, smoke column, flash of light, debris, a scorch mark and the blast hurts soldiers and the player nearby in the open and sets off drums next to it. Everything is back for the next wave.
 - In a fight the soldiers keep moving: a burst or two from one spot, then off to another (low cover they can fire over if there is some, working round to one side), ducking between bursts and popping up to fire, and moving at once when hit. Their accuracy and damage are as before.
+- Six guns: SD-9 pistol, M4A1, AK-47, Dragunov SVD (one heavy round, PSO-1 scope: aiming looks through it with its chevron reticle and range scale, in any camera view), a 12-gauge pump-action shotgun (nine pellets; the pump slides back and forward after every shot with the left hand on it) and an RPG-7 (the rocket flies with a smoke trail and blows up on whatever it hits, with a back-blast behind the tube; the rocket shows in the tube while loaded; aiming looks through the PGO-7 sight).
+- Powerful hits: a soldier killed from close up (or by the shotgun or the SVD further off) is thrown back a little way off his feet; an explosion throws him further. A heavy hit that does not kill staggers him. Soldiers grunt when hit and cry out when they die; the player groans when hit.
+- Grenades (four, two more each wave): the soldier swings his arm and throws; the grenade bounces and goes off 2.4 s later. Soldiers run from a grenade that lands near them, and some of them throw one at the place where they last saw the player hiding (a warning shows which way it is). Hit markers at the crosshair (red for a kill).
+- HOLSTER slings the rifle on the back (the pistol goes into a thigh holster): the arms hang free and he runs a little faster; HOLSTER again or FIRE draws it.
+- Climbing: JUMP next to a crate, drum, the sandbag wall or a container climbs up onto it; at a concrete T-wall he goes up and over (the button reads CLIMB when there is something to climb). Concrete stairs with a railing go up the side of the building to its roof, which has a parapet to take cover behind; one enemy keeps watch from the roof.
 - Player health with a hit flash and a mark toward the shooter; health comes back after a few quiet seconds; when killed the player is back at the start a moment later.
 - Practice yard: the reserve ammunition refills, so the rifles never end up at 0 / 0.
-- Phone controls: move with the bottom-left thumb, drag anywhere else to look, FIRE (slide the same finger to aim while firing), AIM, CROUCH, JUMP, RELOAD, SWAP, VIEW, MENU. On a computer: WASD, mouse, left/right click, Shift, C, Space, R, Q or 1/2/3, V, Esc.
+- Phone controls: move with the bottom-left thumb, drag anywhere else to look, FIRE (slide the same finger to aim while firing), AIM, CROUCH, JUMP / CLIMB, RELOAD, SWAP, GRENADE, HOLSTER, VIEW, MENU. On a computer: WASD, mouse, left/right click, Shift, C, Space, R, Q or 1-6, G, H, V, Esc.
 
 ## Project
 
@@ -27,11 +32,11 @@ A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. So far: t
   - `scripts/enemy.gd`: the enemy soldier
   - `scripts/touch.gd`: on-screen controls, keyboard/mouse, HUD, start and pause menus
   - `assets/soldier.glb`: the soldier with its Mixamo animations
-  - `assets/guns/`: the AK-47, M4A1 (with red-dot sight) and suppressed SD-9 pistol, `assets/sfx/`: the sound files (unedited)
-- `tools/envbuild/`: the script that builds the yard's props and textures in `godot/assets/env/` (shipping containers, wooden crates, concrete T-walls, fuel drums, sandbags, the building; sand, rock and concrete textures)
+  - `assets/guns/`: the AK-47, M4A1 (with red-dot sight), suppressed SD-9 pistol, Dragunov SVD (PSO-1 scope), pump shotgun (sliding pump) and RPG-7 (removable rocket), `assets/sfx/`: the sound files (unedited)
+- `tools/envbuild/`: the script that builds the yard's props and textures in `godot/assets/env/` (shipping containers, wooden crates, concrete T-walls, fuel drums, sandbags, the building and its outside stairs; sand, rock and concrete textures); `ONLY=building,stairs` rebuilds just those
 - `tools/charbuild/`: how the enemy characters in `godot/assets/chars/` were made from the original Mixamo FBX files
 - `tools/fxbuild/`: the script that draws the muzzle-flash and tracer textures in `godot/assets/fx/`
-- `tools/gunbuild/`: the Python script that builds the three gun models (real size, rounded edges, wood-grain and metal textures); run `python3 build_guns.py ../../godot/assets/guns` (needs numpy, Pillow, mapbox_earcut)
+- `tools/gunbuild/`: the Python script that builds the six gun models (real size, rounded edges, wood-grain and metal textures); run `python3 build_guns.py ../../godot/assets/guns` (needs numpy, Pillow, mapbox_earcut)
 - `android/debug.keystore`: the signing key of the original app, so the game installs as its update
 - `.github/workflows/build.yml`: exports the APK with Godot and publishes it
 
@@ -55,3 +60,5 @@ Sounds in `godot/assets/sfx/` are unedited sound effects from [Pixabay](https://
 - Enemy rifles: "Machin gun AK47 sound effect 6" (beetpro)
 - Music and atmosphere (`godot/assets/music/`): "Cinematic action epic trailer: Iron Vanguard" (openmindaudio), "Descent whoosh" (viralaudio), "Tense suspense ambience" (absolutesound), "Mid nights sound" (ncprime), "Raven call" (freesound_community), "Scary sound effect" and "Heartbeat sound" (dragon-studio), "Action loop E 90 BPM" (brvhrtz), "Action trailer" (arctsound)
 - Deaths: "Male death scream horror", "Dramatic death collapse" and "Character fall impact" (universfield), "Male death sound" (vinodadora); the player's last breath is the player's own recording
+- Pain: "Hurt & death pain groin 5" (applehillstudios) when the player is hit, "Cry of pain" (dragon-studio) for dying soldiers; the soldiers' grunts when hit are the player's own ElevenLabs recording
+- The SVD, shotgun and RPG fire the single shots from the AK-47 recording played lower and louder; the shotgun's pump is the rifle reload sound

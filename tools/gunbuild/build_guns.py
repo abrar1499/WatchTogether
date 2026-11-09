@@ -50,6 +50,8 @@ MATS = {
     "poly": {"color": (0.028, 0.028, 0.028), "metal": 0.0, "rough": 0.74, "tex": "poly"},
     "rubber": {"color": (0.025, 0.025, 0.025), "metal": 0.0, "rough": 0.92, "tex": "poly"},
     "red": {"color": (1.0, 0.08, 0.05), "metal": 0.0, "rough": 1.0, "unlit": True, "emissive": (1.0, 0.1, 0.05)},
+    "olive": {"color": (0.16, 0.18, 0.1), "metal": 0.15, "rough": 0.6, "tex": "metal"},
+    "lens": {"color": (0.02, 0.035, 0.05), "metal": 0.9, "rough": 0.08},
 }
 
 # ---------------- shared shapes ----------------
@@ -262,9 +264,117 @@ def build_pistol():
     m.lathe("poly", [V(0.165, 0), V(0.165, 0.0135), V(0.169, 0.0165), V(0.316, 0.0165), V(0.322, 0.0135), V(0.322, 0.004), V(0.32, 0.003), V(0.32, 0)], seg=22, center=(0, 0.0435))
     return m, [("muzzle", (0, 0.0435, 0.322))]
 
-for name, fn in (("ak", build_ak), ("m4", build_m4), ("pistol", build_pistol)):
-    m, extra = fn()
-    used = {k: MATS[k] for k in m.parts}
+
+# ================= Dragunov SVD with PSO-1 scope =================
+def build_svd():
+    m = Mesh()
+    box(m, "blued", -0.09, 0.19, 0.002, 0.05, 0.0165, r=0.003, bevel=0.0018)
+    m.extrude("blued", rounded([V(-0.092, 0.046), V(0.185, 0.046), V(0.185, 0.06), V(-0.05, 0.066), V(-0.092, 0.061)], [0, 0, 0.003, 0.03, 0.004], 4), 0.0158, bevel=0.007, steps=3)
+    box(m, "dark", 0.03, 0.12, 0.034, 0.049, 0.0012, cx=-0.0158, bevel=0.0004)
+    m.lathe("steel", [V(0, 0), V(0, 0.0055), V(0.02, 0.0055), V(0.022, 0.0045), V(0.022, 0)], seg=10, xf=(RIGHT, V(-0.016, 0.034, 0.14)))
+    m.extrude("blued", rounded([V(-0.07, 0.043), V(0.06, 0.037), V(0.065, 0.03), V(-0.02, 0.031), V(-0.07, 0.036)], 0.003, 2), 0.0011, bevel=0.0005, steps=1, cx=-0.0175)
+    for (z, y) in ((-0.07, 0.01), (0.03, 0.008), (0.17, 0.01), (0.17, 0.035)):
+        pin(m, "steel", z, y, 0.0022, 0.0172)
+    # skeleton stock with cheek rest; the thumbhole is a dark cut-out
+    stock = [V(-0.09, 0.046), V(-0.22, 0.05), V(-0.25, 0.08), V(-0.36, 0.08), V(-0.395, 0.05), V(-0.395, -0.105), V(-0.355, -0.105), V(-0.24, -0.05), V(-0.13, -0.022), V(-0.09, 0.0)]
+    m.extrude("wood", rounded(stock, [0.004, 0.01, 0.02, 0.02, 0.008, 0.01, 0.02, 0.04, 0.02, 0.004], 4), 0.018, bevel=0.007, steps=3)
+    m.extrude("dark", rounded([V(-0.3, -0.045), V(-0.16, -0.015), V(-0.15, 0.022), V(-0.29, 0.03)], 0.014, 3), 0.0186, bevel=0.0, steps=1)
+    m.extrude("rubber", rounded([V(-0.405, 0.052), V(-0.394, 0.052), V(-0.394, -0.107), V(-0.405, -0.107)], 0.004, 2), 0.0195, bevel=0.004, steps=2)
+    grip(m, "wood", 0.1, 0.034, 0.031, 0.0145)
+    u_guard(m, "blued", 0.012, 0.072, 0.024, 0.0045, 0.0045)
+    trigger(m, "blued", 0.034)
+    curved_mag(m, "blued", (0.1, 0.012), 0.125, 0.058, 0.18, 0.32, 0.0135, ribs=(0.45,), rib_mat="steel")
+    # ventilated wooden handguard, gas block, long barrel, front sight, slotted flash hider
+    m.extrude("wood", rounded([V(0.19, 0.072), V(0.42, 0.072), V(0.42, -0.004), V(0.4, -0.012), V(0.21, -0.012), V(0.19, -0.002)], [0.006, 0.006, 0.008, 0.01, 0.01, 0.004], 3), 0.0212, bevel=0.009, steps=3)
+    for z in (0.24, 0.29, 0.34):
+        for sx in (0.0213, -0.0213):
+            box(m, "dark", z, z + 0.035, 0.03, 0.04, 0.0006, cx=sx, bevel=0.0)
+    box(m, "blued", 0.42, 0.46, 0.02, 0.07, 0.012, r=0.003, bevel=0.003)
+    cyl(m, "blued", 0.19, 0.8, 0.0095, 0.031, seg=20)
+    m.extrude("blued", rounded([V(0.7, 0.016), V(0.73, 0.016), V(0.73, 0.05), V(0.7, 0.05)], 0.003, 2), 0.0115, bevel=0.003, steps=2)
+    for sx in (0.0095, -0.0095):
+        m.extrude("blued", [V(0.704, 0.048), V(0.726, 0.048), V(0.722, 0.085), V(0.708, 0.085)], 0.0016, bevel=0.0006, steps=1, cx=sx)
+    box(m, "blued", 0.713, 0.718, 0.048, 0.081, 0.0015, bevel=0.0005)
+    m.lathe("blued", [V(0.796, 0), V(0.796, 0.0118), V(0.8, 0.0128), V(0.86, 0.0128), V(0.865, 0.011), V(0.865, 0)], seg=20, center=(0, 0.031))
+    for k in range(4):
+        box(m, "dark", 0.81, 0.85, 0.0302, 0.0322, 0.0004, cx=0.0129 if k % 2 == 0 else -0.0129, bevel=0.0)
+    # PSO-1: side-rail mount on the left, scope tube with eyecup, turrets and objective
+    sx, sy = 0.018, 0.112
+    box(m, "blued", -0.03, 0.11, 0.028, 0.072, 0.003, cx=0.0195, bevel=0.001)
+    box(m, "blued", 0.0, 0.07, 0.07, 0.1, 0.011, cx=sx, r=0.003, bevel=0.002)
+    m.lathe("blued", [V(-0.105, 0), V(-0.105, 0.019), V(-0.1, 0.0205), V(-0.075, 0.0205), V(-0.065, 0.0148), V(0.11, 0.0148),
+                      V(0.135, 0.0205), V(0.18, 0.0215), V(0.185, 0.019), V(0.185, 0)], seg=22, center=(sx, sy), smooth=50)
+    m.lathe("rubber", [V(-0.15, 0), V(-0.15, 0.021), V(-0.106, 0.021), V(-0.106, 0)], seg=18, center=(sx, sy))
+    m.lathe("lens", [V(0.185, 0), V(0.185, 0.017), V(0.187, 0.017), V(0.187, 0)], seg=18, center=(sx, sy))
+    m.lathe("blued", [V(0, 0), V(0, 0.0105), V(0.022, 0.0105), V(0.022, 0)], seg=12, xf=at(AX_Y, (sx, sy + 0.01, 0.03)))
+    m.lathe("blued", [V(0, 0), V(0, 0.0095), V(0.02, 0.0095), V(0.02, 0)], seg=12, xf=(np.array([[0, 0, 1], [0, 1, 0], [-1, 0, 0]], float), V(sx + 0.012, sy, 0.03)))
+    return m, [("muzzle", (0, 0.031, 0.865))]
+
+# ================= pump-action shotgun (12 gauge, pistol grip) =================
+def build_shotgun():
+    m = Mesh()
+    pump = Mesh()
+    m.extrude("blued", rounded([V(-0.045, 0.0), V(0.17, 0.0), V(0.17, 0.07), V(-0.025, 0.07), V(-0.045, 0.056)], [0.004, 0.004, 0.008, 0.012, 0.004], 3), 0.0165, bevel=0.005, steps=2)
+    box(m, "dark", 0.04, 0.12, 0.03, 0.058, 0.001, cx=-0.0165, bevel=0.0003)
+    pin(m, "steel", -0.01, 0.012, 0.003, 0.0175)
+    pin(m, "steel", 0.15, 0.012, 0.003, 0.0175)
+    cyl(m, "blued", 0.16, 0.66, 0.0118, 0.05, seg=20)
+    box(m, "blued", 0.17, 0.645, 0.061, 0.066, 0.0042, bevel=0.0008)
+    cyl(m, "steel", 0.638, 0.646, 0.0028, 0.069, seg=8)
+    cyl(m, "blued", 0.16, 0.585, 0.0118, 0.022, seg=16)
+    cyl(m, "blued", 0.582, 0.602, 0.0135, 0.022, seg=16, chamfer=0.003)
+    box(m, "blued", 0.56, 0.575, 0.02, 0.052, 0.0105, r=0.003, bevel=0.002)
+    stk = [V(-0.045, 0.064), V(-0.36, 0.056), V(-0.36, -0.092), V(-0.3, -0.078), V(-0.13, -0.004), V(-0.045, 0.02)]
+    m.extrude("poly", rounded(stk, [0.006, 0.008, 0.012, 0.01, 0.03, 0.008], 3), 0.019, bevel=0.007, steps=3)
+    m.extrude("rubber", rounded([V(-0.372, 0.058), V(-0.359, 0.058), V(-0.359, -0.094), V(-0.372, -0.094)], 0.004, 2), 0.02, bevel=0.005, steps=2)
+    grip(m, "poly", 0.1, 0.036, 0.033, 0.015, bumps=((0.035, 0.002), (0.06, 0.002)), hump=0.004)
+    u_guard(m, "blued", 0.012, 0.072, 0.025, 0.0046, 0.0046)
+    trigger(m, "steel", 0.034)
+    # the pump: grooved fore-end round the magazine tube, its own node so it can slide
+    prof = [V(0.0, 0), V(0.0, 0.0235)]
+    z = 0.012
+    while z < 0.16:
+        prof += [V(z, 0.0235), V(z + 0.002, 0.0258), V(z + 0.009, 0.0258), V(z + 0.011, 0.0235)]
+        z += 0.016
+    prof += [V(0.17, 0.0235), V(0.17, 0)]
+    pump.lathe("poly", prof, seg=20, center=(0, 0.022), smooth=50)
+    return m, [("muzzle", (0, 0.05, 0.665))], [("pump", pump, (0, 0, 0.27))]
+
+# ================= RPG-7 with a PG-7V rocket =================
+def build_rpg():
+    m = Mesh()
+    war = Mesh()
+    ty = 0.072
+    cyl(m, "blued", -0.42, 0.44, 0.02, ty, seg=18)
+    m.lathe("blued", [V(-0.56, 0.0), V(-0.56, 0.044), V(-0.545, 0.046), V(-0.47, 0.03), V(-0.42, 0.021), V(-0.42, 0)], seg=18, center=(0, ty))
+    cyl(m, "dark", -0.563, -0.559, 0.04, ty, seg=18)
+    m.lathe("wood", [V(-0.2, 0), V(-0.2, 0.029), V(-0.19, 0.031), V(0.12, 0.031), V(0.13, 0.029), V(0.13, 0)], seg=18, center=(0, ty))
+    for z in (-0.205, 0.125):
+        cyl(m, "blued", z, z + 0.012, 0.0325, ty, seg=18)
+    box(m, "blued", -0.035, 0.065, 0.0, ty - 0.012, 0.013, r=0.003, bevel=0.002)
+    grip(m, "poly", 0.1, 0.034, 0.031, 0.0145)
+    u_guard(m, "blued", 0.012, 0.068, 0.023, 0.0045, 0.0045)
+    trigger(m, "steel", 0.034)
+    box(m, "blued", 0.39, 0.405, ty + 0.018, ty + 0.05, 0.002, bevel=0.0006)
+    box(m, "blued", -0.01, 0.015, ty + 0.018, ty + 0.04, 0.006, bevel=0.0006)
+    # PGO-7 sight on the left
+    oy = ty + 0.058
+    box(m, "blued", -0.06, 0.05, ty + 0.012, ty + 0.032, 0.008, cx=0.03, bevel=0.002)
+    box(m, "blued", -0.085, 0.045, oy - 0.025, oy + 0.022, 0.014, cx=0.046, r=0.008, bevel=0.003)
+    m.lathe("rubber", [V(-0.13, 0), V(-0.13, 0.017), V(-0.085, 0.017), V(-0.085, 0)], seg=16, center=(0.046, oy))
+    m.lathe("blued", [V(0.045, 0), V(0.045, 0.012), V(0.075, 0.012), V(0.075, 0)], seg=14, center=(0.046, oy))
+    m.lathe("lens", [V(0.075, 0), V(0.075, 0.01), V(0.077, 0.01), V(0.077, 0)], seg=14, center=(0.046, oy))
+    # the rocket in the tube: its own node, hidden after firing until the reload
+    war.lathe("olive", [V(0, 0), V(0, 0.019), V(0.1, 0.019), V(0.105, 0.038), V(0.12, 0.042), V(0.2, 0.042), V(0.33, 0.013),
+                        V(0.355, 0.008), V(0.375, 0.0)], seg=20, center=(0, ty), smooth=40)
+    return m, [("muzzle", (0, ty, 0.82))], [("warhead", war, (0, 0, 0.44))]
+
+for name, fn in (("ak", build_ak), ("m4", build_m4), ("pistol", build_pistol), ("svd", build_svd), ("shotgun", build_shotgun), ("rpg", build_rpg)):
+    res = fn()
+    m, extra = res[0], res[1]
+    subs = res[2] if len(res) > 2 else ()
+    used_names = set(m.parts) | {k for _, sm, _ in subs for k in sm.parts}
+    used = {k: MATS[k] for k in used_names}
     imgs = {k: IMAGES[k] for k in IMAGES if any(MATS[u].get("tex") == k for u in used)}
-    tris = write_glb(f"{OUT}/{name}.glb", m, used, imgs, extra)
+    tris = write_glb(f"{OUT}/{name}.glb", m, used, imgs, extra, subs)
     print(name, "triangles", tris)

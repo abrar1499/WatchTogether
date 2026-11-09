@@ -15,6 +15,8 @@ var buttons := [
 	{"id": "swap", "label": "SWAP", "c": Vector2(0.955, 0.3), "r": 38.0},
 	{"id": "view", "label": "VIEW", "c": Vector2(0.88, 0.17), "r": 34.0},
 	{"id": "menu", "label": "MENU", "c": Vector2(0.955, 0.07), "r": 32.0},
+	{"id": "nade", "label": "GRENADE", "c": Vector2(0.955, 0.66), "r": 38.0},
+	{"id": "holster", "label": "HOLSTER", "c": Vector2(0.065, 0.2), "r": 34.0},
 ]
 var held := {}          # touch index -> button id
 var joy_id := -1
@@ -36,6 +38,8 @@ var msg_sub := ""
 var msg_t := 0.0
 var note := ""
 var note_t := 0.0
+var mark_t := 0.0       # hit marker
+var mark_kill := false
 
 
 func _ready() -> void:
@@ -79,7 +83,13 @@ func _press(id: String, down: bool) -> void:
 		"reload":
 			if down: player.reload()
 		"swap":
-			if down: player.swap()
+			if down:
+				player.swap()
+				_hint(player.weapons[player.wi]["name"])
+		"nade":
+			if down: player.throw_grenade()
+		"holster":
+			if down: player.toggle_holster()
 		"view":
 			if down:
 				player.cycle_view()
@@ -144,7 +154,14 @@ func _input(e: InputEvent) -> void:
 				KEY_C: player.toggle_crouch()
 				KEY_SPACE: player.jump()
 				KEY_R: player.reload()
-				KEY_Q: player.swap()
+				KEY_Q:
+					player.swap()
+					_hint(player.weapons[player.wi]["name"])
+				KEY_G: player.throw_grenade()
+				KEY_H: player.toggle_holster()
+				KEY_4: _set_weapon(3)
+				KEY_5: _set_weapon(4)
+				KEY_6: _set_weapon(5)
 				KEY_V:
 					player.cycle_view()
 					_hint(["Close view", "Closer view", "First person"][player.view])
@@ -161,9 +178,8 @@ func _input(e: InputEvent) -> void:
 
 
 func _set_weapon(i: int) -> void:
-	while player.wi != i:
-		player.switching = 0
-		player.swap()
+	player.select_weapon(i)
+	_hint(player.weapons[i]["name"])
 
 
 func _hint(s: String) -> void:
@@ -182,9 +198,15 @@ func kill_note(s: String) -> void:
 	note_t = 1.2
 
 
+func hit_marker(kill: bool) -> void:
+	mark_t = 0.22 if kill else 0.14
+	mark_kill = kill
+
+
 func _process(dt: float) -> void:
 	msg_t = max(0.0, msg_t - dt)
 	note_t = max(0.0, note_t - dt)
+	mark_t = max(0.0, mark_t - dt)
 	if hint_t > 0:
 		hint_t -= dt
 	queue_redraw()
@@ -204,8 +226,13 @@ func _draw() -> void:
 		draw_arc(c, 110 * s, ang - 0.35, ang + 0.35, 16, Color(1, 0.15, 0.1, 0.85 * a), 7.0 * s)
 	if player.dead:
 		draw_rect(Rect2(Vector2.ZERO, vs), Color(0.35, 0.0, 0.0, 0.35))
-	# crosshair (red dot while aiming)
-	if player.aiming:
+	# crosshair (red dot while aiming); the SVD's PSO-1 or the RPG's PGO-7 when looking through them
+	var gun: String = player.weapons[player.wi]["gun"]
+	if player.scoped():
+		_draw_scope(c, vs, s, gun)
+	elif player.holstered or player.throw_t >= 0.0 or player.hol_t >= 0.0:
+		pass
+	elif player.aiming:
 		draw_circle(c, 3.0 * s, Color(1, 0.25, 0.15))
 	else:
 		var g = (7.0 + player.recoil * 6.0 + (4.0 if player.speed > 0.5 else 0.0)) * s
@@ -214,13 +241,31 @@ func _draw() -> void:
 		draw_line(c + Vector2(g, 0), c + Vector2(g + 9 * s, 0), col, 2.0 * s)
 		draw_line(c + Vector2(0, -g - 9 * s), c + Vector2(0, -g), col, 2.0 * s)
 		draw_line(c + Vector2(0, g), c + Vector2(0, g + 9 * s), col, 2.0 * s)
+	# hit marker: four short strokes round the crosshair, red on a kill
+	if mark_t > 0.0:
+		var mc := Color(1, 0.2, 0.15, 0.95) if mark_kill else Color(1, 1, 1, 0.9)
+		for k in 4:
+			var dv := Vector2(1, 1).rotated(k * PI * 0.5).normalized()
+			draw_line(c + dv * 9 * s, c + dv * 17 * s, mc, 2.4 * s)
+	# a live grenade close by: warning and which way it is
+	var near: Array = main.grenades_near(player.global_position, 7.0)
+	if not near.is_empty():
+		var to: Vector3 = near[0] - player.global_position
+		var ang: float = atan2(to.dot(Vector3(cos(player.yaw), 0, -sin(player.yaw))), to.dot(Vector3(-sin(player.yaw), 0, -cos(player.yaw)))) - PI * 0.5
+		var blink: float = 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.02)
+		draw_arc(c, 80 * s, ang - 0.3, ang + 0.3, 12, Color(1, 0.75, 0.1, blink), 6.0 * s)
+		var gs := int(18 * s)
+		var gw: float = font.get_string_size("GRENADE!", HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
+		draw_string(font, c + Vector2(-gw / 2, -100 * s), "GRENADE!", HORIZONTAL_ALIGNMENT_LEFT, -1, gs, Color(1, 0.8, 0.15, blink))
 	# ammo
 	var w: Dictionary = player.weapons[player.wi]
 	var ammo := "%d / %d" % [w["mag"], w["res"]]
 	var ap := Vector2(vs.x * 0.70, 52 * s)
 	draw_rect(Rect2(ap - Vector2(12, 40) * s, Vector2(220, 64) * s), Color(0.05, 0.06, 0.06, 0.6))
-	draw_string(font, ap + Vector2(0, -16 * s), w["name"] + ("  RELOADING" if player.reloading > 0 else ""), HORIZONTAL_ALIGNMENT_LEFT, -1, int(13 * s), Color(0.85, 0.82, 0.72))
+	var state_s := "  RELOADING" if player.reloading > 0 else ("  ON BACK" if player.holstered else "")
+	draw_string(font, ap + Vector2(0, -16 * s), w["name"] + state_s, HORIZONTAL_ALIGNMENT_LEFT, -1, int(13 * s), Color(0.85, 0.82, 0.72))
 	draw_string(font, ap + Vector2(0, 14 * s), ammo, HORIZONTAL_ALIGNMENT_LEFT, -1, int(28 * s), Color(1, 1, 1))
+	draw_string(font, ap + Vector2(128 * s, 14 * s), "GRENADES %d" % player.grenades, HORIZONTAL_ALIGNMENT_LEFT, -1, int(12 * s), Color(0.8, 0.85, 0.6))
 	# health
 	var hp_k: float = clamp(player.hp / 100.0, 0.0, 1.0)
 	var hb := Rect2(ap + Vector2(-12, 30) * s, Vector2(220, 10) * s)
@@ -265,13 +310,59 @@ func _draw() -> void:
 	for b in buttons:
 		var bc: Vector2 = b["c"] * vs
 		var r: float = b["r"] * s
-		var on: bool = active.has(b["id"]) or (b["id"] == "crouch" and player.crouch) or (b["id"] == "aim" and player.aiming)
+		var on: bool = active.has(b["id"]) or (b["id"] == "crouch" and player.crouch) or (b["id"] == "aim" and player.aiming) or (b["id"] == "holster" and player.holstered)
 		var fill := Color(0.95, 0.7, 0.27, 0.55) if on else (Color(1, 0.35, 0.26, 0.22) if b["id"] == "fire" else Color(0.05, 0.06, 0.05, 0.3))
 		draw_circle(bc, r, fill)
 		draw_arc(bc, r, 0, TAU, 40, Color(1, 0.4, 0.3, 0.8) if b["id"] == "fire" else Color(0.92, 0.89, 0.8, 0.4), 1.5 * s)
-		var fs := int((14 if b["id"] == "fire" else 11) * s)
-		var tw := font.get_string_size(b["label"], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		draw_string(font, bc + Vector2(-tw / 2, fs * 0.35), b["label"], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.95, 0.93, 0.86))
+		var label: String = b["label"]
+		if b["id"] == "jump" and player.can_climb:
+			label = "CLIMB"
+		elif b["id"] == "holster" and player.holstered:
+			label = "DRAW"
+		elif b["id"] == "nade":
+			label = "NADE %d" % player.grenades
+		var fs := int((14 if b["id"] == "fire" else (10 if label.length() > 6 else 11)) * s)
+		var tw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		draw_string(font, bc + Vector2(-tw / 2, fs * 0.35), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.95, 0.93, 0.86))
+
+
+## Looking through a sight: black all round a round field of view, and the reticle. PSO-1 (SVD): the aiming
+## chevron with three lower ones for longer range, a side scale, the rangefinder curve. PGO-7 (RPG): range marks.
+func _draw_scope(c: Vector2, vs: Vector2, s: float, gun: String) -> void:
+	var r: float = vs.y * 0.47
+	var big: float = vs.length()
+	draw_arc(c, r + big * 0.5, 0, TAU, 96, Color(0, 0, 0), big)
+	draw_arc(c, r + 5 * s, 0, TAU, 96, Color(0.02, 0.02, 0.02, 0.8), 10 * s)
+	var red := Color(0.95, 0.15, 0.08, 0.95)
+	var blk := Color(0.02, 0.02, 0.02, 0.9)
+	var u := r / 10.0
+	if gun == "svd":
+		for k in 4:
+			var cc := c + Vector2(0, k * u * 1.1)
+			var sz: float = u * (0.55 if k == 0 else 0.35)
+			draw_line(cc + Vector2(-sz, sz), cc, red if k == 0 else blk, 2.0 * s)
+			draw_line(cc, cc + Vector2(sz, sz), red if k == 0 else blk, 2.0 * s)
+		draw_line(c + Vector2(-r * 0.75, 0), c + Vector2(-u * 1.2, 0), blk, 1.6 * s)
+		for k in range(1, 6):
+			draw_line(c + Vector2(-u * 1.2 - k * u * 0.55, 0), c + Vector2(-u * 1.2 - k * u * 0.55, -u * (0.5 if k % 2 == 0 else 0.3)), blk, 1.4 * s)
+			draw_line(c + Vector2(u * 1.2 + k * u * 0.55, 0), c + Vector2(u * 1.2 + k * u * 0.55, -u * (0.5 if k % 2 == 0 else 0.3)), blk, 1.4 * s)
+		draw_line(c + Vector2(u * 1.2, 0), c + Vector2(r * 0.75, 0), blk, 1.6 * s)
+		var pts := PackedVector2Array()
+		for k in 12:
+			var x: float = -r * 0.62 + k * u * 0.25
+			pts.append(c + Vector2(x, u * 2.0 + pow(k / 11.0, 1.6) * u * 2.4))
+		draw_polyline(pts, blk, 1.4 * s)
+		draw_line(c + Vector2(-r * 0.62, u * 2.0), c + Vector2(-r * 0.62 + 11 * u * 0.25, u * 2.0), blk, 1.4 * s)
+	else:
+		draw_line(c + Vector2(-r * 0.8, 0), c + Vector2(r * 0.8, 0), blk, 1.6 * s)
+		draw_line(c + Vector2(0, -u * 0.8), c + Vector2(0, u * 0.6), red, 2.2 * s)
+		for k in range(1, 5):
+			var y: float = k * u * 1.0
+			draw_line(c + Vector2(-u * 0.6, y), c + Vector2(u * 0.6, y), blk, 1.6 * s)
+			draw_string(font, c + Vector2(u * 0.8, y + 5 * s), str(k + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, int(13 * s), blk)
+		for k in range(-4, 5):
+			if k != 0:
+				draw_line(c + Vector2(k * u * 0.9, 0), c + Vector2(k * u * 0.9, -u * 0.4), blk, 1.4 * s)
 
 
 # ---------------- menus ----------------

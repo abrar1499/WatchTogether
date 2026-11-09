@@ -19,6 +19,7 @@ const POSTS := [
 	[Vector3(20, 0, -6), 0.0, Vector3(20, 0, -16)],
 	[Vector3(-20, 0, -10), -PI * 0.5, Vector3(-20, 0, -2)],
 	[Vector3(0, 0, -27), PI, Vector3(-6, 0, -27)],
+	[Vector3(15, 3.2, -21.6), PI, Vector3(15, 3.2, -21.6)],     # on the roof, behind the parapet
 ]
 const ENEMY_KINDS := ["gasmask", "olive", "blue"]
 var enemies := []
@@ -482,7 +483,7 @@ func _restore_breakables() -> void:
 ## One round from `from` along `dir`: stops in the first solid thing, but goes on through wood, container sheet
 ## and drums with less force each time; hurts what it hits. Enemy rounds pass through other enemies.
 ## Returns where it ended (for the tracer).
-func shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node) -> Vector3:
+func shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node, power := 1.0) -> Vector3:
 	var space := get_world_3d().direct_space_state
 	var exclude := [shooter.get_rid()]
 	var start := from
@@ -501,7 +502,10 @@ func shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node) -> Vector
 			return p
 		if col.has_method("take_hit"):
 			if shooter == player:
-				col.take_hit(dmg, p, dir)
+				var was_dead: bool = col.dead
+				col.take_hit(dmg, p, dir, power)
+				if not was_dead:
+					ui.hit_marker(col.dead)
 				return p
 			exclude.append(col.get_rid())
 			start = p
@@ -581,36 +585,142 @@ func _explode_drum(col: Node) -> void:
 	if not is_instance_valid(col):
 		return
 	var pos: Vector3 = col.global_position + Vector3(0, 0.45, 0)
+	var rid: RID = col.get_rid()
 	col.queue_free()
+	explode_at(pos, 7.0, 260.0, 120.0, [rid], col)
+
+
+## Any explosion (drum, grenade, rocket): hurts soldiers in the open within `radius` (more the closer), throws them
+## back, shakes the camera, sets off drums and breaks crates nearby.
+func explode_at(pos: Vector3, radius := 7.0, e_dmg := 260.0, p_dmg := 120.0, ignore: Array = [], src: Node = null) -> void:
 	fx.explosion(pos)
-	scorches.append(fx.scorch(Vector3(pos.x, 0.02, pos.z)))
+	if pos.y < 1.3:
+		scorches.append(fx.scorch(Vector3(pos.x, 0.02, pos.z)))
 	snd.explosion(pos)
 	noise(pos, 60.0)
 	var space := get_world_3d().direct_space_state
-	var in_open := func(target: Vector3, ignore: RID) -> bool:
+	var in_open := func(target: Vector3, rid: RID) -> bool:
 		var q := PhysicsRayQueryParameters3D.create(pos, target)
-		q.exclude = [col.get_rid(), ignore]
+		q.exclude = ignore + [rid]
+		q.collision_mask = 1
 		var h := space.intersect_ray(q)
-		return h.is_empty()
+		return h.is_empty() or h.collider.has_method("take_hit")
 	for e in enemies:
 		if e.dead:
 			continue
 		var d: float = e.global_position.distance_to(pos)
-		if d < 7.0 and in_open.call(e.global_position + Vector3(0, 1.0, 0), e.get_rid()):
-			e.blast(260.0 * (1.0 - d / 7.0), pos)
+		if d < radius and in_open.call(e.global_position + Vector3(0, 1.0, 0), e.get_rid()):
+			e.blast(e_dmg * (1.0 - d / radius), pos)
+			if e.dead:
+				ui.hit_marker(true)
 	var dp: float = player.global_position.distance_to(pos)
-	if dp < 7.0 and in_open.call(player.global_position + Vector3(0, 1.0, 0), player.get_rid()):
-		player.hit(120.0 * (1.0 - dp / 7.0), pos)
+	if dp < radius and in_open.call(player.global_position + Vector3(0, 1.0, 0), player.get_rid()):
+		player.hit(p_dmg * (1.0 - dp / radius), pos)
 	player.shake = max(player.shake, clamp(1.2 - dp / 22.0, 0.0, 1.2))
 	for b in breakables:
 		var n = b["node"]
-		if n == null or not is_instance_valid(n) or n == col or n.get_meta("gone", false):
+		if n == null or not is_instance_valid(n) or n == src or n.get_meta("gone", false):
 			continue
 		var dn: float = n.global_position.distance_to(pos)
-		if b["kind"] == "drum" and dn < 4.5:
+		if b["kind"] == "drum" and dn < radius * 0.64:
 			damage_prop(n, 999.0, n.global_position + Vector3(0, 0.5, 0), Vector3.UP)
-		elif b["kind"] == "crate" and dn < 3.2:
+		elif b["kind"] == "crate" and dn < radius * 0.46:
 			_break_crate(n)
+
+
+# ---------------- grenades and rockets ----------------
+var nades := []        # live grenades: {"b": body, "t": fuse left, "owner"}
+var rockets := []      # {"n": node, "v": velocity, "t": age, "owner", "smoke": time to next puff}
+var grenade_mat: StandardMaterial3D
+
+
+## A grenade in flight: a small rigid body that bounces and rolls; goes off when its fuse runs out.
+func spawn_grenade(pos: Vector3, v: Vector3, owner: Node) -> void:
+	var rb := RigidBody3D.new()
+	rb.collision_layer = 2
+	rb.collision_mask = 1
+	rb.mass = 0.4
+	rb.continuous_cd = true
+	var pm := PhysicsMaterial.new()
+	pm.bounce = 0.3
+	pm.friction = 0.9
+	rb.physics_material_override = pm
+	rb.angular_damp = 1.5
+	var cs := CollisionShape3D.new()
+	var sh := SphereShape3D.new()
+	sh.radius = 0.04
+	cs.shape = sh
+	rb.add_child(cs)
+	rb.add_child(fx.grenade_mesh())
+	add_child(rb)
+	rb.global_position = pos
+	rb.linear_velocity = v
+	rb.angular_velocity = Vector3(randf_range(-8, 8), randf_range(-8, 8), randf_range(-8, 8))
+	rb.add_collision_exception_with(owner)
+	nades.append({"b": rb, "t": 2.4, "owner": owner})
+
+
+## Live grenades near a point (enemies run from them, the player is warned).
+func grenades_near(p: Vector3, r: float) -> Array:
+	var out := []
+	for g in nades:
+		if is_instance_valid(g["b"]) and g["b"].global_position.distance_to(p) < r:
+			out.append(g["b"].global_position)
+	return out
+
+
+func fire_rocket(pos: Vector3, dir: Vector3, owner: Node) -> void:
+	var n := fx.rocket_mesh()
+	add_child(n)
+	n.global_transform = Transform3D(Basis.looking_at(dir, Vector3.UP if abs(dir.y) < 0.98 else Vector3.FORWARD), pos)
+	rockets.append({"n": n, "v": dir * 48.0, "t": 0.0, "owner": owner, "smoke": 0.0})
+	snd.rocket(pos)
+
+
+func _physics_process(dt: float) -> void:
+	for i in range(nades.size() - 1, -1, -1):
+		var g: Dictionary = nades[i]
+		g["t"] -= dt
+		var rb = g["b"]
+		if not is_instance_valid(rb):
+			nades.remove_at(i)
+			continue
+		if g["t"] <= 0.0:
+			var p: Vector3 = rb.global_position + Vector3(0, 0.15, 0)
+			rb.queue_free()
+			nades.remove_at(i)
+			explode_at(p, 6.5, 300.0, 130.0)
+	if rockets.is_empty():
+		return
+	var space := get_world_3d().direct_space_state
+	for i in range(rockets.size() - 1, -1, -1):
+		var r: Dictionary = rockets[i]
+		var n: Node3D = r["n"]
+		r["t"] += dt
+		var v: Vector3 = r["v"]
+		# the motor burns for half a second (faster), then a slight drop
+		if r["t"] < 0.5:
+			v += v.normalized() * 50.0 * dt
+		v.y -= 2.0 * dt
+		r["v"] = v
+		var a: Vector3 = n.global_position
+		var b: Vector3 = a + v * dt
+		var q := PhysicsRayQueryParameters3D.create(a, b)
+		q.exclude = [r["owner"].get_rid()]
+		var h := space.intersect_ray(q)
+		if not h.is_empty() or r["t"] > 6.0 or b.y < ground_height(b.x, b.z) - 0.2:
+			var at: Vector3 = (h.position - v.normalized() * 0.15) if not h.is_empty() else b
+			n.queue_free()
+			rockets.remove_at(i)
+			if not h.is_empty() and h.collider.has_meta("hp"):
+				damage_prop(h.collider, 400.0, h.position, h.normal)
+			explode_at(at, 7.5, 420.0, 140.0)
+			continue
+		n.global_transform = Transform3D(Basis.looking_at(v.normalized(), Vector3.UP if abs(v.normalized().y) < 0.98 else Vector3.FORWARD), b)
+		r["smoke"] -= dt
+		if r["smoke"] <= 0.0:
+			r["smoke"] = 0.025
+			fx.trail(b - v.normalized() * 0.5)
 
 
 ## A prop model with a plain box (or cylinder) to collide with.
@@ -693,6 +803,7 @@ func _build_yard() -> void:
 			_prop("res://assets/env/barrier.glb", p, rot + randf_range(-0.015, 0.015), Vector3(2.0, 2.6, 0.3), "concrete")
 	# the building, fuel drums, containers
 	_prop("res://assets/env/building.glb", Vector3(14, 0, -24), 0.0, Vector3(10, 3.2, 7), "concrete")
+	_build_stairs()
 	# fuel drums (a few rounds and they blow up), some near the enemy posts
 	var di := 0
 	for p in [Vector3(8, 0, -2), Vector3(8.7, 0, -2.6), Vector3(8.1, 0, -3.3), Vector3(11.5, 0, -19.6), Vector3(12.2, 0, -20.1),
@@ -729,6 +840,48 @@ func _build_yard() -> void:
 		add_child(mi)
 
 
+## Outside stairs up the building's east wall to the roof (a smooth ramp under the steps to walk on, a railing to
+## stop a fall), and the roof's parapet and water tank to take cover behind.
+func _build_stairs() -> void:
+	var base := Vector3(19.57, 0, -21.3)
+	_prop("res://assets/env/stairs.glb", base, 0.0, Vector3.ZERO, "concrete")
+	var u := Vector3(0, 3.2, -4.8).normalized()
+	var n := Vector3(0, 4.8, 3.2).normalized()
+	var mid := base + Vector3(0, 1.6, -2.1)
+	var tilt := Basis(Vector3(1, 0, 0), n, Vector3(1, 0, 0).cross(n))
+	_coll(Transform3D(tilt, mid - n * 0.1), Vector3(1.1, 0.2, 5.77), "concrete")
+	_coll(Transform3D(Basis(), base + Vector3(0, 3.09, -5.2)), Vector3(1.1, 0.22, 1.6), "concrete")
+	_coll(Transform3D(tilt, mid + Vector3(0.52, 0, 0) + n * 0.6), Vector3(0.06, 1.0, 5.77), "metal")
+	_coll(Transform3D(Basis(), base + Vector3(0.52, 3.7, -5.4)), Vector3(0.06, 1.0, 1.2), "metal")
+	_coll(Transform3D(Basis(), base + Vector3(0, 3.7, -5.97)), Vector3(1.1, 1.0, 0.06), "metal")
+	# roof: parapet (with the gap where the stairs come up) and the tank
+	for c in [[Vector3(14, 3.4, -20.62), Vector3(10, 0.4, 0.24)], [Vector3(14, 3.4, -27.38), Vector3(10, 0.4, 0.24)],
+			[Vector3(9.12, 3.4, -24), Vector3(0.24, 0.4, 7)], [Vector3(18.88, 3.4, -23.3), Vector3(0.24, 0.4, 5.6)]]:
+		_coll(Transform3D(Basis(), c[0]), c[1], "concrete")
+	var tank := StaticBody3D.new()
+	tank.set_meta("surf", "metal")
+	var cs := CollisionShape3D.new()
+	var cy := CylinderShape3D.new()
+	cy.radius = 1.12
+	cy.height = 0.6
+	cs.shape = cy
+	tank.add_child(cs)
+	add_child(tank)
+	tank.global_position = Vector3(11, 3.5, -25.5)
+
+
+func _coll(xf: Transform3D, size: Vector3, surf: String) -> void:
+	var b := StaticBody3D.new()
+	b.set_meta("surf", surf)
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = size
+	cs.shape = sh
+	b.add_child(cs)
+	add_child(b)
+	b.global_transform = xf
+
+
 # ---------------- enemies ----------------
 func _spawn_wave() -> void:
 	for e in enemies:
@@ -736,6 +889,7 @@ func _spawn_wave() -> void:
 	enemies.clear()
 	if wave > 0:
 		_restore_breakables()
+		player.grenades = min(5, player.grenades + 2)
 	wave += 1
 	for p in POSTS:
 		var e = load("res://scripts/enemy.gd").new()
@@ -970,7 +1124,7 @@ class FX extends Node3D:
 		var cam := get_viewport().get_camera_3d()
 		if cam:
 			near = clamp(cam.global_position.distance_to(p) / 1.2, 0.5, 1.0)
-		var size: float = {"pistol": 0.11, "m4": 0.34, "ak": 0.42}.get(gun, 0.34) * near * randf_range(0.8, 1.2)
+		var size: float = {"pistol": 0.11, "m4": 0.34, "ak": 0.42, "svd": 0.55, "shotgun": 0.62, "rpg": 0.85}.get(gun, 0.34) * near * randf_range(0.8, 1.2)
 		var dn := d.normalized()
 		var up := Vector3.UP if abs(dn.y) < 0.98 else Vector3.FORWARD
 		root.global_transform = Transform3D(Basis.looking_at(dn, up), p)
@@ -984,7 +1138,7 @@ class FX extends Node3D:
 		root.visible = true
 		f["t"] = 0.045
 		light.global_position = p + dn * 0.15
-		light.light_energy = 0.8 if gun == "pistol" else 3.5
+		light.light_energy = 0.8 if gun == "pistol" else (6.0 if gun == "rpg" or gun == "shotgun" else 3.5)
 		light_t = 0.05
 		if gun != "pistol" and shot_n % 2 == 0:
 			var s: Sprite3D = puffs[puff_i % puffs.size()]
@@ -1132,6 +1286,96 @@ class FX extends Node3D:
 		mi.rotation.y = randf() * TAU
 		return mi
 
+	## A frag grenade: dark olive egg, fuse on top, the spoon down one side (metres).
+	func grenade_mesh() -> Node3D:
+		if grenade_m == null:
+			grenade_m = StandardMaterial3D.new()
+			grenade_m.albedo_color = Color(0.2, 0.23, 0.15)
+			grenade_m.roughness = 0.7
+			grenade_m.metallic = 0.2
+			steel_m = StandardMaterial3D.new()
+			steel_m.albedo_color = Color(0.5, 0.5, 0.48)
+			steel_m.metallic = 0.6
+			steel_m.roughness = 0.45
+		var root := Node3D.new()
+		var body := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.032
+		sm.height = 0.074
+		sm.radial_segments = 14
+		sm.rings = 8
+		body.mesh = sm
+		body.material_override = grenade_m
+		root.add_child(body)
+		var fuse := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.009
+		cm.bottom_radius = 0.011
+		cm.height = 0.026
+		cm.radial_segments = 8
+		fuse.mesh = cm
+		fuse.material_override = steel_m
+		fuse.position = Vector3(0, 0.044, 0)
+		root.add_child(fuse)
+		var spoon := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.012, 0.07, 0.006)
+		spoon.mesh = bm
+		spoon.material_override = steel_m
+		spoon.position = Vector3(0, 0.022, 0.03)
+		spoon.rotation.x = -0.15
+		root.add_child(spoon)
+		return root
+
+	var grenade_m: StandardMaterial3D
+	var steel_m: StandardMaterial3D
+	var rocket_m: Mesh
+
+	## The PG-7V in flight (the warhead from the RPG model) with a flame and a glow at the tail.
+	func rocket_mesh() -> Node3D:
+		if rocket_m == null:
+			var g: Node3D = load("res://assets/guns/rpg.glb").instantiate()
+			var w: MeshInstance3D = g.find_child("warhead", true, false)
+			rocket_m = w.mesh
+			g.free()
+		var root := Node3D.new()
+		var mi := MeshInstance3D.new()
+		mi.mesh = rocket_m
+		mi.position = Vector3(0, -0.072, 0.05)
+		mi.rotation.y = PI          # the warhead model points along +z; the node flies along -z
+		root.add_child(mi)
+		var fl := Sprite3D.new()
+		fl.texture = load("res://assets/fx/flash_front.png")
+		fl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		fl.shaded = false
+		fl.pixel_size = 0.0018
+		fl.modulate = Color(1, 0.8, 0.5)
+		fl.position = Vector3(0, 0, 0.12)
+		root.add_child(fl)
+		var l := OmniLight3D.new()
+		l.light_color = Color(1, 0.6, 0.3)
+		l.light_energy = 2.5
+		l.omni_range = 5.0
+		l.position = Vector3(0, 0, 0.3)
+		root.add_child(l)
+		return root
+
+	## Rocket smoke: a grey puff left behind, slowly growing and fading.
+	func trail(p: Vector3) -> void:
+		if chip_list.is_empty():
+			_make_chips()
+		_big(p + Vector3(randf_range(-0.05, 0.05), randf_range(-0.05, 0.05), randf_range(-0.05, 0.05)), 0.35, 1.4, randf_range(1.2, 1.8),
+			Vector3(randf_range(-0.2, 0.2), 0.3, randf_range(-0.2, 0.2)), Color(0.78, 0.77, 0.74, 0.55), Color(0.85, 0.84, 0.8, 0.0))
+
+	## RPG back-blast: a burst of flame and dust out of the back of the tube.
+	func backblast(p: Vector3, d: Vector3) -> void:
+		if chip_list.is_empty():
+			_make_chips()
+		_big(p, 0.9, 1.6, 0.18, d * 3.0, Color(1.0, 0.85, 0.5, 0.9), Color(1.0, 0.5, 0.2, 0.0), true)
+		for i in 5:
+			_big(p + d * (0.3 + i * 0.35), 0.8 + i * 0.25, 2.5, randf_range(1.0, 1.8), d * (2.0 + i) + Vector3(0, 0.4, 0),
+				Color(0.75, 0.68, 0.56, 0.6), Color(0.8, 0.74, 0.62, 0.0))
+
 	func blood(p: Vector3, n: Vector3) -> void:
 		for i in 2:
 			var s: Sprite3D = puffs[puff_i % puffs.size()]
@@ -1251,6 +1495,10 @@ class Snd extends Node:
 	const PISTOL_ON := [0.04, 0.77, 1.515, 2.435, 3.025, 3.67]
 	const SAND_STEPS := [1.34, 1.925, 2.605, 3.845, 4.435, 9.555, 11.485, 12.185, 13.62, 16.51, 17.37, 23.095]
 	const RUN_STEPS := [0.1, 0.4, 0.665, 1.21, 1.515, 1.82, 2.11, 2.42, 3.04, 3.36, 3.685, 4.01]
+	const AK_SINGLE := [0.4, 1.31, 2.19, 3.41]      # the four single shots at the start of the AK recording
+	# the ElevenLabs grunts: ten short ones (start, end)
+	const GRUNTS := [[0.1, 0.58], [0.92, 1.46], [1.74, 2.47], [2.81, 3.21], [3.5, 4.04], [4.36, 4.59], [5.03, 5.49],
+		[5.74, 6.41], [6.7, 6.98], [7.31, 7.93]]
 	var auto: AudioStreamPlayer
 	var auto_loop := []
 	var auto_kind := ""
@@ -1261,8 +1509,9 @@ class Snd extends Node:
 
 	func _ready() -> void:
 		for k in ["ak", "m4", "pistol", "reload_rifle", "reload_pistol", "steps_sand", "steps_run",
-				"enemy_ak", "die_male", "die_collapse", "die_scream", "die_fall", "die_breath"]:
+				"enemy_ak", "die_male", "die_collapse", "die_scream", "die_fall", "die_breath", "hurt_groan", "cry_pain", "grunts"]:
 			streams[k] = load("res://assets/sfx/%s.mp3" % k)
+		streams["whoosh"] = load("res://assets/music/whoosh.mp3")
 		streams["boom"] = load("res://assets/music/escape.mp3")   # the impact hit near the end of "Action trailer"
 		auto = AudioStreamPlayer.new()
 		add_child(auto)
@@ -1279,7 +1528,8 @@ class Snd extends Node:
 			add_child(p)
 			world_shots.append(p)
 
-	func _play(k: String, from: float, dur: float, vol_db := 0.0) -> void:
+	## from/dur in the file's own seconds; pitch only changes how it is played back; fade: the last seconds faded out
+	func _play(k: String, from: float, dur: float, vol_db := 0.0, pitch := 1.0, fade := 0.0) -> void:
 		var best: AudioStreamPlayer = one_shots[0]
 		for p in one_shots:
 			if not p.playing:
@@ -1287,10 +1537,13 @@ class Snd extends Node:
 				break
 		best.stream = streams[k]
 		best.volume_db = vol_db
+		best.pitch_scale = pitch
 		best.play(from)
 		best.set_meta("stop", from + dur)
+		best.set_meta("vol", vol_db)
+		best.set_meta("fade", fade)
 
-	func _play3d(k: String, pos: Vector3, from: float, dur: float, vol_db := 0.0) -> void:
+	func _play3d(k: String, pos: Vector3, from: float, dur: float, vol_db := 0.0, pitch := 1.0, fade := 0.0) -> void:
 		var best: AudioStreamPlayer3D = world_shots[0]
 		for p in world_shots:
 			if not p.playing:
@@ -1298,9 +1551,49 @@ class Snd extends Node:
 				break
 		best.stream = streams[k]
 		best.volume_db = vol_db
+		best.pitch_scale = pitch
 		best.global_position = pos
 		best.play(from)
 		best.set_meta("stop", from + dur)
+		best.set_meta("vol", vol_db)
+		best.set_meta("fade", fade)
+
+	## SVD, shotgun, RPG: one of the AK's single shots played lower (heavier) and louder.
+	func shot(gun: String) -> void:
+		var at: float = AK_SINGLE[randi() % AK_SINGLE.size()]
+		match gun:
+			"svd":
+				_play("ak", at, 0.85, 3.0, 0.8, 0.2)
+			"shotgun":
+				_play("ak", at, 0.85, 5.0, 0.62, 0.25)
+			"rpg":
+				_play("ak", at, 0.85, 2.0, 0.48, 0.3)
+
+	func rocket(_pos: Vector3) -> void:
+		_play("whoosh", 0.0, 2.5, 2.0, 1.0, 0.8)
+
+	## The shotgun's pump: the bolt rack from the rifle reload, a little quicker.
+	func pump() -> void:
+		_play("reload_rifle", 0.44, 0.42, -1.0, 1.15)
+
+	func holster() -> void:
+		_play("reload_rifle", 0.05, 0.32, -7.0, 0.9)
+
+	func climb() -> void:
+		_play("steps_run", RUN_STEPS[randi() % RUN_STEPS.size()], 0.28, -3.0)
+		get_tree().create_timer(0.3).timeout.connect(func(): _play("steps_run", RUN_STEPS[randi() % RUN_STEPS.size()], 0.28, -5.0))
+
+	## The player hit: a short groan (the first one in the file), a longer one for a heavy hit.
+	func hurt(heavy: bool) -> void:
+		if heavy:
+			_play("hurt_groan", 1.45, 1.1, 0.0, 1.0, 0.35)
+		else:
+			_play("hurt_groan", 0.1, 0.88, -2.0, 1.0, 0.15)
+
+	## An enemy hit but not killed: one of the grunts, from where he is.
+	func grunt(pos: Vector3) -> void:
+		var g: Array = GRUNTS[randi() % GRUNTS.size()]
+		_play3d("grunts", pos, g[0], g[1] - g[0] + 0.05, 2.0, randf_range(0.92, 1.05))
 
 	## A drum going up: the impact hit near the end of the action trailer, from where it happened.
 	func explosion(pos: Vector3) -> void:
@@ -1320,11 +1613,13 @@ class Snd extends Node:
 		elif kind == "head":
 			voice = "die_collapse" if randf() < 0.3 else ""
 		elif kind == "blast":
-			voice = "die_scream"
+			voice = "die_scream" if randf() < 0.5 else "cry_pain"
 		else:
 			var r := randf()
-			voice = "die_male" if r < 0.45 else ("die_collapse" if r < 0.8 else "die_scream")
-		if voice != "":
+			voice = "die_male" if r < 0.35 else ("die_collapse" if r < 0.6 else ("cry_pain" if r < 0.85 else "die_scream"))
+		if voice == "cry_pain":
+			_play3d(voice, pos, 0.05, 2.6, 0.0, 1.0, 0.6)    # the cry of pain, its first breath and the loud part
+		elif voice != "":
 			if pl:
 				_play(voice, 0.0, 4.0)
 			else:
@@ -1367,11 +1662,20 @@ class Snd extends Node:
 		if auto.playing and auto.get_playback_position() >= auto_loop[1]:
 			auto.seek(auto_loop[0])
 		for p in one_shots:
-			if p.playing and p.get_playback_position() >= float(p.get_meta("stop")):
-				p.stop()
+			_tail(p)
 		for p in world_shots:
-			if p.playing and p.get_playback_position() >= float(p.get_meta("stop")):
-				p.stop()
+			_tail(p)
+
+	func _tail(p: Node) -> void:
+		if not p.playing:
+			return
+		var left: float = float(p.get_meta("stop")) - p.get_playback_position()
+		if left <= 0.0:
+			p.stop()
+			return
+		var fade: float = p.get_meta("fade", 0.0)
+		if fade > 0.0 and left < fade:
+			p.volume_db = float(p.get_meta("vol", 0.0)) + linear_to_db(max(0.001, left / fade))
 
 
 # =============== music: the player's tracks, mixed softly by what is happening ===============

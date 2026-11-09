@@ -295,11 +295,13 @@ def building():
     m = Mesh()
     W, D, H = 10.0, 7.0, 3.2
     box(m, "plaster", (0, H / 2, 0), (W, H, D), 3.2)
+    # parapet round the roof, with a gap at the back of the east side where the outside stairs come up
+    g0 = GAP_Z1
     for (c, s) in (((0, H + 0.2, D / 2 - 0.12), (W, 0.4, 0.24)), ((0, H + 0.2, -D / 2 + 0.12), (W, 0.4, 0.24)),
-                   ((W / 2 - 0.12, H + 0.2, 0), (0.24, 0.4, D)), ((-W / 2 + 0.12, H + 0.2, 0), (0.24, 0.4, D))):
+                   ((W / 2 - 0.12, H + 0.2, (g0 + D / 2) / 2), (0.24, 0.4, D / 2 - g0)), ((-W / 2 + 0.12, H + 0.2, 0), (0.24, 0.4, D))):
         box(m, "plaster", c, s, 3.2, 0.02)
     for (c, s) in (((0, H + 0.42, D / 2 - 0.12), (W + 0.04, 0.05, 0.3)), ((0, H + 0.42, -D / 2 + 0.12), (W + 0.04, 0.05, 0.3)),
-                   ((W / 2 - 0.12, H + 0.42, 0), (0.3, 0.05, D)), ((-W / 2 + 0.12, H + 0.42, 0), (0.3, 0.05, D))):
+                   ((W / 2 - 0.12, H + 0.42, (g0 + D / 2) / 2), (0.3, 0.05, D / 2 - g0)), ((-W / 2 + 0.12, H + 0.42, 0), (0.3, 0.05, D))):
         box(m, "trim", c, s, 3.2, 0.01)
     zf = D / 2
     # door
@@ -338,7 +340,58 @@ def building():
             "tank": {"color": (0.08, 0.08, 0.09), "metal": 0.0, "rough": 0.6}}
     return m, mats, {"plaster": img_bytes(alb), "plaster_n": img_bytes(nm, "PNG"), "doorpaint": img_bytes(tex_paint((0.85, 0.85, 0.85), 256, 6))}
 
+GAP_Z1 = -2.1   # building: the east parapet stops here (local z); the stairs' landing meets the roof behind it
+
+def stairs():
+    """Outside concrete stairs up to the building's roof: 16 steps of 0.2 x 0.3 m, 1.1 m wide, rising toward -z from
+    z = 0, then a 1.2 m landing at 3.2 m. Steel railing on the open side (+x) and across the end of the landing."""
+    m = Mesh()
+    n, rise, run, wd = 16, 0.2, 0.3, 1.1
+    for i in range(n):
+        top = (i + 1) * rise
+        box(m, "concrete", (0, top / 2, -(i + 0.5) * run), (wd, top, run), 2.0, 0.008)
+    z0, z1 = -n * run, -n * run - 1.2
+    box(m, "concrete", (0, 3.2 - 0.11, (z0 + z1) / 2), (wd, 0.22, 1.2), 2.0, 0.01)
+    for z in (z0 - 0.1, z1 + 0.1):
+        box(m, "concrete", (0.4, 1.5, z), (0.22, 3.0, 0.22), 2.0, 0.01)
+    # railing: posts, a sloping handrail up the flight, a level one round the landing
+    def post(z, y0):
+        box(m, "steel", (0.52, y0 + 0.5, z), (0.045, 1.0, 0.045), 1.0, 0.004)
+    def rail(a, b, size=0.05):
+        a, b = np.array(a, float), np.array(b, float)
+        d = b - a
+        L = float(np.linalg.norm(d))
+        zt = d / L
+        yt = nrm(np.cross(zt, np.array([1.0, 0, 0])))
+        if yt[1] < 0:
+            yt = -yt
+        xt = np.cross(yt, zt)
+        R = np.stack([xt, yt, zt], axis=1)
+        box(m, "steel", (0, 0, 0), (size, size, L), 1.0, 0.004, xf=(R, (a + b) / 2))
+    for k in range(5):
+        z = -0.15 - k * 1.15
+        post(z, rise * (int(-z / run) + 1))
+    post(z0 - 0.05, 3.2)
+    post(z1 + 0.03, 3.2)
+    post(z1 + 0.03, 3.2)
+    y_at = lambda z: rise * (-z / run) + 0.2
+    rail((0.52, y_at(-0.15) + 0.95, -0.15), (0.52, 3.2 + 0.95, z0 - 0.05))
+    rail((0.52, y_at(-0.15) + 0.5, -0.15), (0.52, 3.2 + 0.5, z0 - 0.05), 0.03)
+    rail((0.52, 4.15, z0 - 0.05), (0.52, 4.15, z1 + 0.03))
+    rail((0.52, 3.7, z0 - 0.05), (0.52, 3.7, z1 + 0.03), 0.03)
+    rail((0.52, 4.15, z1 + 0.03), (-0.55, 4.15, z1 + 0.03))
+    rail((0.52, 3.7, z1 + 0.03), (-0.55, 3.7, z1 + 0.03), 0.03)
+    box(m, "steel", (-0.53, 3.7, z1 + 0.03), (0.045, 1.0, 0.045), 1.0, 0.004)
+    alb, nm = tex_concrete()
+    mats = {"concrete": {"color": (0.9, 0.88, 0.84), "metal": 0.0, "rough": 0.92, "tex": "concrete", "ntex": "concrete_n"},
+            "steel": {"color": (0.2, 0.24, 0.2), "metal": 0.5, "rough": 0.55}}
+    return m, mats, {"concrete": img_bytes(alb), "concrete_n": img_bytes(nm, "PNG")}
+
+ONLY = [x for x in os.environ.get("ONLY", "").split(",") if x]   # rebuild just these (the rest is still built, so the noise is the same)
+
 def emit(name, built, nodes=()):
+    if ONLY and name not in ONLY:
+        return
     m, mats, imgs = built
     used = {k: mats[k] for k in m.parts}
     keep = {k: v for k, v in imgs.items() if any(mats[u].get("tex") == k or mats[u].get("ntex") == k for u in used)}
@@ -356,6 +409,8 @@ emit("sandbag", sandbag())
 emit("building", building())
 for nm_, fn in (("sand", tex_sand), ("rock", tex_rock)):
     alb, nmap = fn()
-    save(alb, nm_ + "_albedo.jpg")
-    save(nmap, nm_ + "_normal.png", "PNG")
-print("textures written")
+    if not ONLY or "textures" in ONLY:
+        save(alb, nm_ + "_albedo.jpg")
+        save(nmap, nm_ + "_normal.png", "PNG")
+print("textures done")
+emit("stairs", stairs())

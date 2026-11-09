@@ -164,7 +164,7 @@ AX_Y = (np.array([[1, 0, 0], [0, 0, 1], [0, -1, 0]], float), V(0, 0, 0))
 def at(frame, t):
     return (frame[0], np.array(t, float))
 
-def write_glb(path, mesh, materials, images, nodes_extra):
+def write_glb(path, mesh, materials, images, nodes_extra, subs=()):
     """materials: name -> dict(color, metal, rough, tex (image name or None), unlit, emissive)."""
     bin_ = bytearray()
     views, accs = [], []
@@ -189,21 +189,26 @@ def write_glb(path, mesh, materials, images, nodes_extra):
         gl_images.append({"bufferView": vi, "mimeType": mime})
     textures = [{"sampler": 0, "source": i} for i in range(len(gl_images))]
     mats, prims = [], []
-    for mname, P in mesh.parts.items():
+    mat_ids = {}
+    def prims_of(m):
+      out = []
+      for mname, P in m.parts.items():
         md = materials[mname]
         pos = np.array(P["pos"], np.float32)
         nr = np.array(P["nrm"], np.float32)
         uv = np.array(P["uv"], np.float32)
-        mat = {"name": mname, "pbrMetallicRoughness": {"baseColorFactor": list(md["color"]) + [1.0], "metallicFactor": md["metal"], "roughnessFactor": md["rough"]}}
-        if md.get("tex"):
-            mat["pbrMetallicRoughness"]["baseColorTexture"] = {"index": img_ids[md["tex"]]}
-        if md.get("ntex"):
-            mat["normalTexture"] = {"index": img_ids[md["ntex"]], "scale": md.get("nscale", 1.0)}
-        if md.get("unlit"):
-            mat["extensions"] = {"KHR_materials_unlit": {}}
-        if md.get("emissive"):
-            mat["emissiveFactor"] = list(md["emissive"])
-        mats.append(mat)
+        if mname not in mat_ids:
+            mat = {"name": mname, "pbrMetallicRoughness": {"baseColorFactor": list(md["color"]) + [1.0], "metallicFactor": md["metal"], "roughnessFactor": md["rough"]}}
+            if md.get("tex"):
+                mat["pbrMetallicRoughness"]["baseColorTexture"] = {"index": img_ids[md["tex"]]}
+            if md.get("ntex"):
+                mat["normalTexture"] = {"index": img_ids[md["ntex"]], "scale": md.get("nscale", 1.0)}
+            if md.get("unlit"):
+                mat["extensions"] = {"KHR_materials_unlit": {}}
+            if md.get("emissive"):
+                mat["emissiveFactor"] = list(md["emissive"])
+            mats.append(mat)
+            mat_ids[mname] = len(mats) - 1
         a = []
         for arr, typ in ((pos, "VEC3"), (nr, "VEC3"), (uv, "VEC2")):
             vi = add_view(arr.tobytes(), 34962)
@@ -212,12 +217,18 @@ def write_glb(path, mesh, materials, images, nodes_extra):
                 acc["min"] = pos.min(0).tolist(); acc["max"] = pos.max(0).tolist()
             accs.append(acc)
             a.append(len(accs) - 1)
-        prims.append({"attributes": {"POSITION": a[0], "NORMAL": a[1], "TEXCOORD_0": a[2]}, "material": len(mats) - 1})
-    nodes = [{"name": "model", "mesh": 0, "children": list(range(1, 1 + len(nodes_extra)))}]
+        out.append({"attributes": {"POSITION": a[0], "NORMAL": a[1], "TEXCOORD_0": a[2]}, "material": mat_ids[mname]})
+      return out
+    meshes = [{"name": "gun", "primitives": prims_of(mesh)}]
+    for (nm, sm, t) in subs:
+        meshes.append({"name": nm, "primitives": prims_of(sm)})
+    nodes = [{"name": "model", "mesh": 0, "children": list(range(1, 1 + len(nodes_extra) + len(subs)))}]
     for nm, t in nodes_extra:
         nodes.append({"name": nm, "translation": list(map(float, t))})
+    for i, (nm, sm, t) in enumerate(subs):
+        nodes.append({"name": nm, "mesh": 1 + i, "translation": list(map(float, t))})
     js = {"asset": {"version": "2.0", "generator": "dust-signal gunbuild"}, "scene": 0, "scenes": [{"nodes": [0]}], "nodes": nodes,
-          "meshes": [{"name": "gun", "primitives": prims}], "materials": mats, "accessors": accs, "bufferViews": views,
+          "meshes": meshes, "materials": mats, "accessors": accs, "bufferViews": views,
           "buffers": [{"byteLength": 0}], "extensionsUsed": ["KHR_materials_unlit"]}
     if gl_images:
         js["images"] = gl_images; js["textures"] = textures
@@ -231,5 +242,5 @@ def write_glb(path, mesh, materials, images, nodes_extra):
     out = struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(jb) + 8 + len(bin_))
     out += struct.pack("<II", len(jb), 0x4E4F534A) + jb + struct.pack("<II", len(bin_), 0x004E4942) + bytes(bin_)
     open(path, "wb").write(out)
-    tris = sum(len(P["pos"]) for P in mesh.parts.values()) // 3
+    tris = sum(len(P["pos"]) for m in [mesh] + [x[1] for x in subs] for P in m.parts.values()) // 3
     return tris
