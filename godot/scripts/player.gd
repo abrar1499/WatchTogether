@@ -100,6 +100,7 @@ var snd: Node       # sound helper (main.gd)
 
 var stride_t := 0.0
 var r_corr := Quaternion.IDENTITY   # right wrist turn that puts the grip square in the palm
+var gun_in_hand_b := Basis()        # gun axes in the right hand's frame
 var finger_set := []                # [bone, rest rotation, curl axis (bone space), angle]
 var vm: Node3D                      # first-person gun holder (on the camera)
 var vm_guns := {}
@@ -245,6 +246,7 @@ func _calibrate_and_attach() -> void:
 		var grip_c := GRIP_DOWN.normalized() * 0.05 * gs
 		var wrist_g := grip_c - d_best * (r_len * 0.78) - n_best * 0.03
 		var gun_in_hand := Transform3D(r_basis_g, wrist_g).affine_inverse()
+		gun_in_hand_b = gun_in_hand.basis
 		var holder := Node3D.new()
 		holder.name = k
 		# relative to the hand bone (which carries the wrist turn at run time); the bone's scale cancels out
@@ -518,8 +520,8 @@ func _physics_process(dt: float) -> void:
 
 	_animate(dt)
 	tree.advance(dt)
-	_bend_spine(dt)
 	_pose_hands()
+	_bend_spine(dt)
 	_update_camera(dt)
 	_footsteps(dt)
 
@@ -612,26 +614,43 @@ func _animate(dt: float) -> void:
 		guns[g].visible = g == w["gun"] and switching < 0.2 and view != 2
 
 
-var aim_k := 0.35
+var aim_k := 0.0
 var spine_ids := []
-## Lean the chest up or down with the camera pitch so the rifle follows the crosshair.
+## Chest. Relaxed: lean a little with the camera pitch. Aiming or firing: turn the chest so the barrel lies on the
+## crosshair line whatever the legs are doing (the strafe and run clips twist and tip the hips, which used to
+## carry the rifle off to the side and down).
 func _bend_spine(dt: float) -> void:
 	if spine_ids.is_empty():
 		for n in ["mixamorigSpine", "mixamorigSpine1", "mixamorigSpine2"]:
 			spine_ids.append(skel.find_bone(n))
 	var aim_now: bool = aiming or firing or t - last_shot < 2.5
-	aim_k = lerp(aim_k, 1.0 if aim_now else 0.35, min(1.0, dt * 8.0))
-	var total: float = clamp(pitch, -0.9, 0.9) * aim_k
-	if abs(total) < 0.001:
+	aim_k = lerp(aim_k, 1.0 if aim_now else 0.0, min(1.0, dt * 10.0))
+	var sk_inv: Basis = skel.global_transform.basis.orthonormalized().inverse()
+	var lean: float = clamp(pitch, -0.9, 0.9) * 0.35 * (1.0 - aim_k)
+	if abs(lean) > 0.001:
+		_turn_spine(Quaternion((sk_inv * global_transform.basis.x).normalized(), lean))
+	var w: float = aim_k * (1.0 - rl_w)
+	if w < 0.01:
 		return
-	var axis_skel: Vector3 = (skel.global_transform.basis.orthonormalized().inverse() * global_transform.basis.x).normalized()
-	for i in spine_ids.size():
-		var b: int = spine_ids[i]
-		var par: int = skel.get_bone_parent(b)
-		var pg: Basis = skel.get_bone_global_pose(par).basis.orthonormalized()
-		var axis_p: Vector3 = (pg.inverse() * axis_skel).normalized()
-		var q := Quaternion(axis_p, total / 3.0)
-		skel.set_bone_pose_rotation(b, q * skel.get_bone_pose_rotation(b))
+	var hb: Basis = skel.get_bone_global_pose(rh_bone).basis.orthonormalized()
+	var gun_dir: Vector3 = (hb * gun_in_hand_b).z.normalized()
+	var p := pitch + kick_p
+	var want := Vector3(-sin(yaw) * cos(p), sin(p), -cos(yaw) * cos(p))
+	var want_s: Vector3 = (sk_inv * want).normalized()
+	if gun_dir.dot(want_s) > 0.99999:
+		return
+	_turn_spine(Quaternion.IDENTITY.slerp(Quaternion(gun_dir, want_s), w))
+
+
+## Turn the chest by q (skeleton space), shared over the three spine bones.
+func _turn_spine(q: Quaternion) -> void:
+	var ang := q.get_angle()
+	if ang < 0.0005:
+		return
+	var axis := q.get_axis().normalized()
+	for b in spine_ids:
+		var pg: Basis = skel.get_bone_global_pose(skel.get_bone_parent(b)).basis.orthonormalized()
+		skel.set_bone_pose_rotation(b, Quaternion((pg.inverse() * axis).normalized(), ang / 3.0) * skel.get_bone_pose_rotation(b))
 
 
 func _update_camera(dt: float) -> void:
