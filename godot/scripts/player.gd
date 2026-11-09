@@ -21,7 +21,7 @@ const STATES := {"idle": "idle", "aim": "aim", "kneel": "kneel", "kneel_aim": "c
 	"walk": "walk", "walk_b": "walkBack", "walk_r": "walkR", "walk_l": "walkL",
 	"run": "run", "run_b": "runBack", "run_r": "runStrafeR", "run_l": "runStrafeL",
 	"c_walk": "crouchWalk2", "c_back": "crouchBack", "c_run": "crouchWalk2", "c_r": "crouchWalk2", "c_l": "crouchWalk2",
-	"dead": "dieFront"}
+	"dead": "dieFront", "kick": "kick"}
 # (the "crouchRun" clip has its hips 1.8 m behind the body, which put the soldier behind the camera: crouch-running
 # plays the crouch walk faster instead)
 const UPPER := ["mixamorigSpine", "mixamorigSpine1", "mixamorigSpine2", "mixamorigNeck", "mixamorigHead",
@@ -139,6 +139,17 @@ var hurt_t := 0.0                   # red flash on the screen when hit
 var quiet_t := 0.0                  # time since the last hit (health comes back after 5 s)
 var hurt_dir := 0.0                 # where the last hit came from (screen angle)
 var groan_t := 0.0                  # the player's pain groan: not more than one at a time
+var infinite := true                # practice yard: the reserve never runs dry (missions: what you carry)
+var act_kind := ""                  # what the ACTION button would do here: "kick" a door, "take" a dead man's gun, "item"
+var act_node: Node = null
+var act_label := ""
+var act_doing := ""
+var act_obj: Node = null
+var act_t := -1.0                   # doing it: time into it
+var act_check := 0.0
+var do_w := 0.0
+var leg_t := 0.0                    # wounded in the leg: limping for a while
+var arm_t := 0.0                    # wounded in the arm: shakier aim for a while
 var grenades := 4
 var throw_t := -1.0                 # grenade throw: time into it (-1: not throwing)
 var thrown := false
@@ -808,15 +819,19 @@ func jump() -> void:
 
 
 func busy() -> bool:
-	return dead or climb_t >= 0.0 or throw_t >= 0.0 or hol_t >= 0.0
+	return dead or climb_t >= 0.0 or throw_t >= 0.0 or hol_t >= 0.0 or act_t >= 0.0
 
 
 func swap() -> void:
-	select_weapon((wi + 1) % weapons.size())
+	for k in range(1, weapons.size()):
+		var i := (wi + k) % weapons.size()
+		if weapons[i].get("own", true):
+			select_weapon(i)
+			return
 
 
 func select_weapon(i: int) -> void:
-	if reloading > 0 or switching > 0 or busy() or i == wi:
+	if reloading > 0 or switching > 0 or busy() or i == wi or not weapons[i].get("own", true):
 		return
 	wi = i
 	switching = 0.4
@@ -994,7 +1009,7 @@ func _physics_process(dt: float) -> void:
 		firing = false
 		aiming = false
 		dead_t += dt
-		if dead_t > 4.0:
+		if dead_t > 4.0 and fx.get_parent().mission == null:
 			_respawn()
 	var w: Dictionary = weapons[wi]
 	# ---- movement: camera-relative, speeds that match the clips ----
@@ -1021,6 +1036,10 @@ func _physics_process(dt: float) -> void:
 				spd = WALK_BACK if fw < -0.3 else WALK
 			if aiming:
 				spd = min(spd, AIM_WALK)
+			if leg_t > 0.0:
+				spd = min(spd, 1.9)      # a leg wound: no sprinting
+			if act_t >= 0.0:
+				spd = 0.0
 			target = md * spd
 		var accel := 5.0 if target.length() > Vector2(vel.x, vel.z).length() else 9.0
 		var hv := Vector3(vel.x, 0, vel.z).lerp(target, min(1.0, dt * accel))
@@ -1043,6 +1062,11 @@ func _physics_process(dt: float) -> void:
 	if climb_check_t <= 0.0:
 		climb_check_t = 0.25
 		can_climb = not busy() and is_on_floor() and _climb_probe(false)
+		_probe_action()
+	leg_t = max(0.0, leg_t - dt)
+	arm_t = max(0.0, arm_t - dt)
+	if act_t >= 0.0:
+		_act_step(dt)
 
 	# ---- holster, grenade ----
 	if hol_t >= 0.0:
@@ -1073,7 +1097,7 @@ func _physics_process(dt: float) -> void:
 			var n: int = min(w["size"] - w["mag"], w["res"])
 			w["mag"] += n
 			w["res"] -= n
-			if w["res"] < w["size"]:
+			if infinite and w["res"] < w["size"]:
 				w["res"] = w["res0"]   # practice yard: the reserve never runs dry
 	if firing and holstered and not busy():
 		_start_draw()
@@ -1116,12 +1140,13 @@ func _step_up(target: Vector3, dt: float) -> void:
 
 ## Where a round along `dir` through `p` (a point on the body capsule) really hits this skeleton: "head", "torso",
 ## "limb", or "" when it only passes close by. Bones as capsules round the limbs, chest and head.
-const HITBOX := [["Hips", "Spine2", 0.17, "torso"], ["Spine2", "Neck", 0.16, "torso"], ["Neck", "Head", 0.075, "torso"],
+const HITBOX := [["Hips", "Spine2", 0.17, "torso"], ["Spine2", "Neck", 0.16, "torso"], ["Neck", "Head", 0.065, "torso"],
 	["Head", "HeadTop_End", 0.105, "head"],
-	["LeftArm", "LeftForeArm", 0.065, "limb"], ["LeftForeArm", "LeftHand", 0.055, "limb"],
-	["RightArm", "RightForeArm", 0.065, "limb"], ["RightForeArm", "RightHand", 0.055, "limb"],
-	["LeftUpLeg", "LeftLeg", 0.095, "limb"], ["LeftLeg", "LeftFoot", 0.07, "limb"],
-	["RightUpLeg", "RightLeg", 0.095, "limb"], ["RightLeg", "RightFoot", 0.07, "limb"]]
+	["LeftArm", "LeftForeArm", 0.065, "arm_l"], ["LeftForeArm", "LeftHand", 0.055, "arm_l"],
+	["RightArm", "RightForeArm", 0.065, "arm_r"], ["RightForeArm", "RightHand", 0.055, "arm_r"],
+	["LeftUpLeg", "LeftLeg", 0.095, "leg_l"], ["LeftLeg", "LeftFoot", 0.07, "leg_l"],
+	["RightUpLeg", "RightLeg", 0.095, "leg_r"], ["RightLeg", "RightFoot", 0.07, "leg_r"]]
+var hit_point := Vector3.ZERO           # where the last hit_part round entered the body
 func hit_part(sk: Skeleton3D, p: Vector3, dir: Vector3) -> String:
 	var o := p - dir * 1.0
 	var best := ""
@@ -1138,6 +1163,8 @@ func hit_part(sk: Skeleton3D, p: Vector3, dir: Vector3) -> String:
 			b = gt * sk.get_bone_global_pose(ib).origin
 		else:
 			b = a + (a - gt * sk.get_bone_global_pose(sk.get_bone_parent(ia)).origin).normalized() * 0.18
+		if hb[0] == "Spine2":
+			b = a + (b - a) * 0.6      # the upper chest stops short of the neck, so it does not bulge round the chin
 		var r := _ray_seg(o, dir, a, b)
 		var rad: float = hb[2]
 		if r[0] < rad:
@@ -1145,6 +1172,8 @@ func hit_part(sk: Skeleton3D, p: Vector3, dir: Vector3) -> String:
 			if t_in < best_t:
 				best_t = t_in
 				best = hb[3]
+	if best != "":
+		hit_point = o + dir * best_t
 	return best
 
 
@@ -1165,6 +1194,99 @@ func _ray_seg(o: Vector3, d: Vector3, a: Vector3, b: Vector3) -> Array:
 		s = clamp((o + d * t - a).dot(u) / c, 0.0, 1.0)
 		t = max(0.0, (a + u * s - o).dot(d))
 	return [(o + d * t - (a + u * s)).length(), t]
+
+
+## What the ACTION button does here: kick a closed door just ahead, take the gun from a dead soldier, or pick up a
+## mission item.
+func _probe_action() -> void:
+	act_kind = ""
+	act_node = null
+	act_label = ""
+	if busy() or dead:
+		return
+	var world: Node = fx.get_parent()
+	var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
+	for d in world.doors:
+		if is_instance_valid(d) and not d.get_meta("gone", false) and not d.get_meta("open", false):
+			var to: Vector3 = d.global_position - global_position
+			to.y = 0.0
+			if to.length() < 2.0 and fwd.dot(to.normalized()) > 0.45:
+				act_kind = "kick"
+				act_node = d
+				act_label = "KICK"
+				return
+	for e in world.enemies:
+		if e.dead and not e.taken:
+			var body: Vector3 = e.skel.global_transform * e.skel.get_bone_global_pose(e.hips_b).origin
+			if Vector2(body.x - global_position.x, body.z - global_position.z).length() < 1.6 and abs(body.y - global_position.y) < 1.5:
+				act_kind = "take"
+				act_node = e
+				act_label = "TAKE " + {"ak": "AK", "svd": "SVD", "shotgun": "SHOTGUN", "m4": "M4", "pistol": "PISTOL", "rpg": "RPG"}.get(e.gun, "GUN")
+				return
+	if world.mission:
+		var it = world.mission.item_near(global_position)
+		if it:
+			act_kind = "item"
+			act_node = it
+			act_label = it.get_meta("label", "TAKE")
+
+
+func action() -> void:
+	if act_kind == "" or busy():
+		return
+	act_doing = act_kind
+	act_obj = act_node
+	act_t = 0.0
+	reloading = 0.0
+	firing = false
+	snd.stop_auto()
+	if act_doing == "kick" and is_instance_valid(act_obj):
+		var to: Vector3 = act_obj.global_position - global_position
+		yaw = atan2(-to.x, -to.z)
+
+
+func _act_step(dt: float) -> void:
+	var t0 := act_t
+	act_t += dt
+	var at := func(x: float) -> bool: return t0 < x and act_t >= x
+	match act_doing:
+		"kick":
+			if at.call(0.42) and is_instance_valid(act_obj):
+				fx.get_parent().kick_door(act_obj, global_position)
+				shake = max(shake, 0.25)
+			if act_t >= 1.0:
+				act_t = -1.0
+		"take":
+			if at.call(0.45) and is_instance_valid(act_obj):
+				act_obj.set_meta("got", act_obj.give_gun())
+			if at.call(0.9) and is_instance_valid(act_obj):
+				_gain(str(act_obj.get_meta("got", "")))
+			if act_t >= 1.25:
+				act_t = -1.0
+		"item":
+			if at.call(0.5) and is_instance_valid(act_obj):
+				fx.get_parent().mission.take_item(act_obj)
+			if act_t >= 1.0:
+				act_t = -1.0
+
+
+## A gun taken from a dead soldier: a new gun with what is in it and a spare magazine, or two more magazines for one
+## already carried.
+func _gain(gun: String) -> void:
+	for w in weapons:
+		if w["gun"] != gun:
+			continue
+		var ui: Node = fx.get_parent().ui
+		if not w.get("own", true):
+			w["own"] = true
+			w["mag"] = w["size"]
+			w["res"] = w["size"]
+			ui.pickup_note("+ " + str(w["name"]))
+		else:
+			w["res"] += int(w["size"]) * 2
+			ui.pickup_note("+%d %s ROUNDS" % [int(w["size"]) * 2, str(w["name"])])
+		snd.reload(gun)
+		return
 
 
 ## The shotgun's pump: back and forward again just after each shot.
@@ -1214,6 +1336,8 @@ func _fire() -> void:
 	var sp: float = w["spread"] * (1.5 if speed > 2.6 else (1.2 if speed > 0.5 else 1.0)) * (0.6 if crouch else 1.0) * (0.35 if aiming else 1.0) * (1.0 + recoil * 0.6)
 	if scope_k > 0.5:
 		sp = w["spread"] * (1.0 + recoil * 0.3)
+	if arm_t > 0.0:
+		sp *= 1.7
 	var from := cam.global_position
 	var d0 := -cam.global_transform.basis.z
 	var mz: Node3D = vm_muzzles[gun] if view == 2 else muzzles[gun]
@@ -1268,7 +1392,8 @@ func _eject(gun: String) -> void:
 func _animate(dt: float) -> void:
 	var w: Dictionary = weapons[wi]
 	var acting := throw_t >= 0.0 or hol_t >= 0.0 or holstered
-	var aim_now := (aiming or firing or t - last_shot < 2.5) and not acting and climb_t < 0.0
+	var doing := act_t >= 0.0
+	var aim_now := (aiming or firing or t - last_shot < 2.5) and not acting and climb_t < 0.0 and not doing
 	var moving := speed > 0.25
 	var local := Vector2(vel.dot(Vector3(cos(yaw), 0, -sin(yaw))), vel.dot(Vector3(-sin(yaw), 0, -cos(yaw))))  # x right, y forward
 	if moving:
@@ -1279,6 +1404,9 @@ func _animate(dt: float) -> void:
 	var nat := 0.0
 	if dead:
 		st = "dead"
+	elif doing:
+		st = "kick" if act_doing == "kick" else "kneel"
+		moving = false
 	elif climb_t >= 0.0:
 		st = "jump" if climb_t < climb_dur * 0.5 else "kneel"
 		moving = false
@@ -1310,6 +1438,8 @@ func _animate(dt: float) -> void:
 		want_up = 1.0
 	if acting and not dead and climb_t < 0.0:
 		want_up = 1.0
+	if doing:
+		want_up = 0.0
 	up_w = lerp(up_w, want_up, min(1.0, dt * 9.0))
 	rl_w = lerp(rl_w, 1.0 if reloading > 0 else 0.0, min(1.0, dt * 9.0))
 	act_w = lerp(act_w, 1.0 if acting else 0.0, min(1.0, dt * 12.0))
@@ -1326,7 +1456,8 @@ func _animate(dt: float) -> void:
 		tree.set("parameters/acts/blend_amount", 0.0)
 		tree.set("parameters/hol_seek/seek_request", min(hol_t * HOL_SPEED, 3.9) if hol_t >= 0.0 else 3.9)
 	# left hand on the gun except while reloading, switching, throwing, slinging or climbing
-	var free = reloading > 0 or switching > 0 or dead or acting or climb_t >= 0.0
+	var free = reloading > 0 or switching > 0 or dead or acting or climb_t >= 0.0 or doing
+	do_w = lerp(do_w, 1.0 if doing else 0.0, min(1.0, dt * 10.0))
 	ik_w = lerp(ik_w, 0.0 if free else 1.0, min(1.0, dt * 10.0))
 	ik.interpolation = ik_w
 	var in_hand := not holstered and throw_t < 0.0
@@ -1341,7 +1472,7 @@ var aim_k := 0.0
 ## crosshair line whatever the legs are doing (the strafe and run clips twist and tip the hips, which used to
 ## carry the rifle off to the side and down).
 func _bend_spine(dt: float) -> void:
-	var aim_now: bool = (aiming or firing or t - last_shot < 2.5) and not dead and not holstered and throw_t < 0.0 and hol_t < 0.0 and climb_t < 0.0
+	var aim_now: bool = (aiming or firing or t - last_shot < 2.5) and not dead and not holstered and throw_t < 0.0 and hol_t < 0.0 and climb_t < 0.0 and act_t < 0.0
 	aim_k = lerp(aim_k, 1.0 if aim_now else 0.0, min(1.0, dt * 10.0))
 	var sk_inv: Basis = skel.global_transform.basis.orthonormalized().inverse()
 	var lean: float = clamp(pitch, -0.9, 0.9) * 0.35 * (1.0 - aim_k)
@@ -1423,7 +1554,7 @@ func _update_arms(dt: float) -> void:
 	var bob := Vector3(sin(t * 7.0) * 0.008, -abs(cos(t * 7.0)) * 0.01, 0.0) * mv
 	var ads: Vector3 = vm_ads[cur]
 	var hip: Vector3 = ads + (Vector3(0.07, -0.045, 0.0) if cur == "pistol" else Vector3(0.11, -0.085, 0.05))
-	var low: float = max(rl_w, act_w)
+	var low: float = max(max(rl_w, act_w), do_w)
 	vm.position = hip.lerp(ads, ads_k) + bob + Vector3(0, -0.12 * low - 0.2 * act_w, recoil * 0.03 * (1.0 - ads_k * 0.5))
 	vm.rotation = Vector3(recoil * 0.035 - 0.45 * low, 0.07 * (1.0 - ads_k), 0.03 * (1.0 - ads_k))
 	place_left_target(vsk, vm_rig["ik_target"], cur, {}, pump_slide())
@@ -1445,9 +1576,13 @@ func _footsteps(dt: float) -> void:
 
 
 ## Hit by an enemy round.
-func hit(dmg: float, from: Vector3) -> void:
+func hit(dmg: float, from: Vector3, part := "") -> void:
 	if dead:
 		return
+	if part.begins_with("leg"):
+		leg_t = 12.0
+	elif part.begins_with("arm"):
+		arm_t = 12.0
 	hp -= dmg
 	hurt_t = 0.6
 	quiet_t = 0.0
@@ -1488,6 +1623,9 @@ func _respawn() -> void:
 	view = view_before
 	grenades = 4
 	holstered = false
+	act_t = -1.0
+	leg_t = 0.0
+	arm_t = 0.0
 	hol_t = -1.0
 	throw_t = -1.0
 	climb_t = -1.0

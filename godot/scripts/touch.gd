@@ -17,7 +17,12 @@ var buttons := [
 	{"id": "menu", "label": "MENU", "c": Vector2(0.955, 0.07), "r": 32.0},
 	{"id": "nade", "label": "GRENADE", "c": Vector2(0.955, 0.66), "r": 38.0},
 	{"id": "holster", "label": "HOLSTER", "c": Vector2(0.065, 0.2), "r": 34.0},
+	{"id": "act", "label": "ACTION", "c": Vector2(0.705, 0.62), "r": 42.0},
 ]
+var mission_panel: PanelContainer
+var brief_panel: PanelContainer
+var result_panel: PanelContainer
+var mission_grid: GridContainer
 var held := {}          # touch index -> button id
 var joy_id := -1
 var joy_origin := Vector2.ZERO
@@ -57,6 +62,8 @@ func _btn_at(p: Vector2) -> Dictionary:
 	var vs := get_viewport_rect().size
 	var s := _scale()
 	for b in buttons:
+		if b["id"] == "act" and player.act_label == "":
+			continue
 		var c: Vector2 = b["c"] * vs
 		if p.distance_to(c) <= b["r"] * s * 1.25:
 			return b
@@ -90,6 +97,8 @@ func _press(id: String, down: bool) -> void:
 			if down: player.throw_grenade()
 		"holster":
 			if down: player.toggle_holster()
+		"act":
+			if down: player.action()
 		"view":
 			if down:
 				player.cycle_view()
@@ -159,6 +168,7 @@ func _input(e: InputEvent) -> void:
 					_hint(player.weapons[player.wi]["name"])
 				KEY_G: player.throw_grenade()
 				KEY_H: player.toggle_holster()
+				KEY_E: player.action()
 				KEY_4: _set_weapon(3)
 				KEY_5: _set_weapon(4)
 				KEY_6: _set_weapon(5)
@@ -196,6 +206,11 @@ func message(title: String, sub: String, secs: float) -> void:
 func kill_note(s: String) -> void:
 	note = s
 	note_t = 1.2
+
+
+func pickup_note(s: String) -> void:
+	hint = s
+	hint_t = 2.2
 
 
 func hit_marker(kill: bool) -> void:
@@ -272,8 +287,10 @@ func _draw() -> void:
 	draw_rect(hb, Color(0.05, 0.06, 0.06, 0.6))
 	draw_rect(Rect2(hb.position, Vector2(hb.size.x * hp_k, hb.size.y)), Color(0.85, 0.2, 0.15) if hp_k < 0.35 else Color(0.55, 0.85, 0.45))
 	draw_string(font, ap + Vector2(0, 56 * s), "HEALTH %d" % int(ceil(player.hp)), HORIZONTAL_ALIGNMENT_LEFT, -1, int(12 * s), Color(0.9, 0.88, 0.8))
+	if main.mission:
+		_draw_mission(vs, s)
 	# enemies left and score
-	if main.enemies.size() > 0:
+	if main.enemies.size() > 0 and not main.mission:
 		var tl := Vector2(24 * s, 34 * s)
 		draw_rect(Rect2(tl - Vector2(12, 24) * s, Vector2(190, 52) * s), Color(0.05, 0.06, 0.06, 0.55))
 		draw_string(font, tl, "ENEMIES  %d / %d" % [main.alive(), main.enemies.size()], HORIZONTAL_ALIGNMENT_LEFT, -1, int(15 * s), Color(1, 0.86, 0.7))
@@ -308,6 +325,8 @@ func _draw() -> void:
 	for i in held:
 		active[held[i]] = true
 	for b in buttons:
+		if b["id"] == "act" and player.act_label == "":
+			continue
 		var bc: Vector2 = b["c"] * vs
 		var r: float = b["r"] * s
 		var on: bool = active.has(b["id"]) or (b["id"] == "crouch" and player.crouch) or (b["id"] == "aim" and player.aiming) or (b["id"] == "holster" and player.holstered)
@@ -321,6 +340,8 @@ func _draw() -> void:
 			label = "DRAW"
 		elif b["id"] == "nade":
 			label = "NADE %d" % player.grenades
+		elif b["id"] == "act":
+			label = player.act_label
 		var fs := int((14 if b["id"] == "fire" else (10 if label.length() > 6 else 11)) * s)
 		var tw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		draw_string(font, bc + Vector2(-tw / 2, fs * 0.35), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.95, 0.93, 0.86))
@@ -363,6 +384,44 @@ func _draw_scope(c: Vector2, vs: Vector2, s: float, gun: String) -> void:
 		for k in range(-4, 5):
 			if k != 0:
 				draw_line(c + Vector2(k * u * 0.9, 0), c + Vector2(k * u * 0.9, -u * 0.4), blk, 1.4 * s)
+
+
+## Mission HUD: the objectives (done ones struck through) and a marker on the next one with its distance.
+func _draw_mission(vs: Vector2, s: float) -> void:
+	var m = main.mission
+	var tl := Vector2(24 * s, 30 * s)
+	var h: float = (18 + 18 * m.objectives.size()) * s
+	draw_rect(Rect2(tl - Vector2(12, 20) * s, Vector2(330, 0) * s + Vector2(0, h)), Color(0.05, 0.06, 0.06, 0.55))
+	draw_string(font, tl, "MISSION %d  %s" % [m.n, m.title], HORIZONTAL_ALIGNMENT_LEFT, -1, int(13 * s), Color(1, 0.86, 0.7))
+	var cur: Dictionary = m.current()
+	for i in m.objectives.size():
+		var o: Dictionary = m.objectives[i]
+		var y: float = tl.y + (18 + 18 * i) * s
+		var col := Color(0.55, 0.85, 0.5) if o["done"] else (Color(1, 1, 1) if o == cur else Color(0.7, 0.7, 0.66))
+		var txt: String = ("[x] " if o["done"] else "[  ] ") + str(o["text"])
+		draw_string(font, Vector2(tl.x, y), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, int(11 * s), col)
+	if m.alarm:
+		draw_string(font, tl + Vector2(0, h + 2 * s), "ALARM RAISED", HORIZONTAL_ALIGNMENT_LEFT, -1, int(13 * s), Color(1, 0.3, 0.2, 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.01)))
+	if cur.is_empty() or player.dead or player.scoped():
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var wp: Vector3 = cur["pos"]
+	var sp: Vector2
+	var behind := cam.is_position_behind(wp)
+	sp = cam.unproject_position(wp)
+	if behind:
+		sp = vs - sp
+	var margin := 40.0 * s
+	var clamped := sp.clamp(Vector2(margin, margin), vs - Vector2(margin, margin))
+	if behind:
+		clamped.y = vs.y - margin
+	var col := Color(1.0, 0.82, 0.25, 0.9)
+	var r := 9.0 * s
+	draw_colored_polygon(PackedVector2Array([clamped + Vector2(0, -r), clamped + Vector2(r, 0), clamped + Vector2(0, r), clamped + Vector2(-r, 0)]), col)
+	var dist := int(player.global_position.distance_to(wp))
+	draw_string(font, clamped + Vector2(-14 * s, 24 * s), "%d m" % dist, HORIZONTAL_ALIGNMENT_LEFT, -1, int(12 * s), col)
 
 
 # ---------------- menus ----------------
@@ -409,11 +468,12 @@ func _build_panels() -> void:
 	t.add_theme_font_size_override("font_size", 30)
 	v.add_child(t)
 	var sub := Label.new()
-	sub.text = "Godot test build: the soldier, the rifles and a practice yard."
+	sub.text = "Missions open one after another. The training yard has every gun."
 	sub.add_theme_font_size_override("font_size", 14)
 	sub.add_theme_color_override("font_color", Color(0.75, 0.73, 0.65))
 	v.add_child(sub)
-	_button(v, "Play", func(): main.start_game(), true)
+	_button(v, "Missions", func(): show_missions(), true)
+	_button(v, "Training yard", func(): main.start_game())
 	update_btn = _button(v, "Update", func(): OS.shell_open(update_url))
 	update_btn.visible = false
 	_button(v, "Exit", func(): get_tree().quit())
@@ -432,15 +492,140 @@ func _build_panels() -> void:
 	pt.add_theme_font_size_override("font_size", 28)
 	pv.add_child(pt)
 	_button(pv, "Resume", func(): hide_pause(), true)
+	var rb := _button(pv, "Restart mission", func(): main.go_level(main.level))
+	rb.name = "Restart"
+	var qb := _button(pv, "Quit to menu", func(): main.go_level(""))
+	qb.name = "Quit"
 	_button(pv, "Check for update", func(): main.check_update_now(); _hint("Checking for update"))
 	_button(pv, "Exit", func(): get_tree().quit())
 	pause_panel.visible = false
+
+	# the list of thirty missions
+	mission_panel = _panel()
+	var mv := VBoxContainer.new()
+	mv.add_theme_constant_override("separation", 10)
+	mission_panel.add_child(mv)
+	var mt := Label.new()
+	mt.text = "MISSIONS"
+	mt.add_theme_font_size_override("font_size", 26)
+	mv.add_child(mt)
+	mission_grid = GridContainer.new()
+	mission_grid.columns = 6
+	mission_grid.add_theme_constant_override("h_separation", 8)
+	mission_grid.add_theme_constant_override("v_separation", 8)
+	mv.add_child(mission_grid)
+	_button(mv, "Back", func(): mission_panel.visible = false; start_panel.visible = true; _center(start_panel))
+	mission_panel.visible = false
+
+	brief_panel = _panel()
+	brief_panel.visible = false
+	result_panel = _panel()
+	result_panel.visible = false
+
+
+func show_missions() -> void:
+	for c in mission_grid.get_children():
+		c.queue_free()
+	var open: int = main.unlocked()
+	for i in range(1, 31):
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(118, 64)
+		b.add_theme_font_size_override("font_size", 15)
+		var built: bool = i <= main.MISSIONS_BUILT
+		var ok: bool = i <= open and built
+		b.text = "%d\n%s" % [i, ("PLAY" if ok else ("COMING SOON" if i <= open else "LOCKED"))]
+		b.disabled = not ok
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.95, 0.71, 0.27) if ok else Color(0.12, 0.13, 0.12)
+		sb.border_color = Color(0.95, 0.71, 0.27) if ok else Color(0.3, 0.3, 0.28)
+		sb.set_border_width_all(2)
+		for st in ["normal", "hover", "pressed", "disabled"]:
+			b.add_theme_stylebox_override(st, sb)
+		b.add_theme_color_override("font_color", Color(0.1, 0.08, 0.03) if ok else Color(0.6, 0.6, 0.55))
+		b.add_theme_color_override("font_disabled_color", Color(0.5, 0.5, 0.46))
+		var lv := "m%d" % i
+		b.pressed.connect(func(): main.go_level(lv))
+		mission_grid.add_child(b)
+	start_panel.visible = false
+	mission_panel.visible = true
+	_center(mission_panel)
+
+
+## Before a mission: its name, the briefing and the objectives.
+func show_briefing(m: Node) -> void:
+	for c in brief_panel.get_children():
+		c.queue_free()
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	v.custom_minimum_size = Vector2(min(760.0, get_viewport_rect().size.x - 80.0), 0)
+	brief_panel.add_child(v)
+	var t := Label.new()
+	t.text = "MISSION %d: %s" % [m.n, m.title]
+	t.add_theme_font_size_override("font_size", 26)
+	v.add_child(t)
+	var b := Label.new()
+	b.text = m.briefing
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b.add_theme_font_size_override("font_size", 15)
+	b.add_theme_color_override("font_color", Color(0.85, 0.83, 0.76))
+	v.add_child(b)
+	var o := Label.new()
+	var lines := "OBJECTIVES"
+	for ob in m.objectives:
+		lines += "\n-  " + str(ob["text"])
+	o.text = lines
+	o.add_theme_font_size_override("font_size", 15)
+	o.add_theme_color_override("font_color", Color(1, 0.86, 0.6))
+	v.add_child(o)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 12)
+	v.add_child(h)
+	_button(h, "Start mission", func(): brief_panel.visible = false; main.start_game(), true)
+	_button(h, "Back", func(): main.go_level(""))
+	brief_panel.visible = true
+	_center(brief_panel)
+
+
+## Mission over: complete (next mission, the list) or failed (try again).
+func show_result(win: bool, title: String, sub: String, n: int) -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	player.firing = false
+	held.clear()
+	for c in result_panel.get_children():
+		c.queue_free()
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 12)
+	result_panel.add_child(v)
+	var t := Label.new()
+	t.text = title
+	t.add_theme_font_size_override("font_size", 30)
+	t.add_theme_color_override("font_color", Color(0.6, 1, 0.55) if win else Color(1, 0.4, 0.3))
+	v.add_child(t)
+	var st := Label.new()
+	st.text = sub
+	st.add_theme_font_size_override("font_size", 15)
+	v.add_child(st)
+	if win and n + 1 <= main.MISSIONS_BUILT:
+		_button(v, "Next mission", func(): main.go_level("m%d" % (n + 1)), true)
+	elif win:
+		var nx := Label.new()
+		nx.text = "Mission %d is unlocked and comes in the next update." % (n + 1)
+		nx.add_theme_font_size_override("font_size", 14)
+		nx.add_theme_color_override("font_color", Color(0.85, 0.83, 0.76))
+		v.add_child(nx)
+	_button(v, "Play again" if win else "Try again", func(): main.go_level("m%d" % n), not win)
+	_button(v, "Mission list", func(): Engine.set_meta("show_missions", true); main.go_level(""))
+	result_panel.visible = true
+	_center(result_panel)
 
 
 func show_start(ver: int) -> void:
 	ver_label.text = "Installed: v%d" % ver if ver > 0 else "Installed: test build"
 	start_panel.visible = true
 	_center(start_panel)
+	if Engine.get_meta("show_missions", false):
+		Engine.set_meta("show_missions", false)
+		show_missions()
 
 
 func hide_start() -> void:
@@ -456,6 +641,8 @@ func show_pause() -> void:
 	look_ids.clear()
 	get_tree().paused = true
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	pause_panel.get_child(0).get_node("Restart").visible = main.mission != null
+	pause_panel.get_child(0).get_node("Quit").visible = main.mission != null
 	pause_panel.visible = true
 	_center(pause_panel)
 

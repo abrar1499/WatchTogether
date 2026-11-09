@@ -8,7 +8,7 @@ extends CharacterBody3D
 ## from a grenade that lands near him, and some carry one to throw where they last saw the player hiding.
 
 const STATES := {"idle": "idle", "walk": "walk", "run": "run", "aim": "aim", "kneel_aim": "crouchFire", "kneel": "kneel", "hit": "hit",
-	"react": "reactBig", "nade": "grenade",
+	"react": "reactBig", "nade": "grenade", "prone": "proneFire", "crawl": "proneFwd",
 	"die": "die", "dieFront": "dieFront", "dieLeft": "dieLeft", "dieBackHS": "dieBackHS", "dieKnock": "knockback", "dieBlast": "blastback",
 	"dieFall": "fallback"}
 const WALK := 1.15
@@ -65,6 +65,24 @@ var spot_cover := false        # the spot has cover he can shoot over
 var peek_up := true            # standing up to fire (else ducked behind the cover)
 var peek_t := 0.0
 var flank := 1.0               # which way he works round the player
+var gun := "ak"                # the AK-47, or a Dragunov for a sniper (slow, single, accurate, hard-hitting)
+var route := []                # guard: points he walks round in turn (else between home and beat)
+var route_i := 0
+# wounds: a leg hit makes him limp (no running), both legs (or one heavy round) put him on the ground where he
+# crawls and fires lying down; an arm hit spoils his aim; any wound bleeds
+var leg_hits := 0
+var limp := 0.0
+var limp_ph := 0.0
+var down := false
+var arm_hit := false
+var wounded := false
+var bleed_t := 0.0
+var hips_b := -1
+var taken := false             # (dead) his gun has been taken
+var roll := 0.0                # (dead) how far the body has been turned on its side
+var hips_base := Quaternion.IDENTITY
+var hitbox: StaticBody3D
+var hit_shape: CylinderShape3D
 var perch := false             # posted on the roof: holds his place behind the parapet
 var react_t := 0.0             # staggered by a heavy hit
 var grunt_t := 0.0
@@ -75,8 +93,10 @@ var nade_at := Vector3.ZERO
 var nade_out := false
 
 
-func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasmask") -> void:
+func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasmask", gun_k := "ak", path := []) -> void:
 	main = m
+	gun = gun_k
+	route = path
 	player = m.player
 	body = CollisionShape3D.new()
 	cap = CapsuleShape3D.new()
@@ -86,6 +106,21 @@ func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasma
 	body.position.y = 0.875
 	add_child(body)
 	set_meta("surf", "flesh")
+	# what rounds are tested against (layer 4, nothing moves against it): wide enough for arms, legs and rifle
+	# out from the body; the bones then decide whether the round really hit him
+	hitbox = StaticBody3D.new()
+	hitbox.collision_layer = 8
+	hitbox.collision_mask = 0
+	hitbox.set_meta("owner", self)
+	hitbox.set_meta("surf", "flesh")
+	var hs := CollisionShape3D.new()
+	hit_shape = CylinderShape3D.new()
+	hit_shape.radius = 0.6
+	hit_shape.height = 2.0
+	hs.shape = hit_shape
+	hs.position.y = 1.0
+	hitbox.add_child(hs)
+	add_child(hitbox)
 	floor_snap_length = 0.3
 	global_position = pos
 	home = pos
@@ -99,12 +134,19 @@ func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasma
 	has_nade = randf() < 0.5
 	flank = 1.0 if randf() < 0.5 else -1.0
 	hold_t = randf_range(1.5, 3.0)
-	rig = player.make_rig(Color(0.86, 0.74, 0.58) if kind == "soldier" else Color(1, 1, 1), ["ak"], false, kind)
+	rig = player.make_rig(Color(0.86, 0.74, 0.58) if kind == "soldier" else Color(1, 1, 1), [gun], false, kind)
 	add_child(rig["root"])
 	skel = rig["skel"]
-	muzzle = rig["muzzles"]["ak"]
+	muzzle = rig["muzzles"][gun]
 	head_b = skel.find_bone("mixamorigHead")
-	player.start_rig(rig, "ak")
+	hips_b = skel.find_bone("mixamorigHips")
+	player.start_rig(rig, gun)
+	var crawl: Animation = rig["ap"].get_animation("proneFwd")
+	if crawl:
+		crawl.loop_mode = Animation.LOOP_LINEAR
+	if gun == "svd":
+		kneels = true
+		has_nade = false
 	_build_tree()
 
 
@@ -147,7 +189,12 @@ func _physics_process(dt: float) -> void:
 		dead_t += dt
 		if dead_t < 6.0:
 			tree.advance(dt)
-			player.pose_rig_hands(skel, "ak", rig["data"])
+			if not taken:
+				player.pose_rig_hands(skel, gun, rig["data"])
+			hips_base = skel.get_bone_pose_rotation(hips_b)
+		if abs(roll) > 0.001:
+			var axis: Vector3 = (skel.get_bone_global_pose(skel.find_bone("mixamorigSpine2")).origin - skel.get_bone_global_pose(hips_b).origin).normalized()
+			skel.set_bone_pose_rotation(hips_b, Quaternion(axis, roll) * hips_base)
 		return
 	grace = max(0.0, grace - dt)
 	hit_t = max(0.0, hit_t - dt)
@@ -167,12 +214,14 @@ func _physics_process(dt: float) -> void:
 	if mode == "guard":
 		if wait_t > 0.0:
 			wait_t -= dt
-		elif beat.distance_to(home) > 0.5:
-			var goal := beat if to_beat else home
+		elif route.size() > 1 or beat.distance_to(home) > 0.5:
+			var goal: Vector3 = route[route_i] if route.size() > 1 else (beat if to_beat else home)
 			var to := goal - global_position
 			to.y = 0.0
 			if to.length() < 0.4:
 				to_beat = not to_beat
+				if route.size() > 1:
+					route_i = (route_i + 1) % route.size()
 				wait_t = randf_range(2.5, 5.0)
 			else:
 				target_v = to.normalized() * WALK
@@ -267,9 +316,13 @@ func _physics_process(dt: float) -> void:
 			_throw_nade()
 		if nade_t >= 1.7:
 			nade_t = -1.0
-			rig["guns"]["ak"].visible = true
+			rig["guns"][gun].visible = true
 	if perch or react_t > 0.0:
 		target_v = Vector3.ZERO
+	if down and target_v.length() > 0.1:
+		target_v = target_v.normalized() * 0.35          # crawling
+	elif limp > 0.0 and target_v.length() > WALK * 0.7:
+		target_v = target_v.normalized() * WALK * 0.7    # limping: no running
 	# walk round whatever he bumps into
 	if detour_t > 0.0:
 		detour_t -= dt
@@ -309,19 +362,27 @@ func _physics_process(dt: float) -> void:
 				shots_left -= 1
 				shot_t = 0.11
 				if shots_left == 0:
-					pause_t = randf_range(0.7, 1.6)
+					pause_t = randf_range(0.7, 1.6) * (1.5 if arm_hit else 1.0)
+					if gun == "svd":
+						pause_t = randf_range(2.2, 3.6)
 		else:
 			pause_t -= dt
 			if pause_t <= 0.0:
-				shots_left = randi_range(3, 6)
+				if gun == "svd":
+					shots_left = 1
+					main.snd.enemy_single(muzzle.global_position)
+				else:
+					shots_left = randi_range(2, 3) if arm_hit else randi_range(3, 6)
+					main.snd.enemy_burst(muzzle.global_position, shots_left)
 				shot_t = 0.0
-				main.snd.enemy_burst(muzzle.global_position, shots_left)
 	else:
 		shots_left = 0
 
 	# body
 	var st := "idle"
-	if nade_t >= 0.0:
+	if down:
+		st = "crawl" if hs > 0.1 else "prone"
+	elif nade_t >= 0.0:
 		st = "nade"
 	elif react_t > 0.0:
 		st = "react"
@@ -339,7 +400,7 @@ func _physics_process(dt: float) -> void:
 		playback.travel(st)
 		state = st
 		var low := st == "kneel_aim" or st == "kneel"
-		cap.height = 1.2 if low else 1.75
+		cap.height = 0.62 if down else (1.2 if low else 1.75)
 		body.position.y = cap.height * 0.5
 	var scale := 1.0
 	if st == "walk":
@@ -350,20 +411,37 @@ func _physics_process(dt: float) -> void:
 		scale = 1.3
 	elif st == "react":
 		scale = 1.4
+	elif st == "crawl":
+		scale = 0.8
+	var limping := limp > 0.0 and st == "walk"
+	if limping:
+		# the bad leg takes the weight for less time: the walk clip hurries over that half of the stride
+		limp_ph += dt * 4.6 * scale
+		scale *= 1.0 + 0.55 * sin(limp_ph)
 	tree.set("parameters/speed/scale", scale)
 	tree.advance(dt)
+	if limping:
+		var dip: float = max(0.0, sin(limp_ph)) * 0.06 / skel.global_transform.basis.get_scale().x
+		skel.set_bone_pose_position(hips_b, skel.get_bone_pose_position(hips_b) + Vector3(0, -dip, 0))
+	if wounded:
+		bleed_t -= dt
+		if bleed_t <= 0.0:
+			bleed_t = randf_range(0.5, 1.1) if hs > 0.2 else randf_range(1.5, 3.0)
+			main.fx.blood_drop(global_position + Vector3(randf_range(-0.2, 0.2), 0, randf_range(-0.2, 0.2)))
 	rig["ik"].interpolation = 0.0 if (nade_t >= 0.0 or react_t > 0.0) else 1.0
 	if nade_t < 0.0:
-		player.pose_rig_hands(skel, "ak", rig["data"])
+		player.pose_rig_hands(skel, gun, rig["data"])
 	if aim_w > 0.01:
 		var chest: Vector3 = player.global_position + Vector3(0, 0.85 if player.crouch else 1.25, 0)
 		if not sees:
 			chest = last_seen + Vector3(0, 1.2, 0)
 		player.aim_chest(skel, (chest - muzzle.global_position).normalized(), aim_w, rig["data"])
-	player.place_left_target(skel, rig["ik_target"], "ak", rig["data"])
+	player.place_left_target(skel, rig["ik_target"], gun, rig["data"])
 
 
 func _eye() -> Vector3:
+	if down:
+		return global_position + Vector3(0, 0.4, 0)
 	return global_position + Vector3(0, 1.0 if (state == "kneel_aim" or state == "kneel") else 1.6, 0)
 
 
@@ -371,6 +449,7 @@ func _eye() -> Vector3:
 func _sight(a: Vector3, b: Vector3) -> bool:
 	var q := PhysicsRayQueryParameters3D.create(a, b)
 	q.exclude = [get_rid(), player.get_rid()]
+	q.collision_mask = 1
 	var h := get_world_3d().direct_space_state.intersect_ray(q)
 	return h.is_empty() or h.collider.has_method("take_hit")
 
@@ -379,7 +458,7 @@ func _sight(a: Vector3, b: Vector3) -> bool:
 ## Best is cover he can shoot over (hidden crouched, sees the player standing), then somewhere off to his chosen
 ## side of the player, at a middling range.
 func _relocate() -> void:
-	if perch:
+	if perch or down:
 		hold_t = randf_range(2.0, 4.0)
 		return
 	var pe: Vector3 = player.global_position + Vector3(0, 1.5, 0)
@@ -404,7 +483,7 @@ func _relocate() -> void:
 		cp.y = global_position.y
 		cands.append(cp)
 	for c in cands:
-		if abs(c.x) > 42.0 or c.z > 26.0 or c.z < -45.0:
+		if c.x < main.area.position.x or c.x > main.area.end.x or c.z < main.area.position.y or c.z > main.area.end.y:
 			continue
 		var dp = c.distance_to(player.global_position)
 		if dp < 7.0 or dp > 32.0:
@@ -435,6 +514,7 @@ func _relocate() -> void:
 func _clear(a: Vector3, b: Vector3) -> bool:
 	var q := PhysicsRayQueryParameters3D.create(a, b)
 	q.exclude = [get_rid()]
+	q.collision_mask = 1
 	var h := get_world_3d().direct_space_state.intersect_ray(q)
 	return h.is_empty() or h.collider == player
 
@@ -537,11 +617,14 @@ func _shoot() -> void:
 	sp *= 1.5 if player.speed > 2.5 else 1.0
 	sp *= 0.65 if player.crouch else 1.0
 	sp *= 0.7 + d / 40.0
+	sp *= 2.2 if arm_hit else 1.0
+	if gun == "svd":
+		sp *= 0.3
 	dir = (dir + Vector3(randf_range(-sp, sp), randf_range(-sp, sp) * 0.7, randf_range(-sp, sp))).normalized()
-	main.fx.muzzle_flash(from, muzzle.global_transform.basis.z, "ak")
+	main.fx.muzzle_flash(from, muzzle.global_transform.basis.z, gun)
 	shot_n += 1
-	var end: Vector3 = main.shoot_ray(from, dir, randf_range(4.0, 7.0), self)
-	if shot_n % 2 == 0:
+	var end: Vector3 = main.shoot_ray(from, dir, randf_range(26.0, 34.0) if gun == "svd" else randf_range(4.0, 7.0), self)
+	if shot_n % 2 == 0 or gun == "svd":
 		main.fx.tracer(from, end)
 
 
@@ -552,14 +635,26 @@ func take_hit(dmg: float, pos: Vector3, dir: Vector3, power := 1.0, part := "tor
 		return
 	var headshot := part == "head"
 	main.fx.blood(pos, -dir)
-	hp -= 999.0 if headshot else (dmg * (0.65 if part == "limb" else 1.0))
+	var limb := part.begins_with("leg") or part.begins_with("arm")
+	hp -= 999.0 if headshot else (dmg * (0.65 if limb else 1.0))
 	var d: float = player.global_position.distance_to(global_position)
 	var force: float = power * clamp(1.0 - (d - 3.0) / 9.0, 0.0, 1.0)
 	if hp <= 0.0:
 		_die(headshot, false, dir, force)
 		return
 	hit_t = 0.3
-	if force > 0.9 and nade_t < 0.0:
+	wounded = true
+	if part.begins_with("leg"):
+		leg_hits += 1
+		if (leg_hits >= 2 or dmg >= 70.0) and not perch:
+			_go_down()
+		else:
+			limp = 1.0
+			kneels = true
+			react_t = max(react_t, 0.45)    # the leg gives: a stagger
+	elif part.begins_with("arm"):
+		arm_hit = true
+	if force > 0.9 and nade_t < 0.0 and not down:
 		react_t = 0.7
 		var flat := Vector3(dir.x, 0, dir.z).normalized()
 		vel += flat * 1.6 * min(force, 2.0)
@@ -571,6 +666,30 @@ func take_hit(dmg: float, pos: Vector3, dir: Vector3, power := 1.0, part := "tor
 	if not moving:
 		shots_left = 0
 		hold_t = 0.0
+
+
+## Both legs hit (or one heavy round): he goes down and fights on from the ground.
+func _go_down() -> void:
+	down = true
+	hit_shape.radius = 1.1         # lying full length
+	hit_shape.height = 1.0
+	(hitbox.get_child(0) as Node3D).position.y = 0.5
+	limp = 0.0
+	moving = false
+	shots_left = 0
+	pause_t = max(pause_t, 1.5)
+	react_t = 0.0
+
+
+## (dead) The player takes his rifle: the body is rolled onto its side and the gun comes out of his hand.
+func give_gun() -> String:
+	if taken:
+		return ""
+	taken = true
+	var tw := create_tween()
+	tw.tween_property(self, "roll", randf_range(0.5, 0.75) * (1.0 if randf() < 0.5 else -1.0), 0.55).set_trans(Tween.TRANS_SINE)
+	get_tree().create_timer(0.5).timeout.connect(func(): rig["guns"][gun].visible = false)
+	return gun
 
 
 ## Caught by an explosion.
@@ -612,7 +731,7 @@ func _room_behind(d: Vector3, dist: float) -> bool:
 
 
 func _throw_nade() -> void:
-	rig["guns"]["ak"].visible = false
+	rig["guns"][gun].visible = false
 	var hand: Vector3 = (skel.global_transform * skel.get_bone_global_pose(skel.find_bone("mixamorigRightHand"))).origin
 	var from := hand + Vector3(0, 0.15, 0)
 	var dist := from.distance_to(nade_at)
@@ -628,6 +747,7 @@ func _die(headshot: bool, blasted := false, push := Vector3.ZERO, force := 0.0) 
 	dead = true
 	hp = 0.0
 	collision_layer = 0
+	hitbox.collision_layer = 0
 	shots_left = 0
 	var flat := Vector3(push.x, 0, push.z)
 	if flat.length() < 0.01:
@@ -661,7 +781,7 @@ func _die(headshot: bool, blasted := false, push := Vector3.ZERO, force := 0.0) 
 		rotation.y = yaw
 	if nade_t >= 0.0:
 		nade_t = -1.0
-		rig["guns"]["ak"].visible = true
+		rig["guns"][gun].visible = true
 	playback.travel(clip)
 	tree.set("parameters/speed/scale", 1.15 if clip == "dieKnock" else 1.0)
 	rig["ik"].interpolation = 0.0

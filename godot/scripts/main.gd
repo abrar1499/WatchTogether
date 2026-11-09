@@ -27,6 +27,15 @@ var wave := 0
 var wave_t := -1.0
 var kills := 0
 var headshots := 0
+# which level: "" the practice yard (and the menu behind it), "m1".."m30" a mission
+var level := ""
+var mission: Node
+var area := Rect2(-42, -45, 84, 71)        # where soldiers may move to (x, z)
+var flat_c := Vector2(0, -8)               # the ground is flat round here, dunes beyond
+var flat_r := 58.0
+var extra_cover := []                      # low cover besides crates and drums: [position, half size]
+var doors := []
+const MISSIONS_BUILT := 1                  # missions that exist so far (of 30)
 
 
 func _ready() -> void:
@@ -34,20 +43,33 @@ func _ready() -> void:
 	var vf := FileAccess.open("res://version.txt", FileAccess.READ)
 	if vf:
 		version = int(vf.get_as_text().strip_edges())
+	level = str(Engine.get_meta("level", ""))
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--test="):
 			test_mode = a.substr(7)
+		if a.begins_with("--level="):
+			level = a.substr(8)
 	_build_environment()
-	_build_yard()
 	add_child(fx)
 	add_child(snd)
+	var spawn := Vector3(0, 0.05, 6)
+	if level == "":
+		_build_yard()
+	else:
+		mission = load("res://scripts/missions.gd").new()
+		mission.main = self
+		add_child(mission)
+		spawn = mission.build(int(level.substr(1)))
 	music.main = self
 	add_child(music)
 	player = load("res://scripts/player.gd").new()
 	player.name = "Player"
 	add_child(player)
-	player.global_position = Vector3(0, 0.05, 6)
+	player.global_position = spawn
+	player.spawn = spawn
 	player.setup(fx, snd)
+	if mission:
+		mission.ready_player()
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	ui = load("res://scripts/touch.gd").new()
@@ -66,14 +88,20 @@ func _ready() -> void:
 		else:
 			_run_test()
 		return
-	ui.show_start(version)
-	_check_update()
+	if mission:
+		ui.show_briefing(mission)
+	else:
+		ui.show_start(version)
+		_check_update()
 
 
 func start_game() -> void:
 	playing = true
 	ui.hide_start()
-	if test_mode == "" or test_mode == "enemies" or test_mode == "music":
+	if mission:
+		mission.begin()
+		music.begin()
+	elif test_mode == "" or test_mode == "enemies" or test_mode == "music":
 		_spawn_wave()
 		music.begin()
 	if not ui.is_touch and test_mode == "":
@@ -281,9 +309,9 @@ func _build_ground() -> void:
 		for i in w:
 			var x := -half + i * cell
 			var z := -half + j * cell
-			var r := Vector2(x, z).distance_to(YARD_CENTRE)
+			var r := Vector2(x, z).distance_to(flat_c)
 			var d := dunes.get_noise_2d(x, z) * 0.5 + 0.5
-			ground_h[j * w + i] = smoothstep(58.0, 125.0, r) * (d * d * 11.0 + 0.8)
+			ground_h[j * w + i] = smoothstep(flat_r, flat_r + 67.0, r) * (d * d * 11.0 + 0.8)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for j in w:
@@ -399,7 +427,7 @@ func _rock_mesh(seed: int) -> ArrayMesh:
 	return st.commit()
 
 
-func _build_rocks(rock_mat: Material) -> void:
+func _build_rocks(rock_mat: Material, r_min := 32.0, fence_gap := true) -> void:
 	for s in 3:
 		rock_meshes.append(_rock_mesh(40 + s))
 	var rng := RandomNumberGenerator.new()
@@ -409,10 +437,10 @@ func _build_rocks(rock_mat: Material) -> void:
 	while placed < 22 and tries < 400:
 		tries += 1
 		var a := rng.randf() * TAU
-		var r := rng.randf_range(32.0, 95.0)
-		var x := YARD_CENTRE.x + cos(a) * r
-		var z := YARD_CENTRE.y + sin(a) * r
-		if z > 24.0 and z < 36.0:
+		var r := rng.randf_range(r_min, r_min + 63.0)
+		var x := flat_c.x + cos(a) * r
+		var z := flat_c.y + sin(a) * r
+		if fence_gap and z > 24.0 and z < 36.0:
 			continue          # keep the fence line clear
 		var size := rng.randf_range(0.8, 3.2)
 		var b := StaticBody3D.new()
@@ -448,8 +476,8 @@ func cover_list() -> Array:
 		var n = b["node"]
 		if n != null and is_instance_valid(n) and not n.get_meta("gone", false) and n.global_position.y < 0.5:
 			out.append([n.global_position, 0.65 if b["kind"] == "crate" else 0.3])
-	for c in SANDBAG_COVER:
-		out.append([c, 0.3])
+	for c in extra_cover:
+		out.append(c if c is Array else [c, 0.3])
 	return out
 var scorches := []
 
@@ -502,16 +530,26 @@ func shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node, power := 
 func _shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node, power := 1.0) -> Vector3:
 	var space := get_world_3d().direct_space_state
 	var exclude := [shooter.get_rid()]
+	if shooter.get("hitbox") != null:
+		exclude.append(shooter.hitbox.get_rid())
 	var start := from
 	var end := from + dir * 400.0
-	for i in 5:
+	for i in 8:
 		var q := PhysicsRayQueryParameters3D.create(start, end)
 		q.exclude = exclude
+		q.collision_mask = 1 | 8
 		var h := space.intersect_ray(q)
 		if h.is_empty():
 			return end
 		var col = h.collider
 		var p: Vector3 = h.position
+		if col.has_meta("owner"):          # a soldier's round-catching hitbox: it stands for him
+			exclude.append(col.get_rid())
+			col = col.get_meta("owner")
+			exclude.append(col.get_rid())
+			if col.dead:
+				start = p
+				continue
 		# people: the round has to meet the body itself (head, chest, arms, legs), not just the space round it
 		if col == player or col.has_method("take_hit"):
 			var part := ""
@@ -524,8 +562,9 @@ func _shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node, power :=
 				exclude.append(col.get_rid())
 				start = p
 				continue
+			p = player.hit_point
 			if col == player:
-				player.hit(dmg * (1.4 if part == "head" else (0.7 if part == "limb" else 1.0)), shooter.global_position)
+				player.hit(dmg * (1.4 if part == "head" else (0.7 if part.length() > 4 else 1.0)), shooter.global_position, part)
 			else:
 				var was_dead: bool = col.dead
 				snd.impact(p, "flesh", true)
@@ -553,7 +592,25 @@ func damage_prop(col: Node, dmg: float, p: Vector3, n: Vector3) -> void:
 		return
 	var hp: float = float(col.get_meta("hp")) - dmg
 	col.set_meta("hp", hp)
-	if col.get_meta("kind") == "crate":
+	var kind: String = col.get_meta("kind", "")
+	if kind == "door":
+		fx.chips(p, n, "wood", 5)
+		_door_hole(col, p)
+		if hp <= 0.0:
+			_break_door(col, -n)
+		return
+	if kind == "machine":
+		fx.chips(p, n, "spark", 5, 6.0)
+		if hp <= 0.0:
+			col.set_meta("gone", true)
+			var at: Vector3 = col.global_position + Vector3(0, 0.6, 0)
+			explode_at(at, 6.0, 260.0, 110.0, [col.get_rid()], col)
+			fx.fire(col, Vector3(0, 1.0, 0), 1.3)
+			snd.fire_on(col)
+			if mission:
+				mission.on_destroyed(col)
+		return
+	if kind == "crate":
 		fx.chips(p, n, "wood", 4)
 		if hp <= 0.0:
 			_break_crate(col, p)
@@ -772,6 +829,14 @@ func explode_at(pos: Vector3, radius := 7.0, e_dmg := 260.0, p_dmg := 120.0, ign
 			damage_prop(n, 999.0, n.global_position + Vector3(0, 0.5, 0), Vector3.UP)
 		elif b["kind"] == "crate" and dn < radius * 0.46:
 			_break_crate(n, pos, 2.2)
+	for d in doors:
+		if is_instance_valid(d) and not d.get_meta("gone", false) and d.global_position.distance_to(pos) < radius * 0.55:
+			_break_door(d, (d.global_position - pos).normalized())
+	for m in machines:
+		if is_instance_valid(m) and m != src and not m.get_meta("gone", false):
+			var dm: float = m.global_position.distance_to(pos)
+			if dm < radius:
+				damage_prop(m, 700.0 * (1.0 - dm / radius), m.global_position + Vector3(0, 0.8, 0), Vector3.UP)
 
 
 # ---------------- grenades and rockets ----------------
@@ -869,6 +934,155 @@ func _physics_process(dt: float) -> void:
 			fx.trail(b - v.normalized() * 0.5)
 
 
+# ---------------- doors and machines ----------------
+var machines := []                 # things a mission wants destroyed (a generator...): kind "machine", meta "hp"
+var door_mat: StandardMaterial3D
+
+
+## A plank door on a hinge at `hinge` (its bottom corner), closing across +x of `yaw`. Rounds go through it
+## leaving holes on both faces; enough of them and it breaks up; a kick bursts it open (or breaks a shot-up one).
+func make_door(hinge: Vector3, yaw: float, width := 1.0, height := 2.1) -> StaticBody3D:
+	if door_mat == null:
+		var c: Node3D = load("res://assets/env/crate.glb").instantiate()
+		var cm: Material = c.find_children("*", "MeshInstance3D", true, false)[0].mesh.surface_get_material(0)
+		door_mat = cm.duplicate()
+		door_mat.albedo_color = Color(0.78, 0.66, 0.52)
+		door_mat.uv1_scale = Vector3(1.5, 1.0, 1.0)
+		c.free()
+	var h := Node3D.new()
+	add_child(h)
+	h.global_position = hinge
+	h.rotation.y = yaw
+	var d := StaticBody3D.new()
+	d.position = Vector3(width * 0.5, height * 0.5, 0)
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(width - 0.02, height, 0.05)
+	mi.mesh = bm
+	mi.material_override = door_mat
+	d.add_child(mi)
+	for yb in [-0.6, 0.6]:
+		var br := MeshInstance3D.new()
+		var bb := BoxMesh.new()
+		bb.size = Vector3(width - 0.1, 0.12, 0.07)
+		br.mesh = bb
+		br.material_override = door_mat
+		br.position = Vector3(0, yb, 0)
+		d.add_child(br)
+	var knob := MeshInstance3D.new()
+	var kb := BoxMesh.new()
+	kb.size = Vector3(0.12, 0.03, 0.1)
+	knob.mesh = kb
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.25, 0.25, 0.24)
+	steel.metallic = 0.7
+	knob.material_override = steel
+	knob.position = Vector3(width * 0.36, -0.05, 0)
+	d.add_child(knob)
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = Vector3(width - 0.02, height, 0.06)
+	cs.shape = sh
+	d.add_child(cs)
+	h.add_child(d)
+	d.set_meta("kind", "door")
+	d.set_meta("hp", 220.0)
+	d.set_meta("surf", "wood")
+	d.set_meta("pierce", "wood")
+	d.set_meta("width", width)
+	d.set_meta("height", height)
+	d.set_meta("hinge", h)
+	doors.append(d)
+	return d
+
+
+func _door_hole(d: Node3D, p: Vector3) -> void:
+	var k: int = d.get_meta("holes", 0)
+	if k > 40:
+		return
+	d.set_meta("holes", k + 1)
+	var local: Vector3 = d.to_local(p)
+	for side in [-1.0, 1.0]:
+		var mi := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(0.06, 0.06) * (1.0 if side < 0 else 1.5)    # splintered wider where it came out
+		mi.mesh = q
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = fx.hole_tex
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		d.add_child(mi)
+		mi.position = Vector3(local.x, local.y, side * 0.032)
+		mi.rotation = Vector3(0, 0 if side > 0 else PI, randf() * TAU)
+
+
+## The door comes apart into its planks, thrown along `dir`.
+func _break_door(d: Node3D, dir: Vector3) -> void:
+	if not is_instance_valid(d) or d.get_meta("gone", false):
+		return
+	d.set_meta("gone", true)
+	var w: float = d.get_meta("width")
+	var hgt: float = d.get_meta("height")
+	var xf: Transform3D = d.global_transform
+	fx.dust(xf.origin, 1.2)
+	fx.chips(xf.origin, dir, "wood", 14, 4.0)
+	snd.impact(xf.origin, "wood", true)
+	snd.thud(xf.origin, 0.0)
+	for i in 5:
+		var rb := RigidBody3D.new()
+		rb.collision_layer = 2
+		rb.collision_mask = 1
+		rb.mass = 2.0
+		var size := Vector3(w / 5.0 - 0.01, hgt * randf_range(0.55, 1.0), 0.05)
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = size
+		mi.mesh = bm
+		mi.material_override = door_mat
+		rb.add_child(mi)
+		var cs := CollisionShape3D.new()
+		var sh := BoxShape3D.new()
+		sh.size = size
+		cs.shape = sh
+		rb.add_child(cs)
+		add_child(rb)
+		rb.global_transform = Transform3D(xf.basis, xf * Vector3(-w * 0.5 + (i + 0.5) * w / 5.0, randf_range(-0.2, 0.2), 0))
+		rb.linear_velocity = dir * randf_range(2.0, 4.5) + Vector3(randf_range(-0.8, 0.8), randf_range(0.5, 2.0), randf_range(-0.8, 0.8))
+		rb.angular_velocity = Vector3(randf_range(-6, 6), randf_range(-6, 6), randf_range(-6, 6))
+		debris.append(rb)
+		_settle(rb)
+	d.queue_free()
+
+
+## A kick: bursts the door open away from the kicker (and breaks it if rounds have weakened it).
+func kick_door(d: Node3D, from: Vector3) -> void:
+	if not is_instance_valid(d) or d.get_meta("gone", false):
+		return
+	var hp: float = float(d.get_meta("hp")) - 110.0
+	d.set_meta("hp", hp)
+	var n: Vector3 = d.global_transform.basis.z
+	var away: Vector3 = (d.global_position - from)
+	away.y = 0.0
+	noise(d.global_position, 14.0)
+	if hp <= 0.0:
+		_break_door(d, away.normalized())
+		return
+	snd.impact(d.global_position, "wood", true)
+	snd.thud(d.global_position, 2.0)
+	if d.get_meta("open", false):
+		return
+	d.set_meta("open", true)
+	var h: Node3D = d.get_meta("hinge")
+	var side: float = 1.0 if n.dot(from - d.global_position) > 0.0 else -1.0
+	var to: float = h.rotation.y + side * 1.75
+	var tw := create_tween()
+	tw.tween_property(h, "rotation:y", to, 0.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(h, "rotation:y", to - side * 0.18, 0.25).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(h, "rotation:y", to - side * 0.1, 0.3).set_trans(Tween.TRANS_SINE)
+
+
 ## A prop model with a plain box (or cylinder) to collide with.
 func _prop(path: String, pos: Vector3, rot := 0.0, col := Vector3.ZERO, surf := "concrete", cylinder := false) -> StaticBody3D:
 	var b := StaticBody3D.new()
@@ -894,7 +1108,32 @@ func _prop(path: String, pos: Vector3, rot := 0.0, col := Vector3.ZERO, surf := 
 	return b
 
 
+## Missions progress: how many are open (the first always is).
+func unlocked() -> int:
+	var cf := ConfigFile.new()
+	if cf.load("user://progress.cfg") != OK:
+		return 1
+	return int(cf.get_value("progress", "unlocked", 1))
+
+
+func unlock(n: int) -> void:
+	if n <= unlocked():
+		return
+	var cf := ConfigFile.new()
+	cf.load("user://progress.cfg")
+	cf.set_value("progress", "unlocked", min(n, 30))
+	cf.save("user://progress.cfg")
+
+
+## Load a level (reloads the scene): "" the practice yard and menu, "m<n>" mission n.
+func go_level(l: String) -> void:
+	Engine.set_meta("level", l)
+	get_tree().paused = false
+	get_tree().reload_current_scene()
+
+
 func _build_yard() -> void:
+	extra_cover = SANDBAG_COVER
 	_build_ground()
 	_build_mountains()
 	var metal := _mat(Color(0.35, 0.37, 0.33), Color(0.5, 0.52, 0.46), 0.6, 0.55, 0.35)
@@ -949,7 +1188,7 @@ func _build_yard() -> void:
 			_prop("res://assets/env/barrier.glb", p, rot + randf_range(-0.015, 0.015), Vector3(2.0, 2.6, 0.3), "concrete")
 	# the building, fuel drums, containers
 	_prop("res://assets/env/building.glb", Vector3(14, 0, -24), 0.0, Vector3(10, 3.2, 7), "concrete")
-	_build_stairs()
+	_building_extras(Vector3(14, 0, -24))
 	# fuel drums (a few rounds and they blow up), some near the enemy posts
 	var di := 0
 	for p in [Vector3(8, 0, -2), Vector3(8.7, 0, -2.6), Vector3(8.1, 0, -3.3), Vector3(11.5, 0, -19.6), Vector3(12.2, 0, -20.1),
@@ -988,8 +1227,28 @@ func _build_yard() -> void:
 
 ## Outside stairs up the building's east wall to the roof (a smooth ramp under the steps to walk on, a railing to
 ## stop a fall), and the roof's parapet and water tank to take cover behind.
-func _build_stairs() -> void:
-	var base := Vector3(19.57, 0, -21.3)
+## The building at b: its outside stairs on the east side, the roof parapet (with the gap for the stairs), the tank.
+func _building_extras(b: Vector3) -> void:
+	stairs_flight(b + Vector3(5.57, 0, 2.7))
+	# the building's front corner beside the foot of the stairs, bevelled so a shoulder slides off it onto the steps
+	_coll(Transform3D(Basis(Vector3.UP, PI * 0.25), b + Vector3(4.9, 1.5, 3.65)), Vector3(0.06, 3.0, 0.42), "concrete")
+	for c in [[Vector3(0, 3.4, 3.38), Vector3(10, 0.4, 0.24)], [Vector3(0, 3.4, -3.38), Vector3(10, 0.4, 0.24)],
+			[Vector3(-4.88, 3.4, 0), Vector3(0.24, 0.4, 7)], [Vector3(4.88, 3.4, 0.7), Vector3(0.24, 0.4, 5.6)]]:
+		_coll(Transform3D(Basis(), b + c[0]), c[1], "concrete")
+	var tank := StaticBody3D.new()
+	tank.set_meta("surf", "metal")
+	var tcs := CollisionShape3D.new()
+	var tcy := CylinderShape3D.new()
+	tcy.radius = 1.12
+	tcy.height = 0.6
+	tcs.shape = tcy
+	tank.add_child(tcs)
+	add_child(tank)
+	tank.global_position = b + Vector3(-3, 3.5, -1.5)
+
+
+## A flight of the concrete stairs from `base` (foot of the first step) rising toward -z to a landing at 3.2 m.
+func stairs_flight(base: Vector3) -> void:
 	_prop("res://assets/env/stairs.glb", base, 0.0, Vector3.ZERO, "concrete")
 	var u := Vector3(0, 3.2, -4.8).normalized()
 	var n := Vector3(0, 4.8, 3.2).normalized()
@@ -1011,8 +1270,6 @@ func _build_stairs() -> void:
 	add_child(wedge)
 	wedge.global_position = base
 	_coll(Transform3D(Basis(), base + Vector3(0, 3.09, -5.2)), Vector3(1.12, 0.22, 1.6), "concrete")
-	# the building's front corner beside the foot of the stairs, bevelled so a shoulder slides off it onto the steps
-	_coll(Transform3D(Basis(Vector3.UP, PI * 0.25), Vector3(18.9, 1.5, -20.35)), Vector3(0.06, 3.0, 0.42), "concrete")
 	# the railing up the open side: a thin slab following the slope, from the second step to the landing
 	var rail := StaticBody3D.new()
 	rail.set_meta("surf", "metal")
@@ -1034,20 +1291,6 @@ func _build_stairs() -> void:
 	rail.global_position = base
 	_coll(Transform3D(Basis(), base + Vector3(0.6, 3.7, -5.4)), Vector3(0.06, 1.0, 1.2), "metal")
 	_coll(Transform3D(Basis(), base + Vector3(0, 3.7, -5.97)), Vector3(1.1, 1.0, 0.06), "metal")
-	# roof: parapet (with the gap where the stairs come up) and the tank
-	for c in [[Vector3(14, 3.4, -20.62), Vector3(10, 0.4, 0.24)], [Vector3(14, 3.4, -27.38), Vector3(10, 0.4, 0.24)],
-			[Vector3(9.12, 3.4, -24), Vector3(0.24, 0.4, 7)], [Vector3(18.88, 3.4, -23.3), Vector3(0.24, 0.4, 5.6)]]:
-		_coll(Transform3D(Basis(), c[0]), c[1], "concrete")
-	var tank := StaticBody3D.new()
-	tank.set_meta("surf", "metal")
-	var cs := CollisionShape3D.new()
-	var cy := CylinderShape3D.new()
-	cy.radius = 1.12
-	cy.height = 0.6
-	cs.shape = cy
-	tank.add_child(cs)
-	add_child(tank)
-	tank.global_position = Vector3(11, 3.5, -25.5)
 
 
 func _coll(xf: Transform3D, size: Vector3, surf: String) -> void:
@@ -1111,12 +1354,18 @@ func on_enemy_killed(_e: Node, headshot: bool) -> void:
 	if headshot:
 		headshots += 1
 	ui.kill_note("HEADSHOT" if headshot else "KILL")
+	if mission:
+		return
 	if alive() == 0:
 		wave_t = 7.0
 		ui.message("AREA CLEAR", "Next wave in a few seconds", 4.0)
 
 
 func on_player_dead() -> void:
+	if mission:
+		music.player_died()
+		mission.fail()
+		return
 	ui.message("YOU WERE KILLED", "Back in a moment", 3.5)
 	music.player_died()
 
@@ -1235,7 +1484,7 @@ class FX extends Node3D:
 				root.add_child(sm)
 				sides.append(sm)
 			flash_rigs.append({"root": root, "front": front, "sides": sides, "t": 0.0})
-		for i in 16:
+		for i in 32:
 			var s := Sprite3D.new()
 			s.texture = soft_tex
 			s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -1244,7 +1493,7 @@ class FX extends Node3D:
 			s.set_meta("t", 0.0)
 			add_child(s)
 			puffs.append(s)
-		for i in 40:
+		for i in 150:
 			var mi := MeshInstance3D.new()
 			var q := QuadMesh.new()
 			q.size = Vector2(0.11, 0.11)
@@ -1334,20 +1583,35 @@ class FX extends Node3D:
 			s.set_meta("t", 0.7)
 			s.set_meta("max", 0.7)
 
+	## What a round does where it strikes: sand kicks up in a spurt of dust and grit and leaves a small dimple;
+	## steel throws sparks; concrete and rock chip and puff grey dust; wood splinters; sandbags bleed sand.
+	## Everything but sand keeps a bullet hole.
 	func impact(p: Vector3, n: Vector3, col: Object) -> void:
 		var surf := "sand"
 		if col and col.has_meta("surf"):
 			surf = str(col.get_meta("surf"))
-		var color = {"sand": Color(0.85, 0.72, 0.52), "wood": Color(0.7, 0.55, 0.35), "metal": Color(1, 0.75, 0.35), "concrete": Color(0.75, 0.73, 0.68), "rock": Color(0.7, 0.58, 0.44), "sandbag": Color(0.8, 0.7, 0.5)}.get(surf, Color(0.8, 0.75, 0.7))
+		var color = {"sand": Color(0.78, 0.66, 0.48), "wood": Color(0.72, 0.58, 0.4), "metal": Color(0.7, 0.68, 0.64), "concrete": Color(0.78, 0.76, 0.72), "rock": Color(0.7, 0.6, 0.48), "sandbag": Color(0.78, 0.68, 0.5)}.get(surf, Color(0.8, 0.75, 0.7))
 		var s: Sprite3D = puffs[puff_i % puffs.size()]
 		puff_i += 1
 		s.global_position = p + n * 0.05
 		s.modulate = color
-		s.pixel_size = 0.004 if surf != "metal" else 0.002
+		s.pixel_size = 0.005 if surf != "metal" else 0.0025
 		s.visible = true
-		s.set_meta("t", 0.6 if surf != "metal" else 0.12)
+		s.set_meta("t", 0.8 if surf != "metal" else 0.25)
 		s.set_meta("max", s.get_meta("t"))
-		if surf == "sand":
+		match surf:
+			"sand", "sandbag":
+				# a spurt thrown up off the ground, and grit
+				_big(p + n * 0.1, 0.35, 0.9, randf_range(0.7, 1.0), n * 1.6 + Vector3(0, 0.6, 0), Color(color.r, color.g, color.b, 0.75), Color(color.r, color.g, color.b, 0.0))
+				chips(p, n, "dirt", 4, 2.6)
+			"metal":
+				chips(p, n, "spark", 6, 7.0)
+			"concrete", "rock":
+				_big(p + n * 0.08, 0.3, 0.7, 0.9, n * 0.8, Color(color.r, color.g, color.b, 0.7), Color(color.r, color.g, color.b, 0.0))
+				chips(p, n, "stone", 4, 3.5)
+			"wood":
+				chips(p, n, "wood", 4, 3.0)
+		if col and col.get_meta("kind", "") == "door":
 			return
 		var h: MeshInstance3D = holes[hole_i % holes.size()]
 		hole_i += 1
@@ -1356,6 +1620,13 @@ class FX extends Node3D:
 		var up := Vector3.UP if abs(n.y) < 0.95 else Vector3.FORWARD
 		h.look_at(p + n, up)
 		h.rotate_object_local(Vector3.FORWARD, randf() * TAU)
+		var hm: StandardMaterial3D = h.material_override
+		if surf == "sand":
+			h.scale = Vector3.ONE * 0.7
+			hm.albedo_color = Color(0.55, 0.45, 0.35, 0.55)
+		else:
+			h.scale = Vector3.ONE * (0.8 if surf == "metal" else 1.0)
+			hm.albedo_color = Color(1, 1, 1, 1)
 
 	# ---- chips (wood splinters, metal bits), dust, explosions ----
 	var chip_list := []
@@ -1367,14 +1638,17 @@ class FX extends Node3D:
 	var boom_t := 0.0
 
 	func _make_chips() -> void:
-		for k in ["wood", "metal", "dark"]:
+		for k in ["wood", "metal", "dark", "dirt", "stone", "spark"]:
 			var m := StandardMaterial3D.new()
-			m.albedo_color = {"wood": Color(0.55, 0.38, 0.2), "metal": Color(0.75, 0.72, 0.66), "dark": Color(0.12, 0.1, 0.09)}[k]
+			m.albedo_color = {"wood": Color(0.62, 0.45, 0.25), "metal": Color(0.75, 0.72, 0.66), "dark": Color(0.12, 0.1, 0.09),
+				"dirt": Color(0.55, 0.45, 0.32), "stone": Color(0.62, 0.6, 0.56), "spark": Color(1.0, 0.82, 0.4)}[k]
 			m.roughness = 0.9
+			if k == "spark":
+				m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 			chip_mats[k] = m
 		var bm := BoxMesh.new()
 		bm.size = Vector3(0.05, 0.012, 0.03)
-		for i in 40:
+		for i in 120:
 			var mi := MeshInstance3D.new()
 			mi.mesh = bm
 			mi.visible = false
@@ -1405,10 +1679,17 @@ class FX extends Node3D:
 			mi.material_override = chip_mats[kind]
 			mi.global_position = p + n * 0.03
 			mi.scale = Vector3.ONE * randf_range(0.7, 1.6) * (2.5 if kind == "dark" else 1.0)
+			if kind == "spark":
+				mi.scale = Vector3(0.25, 0.25, 0.6) * randf_range(0.6, 1.2)
+			elif kind == "dirt" or kind == "stone":
+				mi.scale = Vector3.ONE * randf_range(0.35, 0.8)
 			mi.visible = true
 			c["v"] = (n + Vector3(randf_range(-0.8, 0.8), randf_range(0.2, 1.2), randf_range(-0.8, 0.8))).normalized() * speed * randf_range(0.5, 1.3)
 			c["spin"] = Vector3(randf_range(-15, 15), randf_range(-15, 15), randf_range(-15, 15))
 			c["t"] = randf_range(0.6, 1.2) * (2.0 if kind == "dark" else 1.0)
+			if kind == "spark":
+				c["t"] = randf_range(0.12, 0.3)
+				mi.look_at(mi.global_position + c["v"], Vector3.UP if abs(c["v"].normalized().y) < 0.95 else Vector3.FORWARD)
 
 	var flame_tex: Texture2D
 	func _big(p: Vector3, size: float, grow: float, life: float, v: Vector3, c0: Color, c1: Color, flame := false) -> void:
@@ -1659,6 +1940,20 @@ class FX extends Node3D:
 			_big(p + d * (0.3 + i * 0.35), 0.8 + i * 0.25, 2.5, randf_range(1.0, 1.8), d * (2.0 + i) + Vector3(0, 0.4, 0),
 				Color(0.75, 0.68, 0.56, 0.6), Color(0.8, 0.74, 0.62, 0.0))
 
+	## A drop of blood on the ground under a wounded man.
+	func blood_drop(p: Vector3) -> void:
+		var h: MeshInstance3D = holes[hole_i % holes.size()]
+		hole_i += 1
+		h.visible = true
+		var gy: float = get_parent().ground_height(p.x, p.z)
+		if p.y > gy + 0.5:
+			gy = p.y
+		h.global_position = Vector3(p.x, gy + 0.012, p.z)
+		h.rotation = Vector3(-PI * 0.5, randf() * TAU, 0)
+		h.scale = Vector3.ONE * randf_range(0.6, 1.2)
+		var hm: StandardMaterial3D = h.material_override
+		hm.albedo_color = Color(0.45, 0.02, 0.02, 0.85)
+
 	func blood(p: Vector3, n: Vector3) -> void:
 		for i in 2:
 			var s: Sprite3D = puffs[puff_i % puffs.size()]
@@ -1725,8 +2020,9 @@ class FX extends Node3D:
 				c["v"] += Vector3(0, -9.8, 0) * dt
 				mi.global_position += c["v"] * dt
 				mi.rotation += c["spin"] * dt
-				if mi.global_position.y < 0.01:
-					mi.global_position.y = 0.01
+				var gy: float = get_parent().ground_height(mi.global_position.x, mi.global_position.z) + 0.01
+				if mi.global_position.y < gy:
+					mi.global_position.y = gy
 					c["v"] = Vector3.ZERO
 					c["spin"] = Vector3.ZERO
 				if c["t"] <= 0.0:
@@ -1794,7 +2090,7 @@ class Snd extends Node:
 
 	func _ready() -> void:
 		for k in ["ak", "m4", "pistol", "reload_rifle", "reload_pistol", "steps_sand", "steps_run",
-				"enemy_ak", "die_male", "die_collapse", "die_fall", "die_breath", "grunts"]:
+				"enemy_ak", "die_male", "die_collapse", "die_fall", "die_breath", "grunts", "rpg", "blast"]:
 			streams[k] = load("res://assets/sfx/%s.mp3" % k)
 		streams["whoosh"] = load("res://assets/music/whoosh.mp3")
 		streams["boom"] = load("res://assets/music/escape.mp3")   # the impact hit near the end of "Action trailer"
@@ -1956,6 +2252,24 @@ class Snd extends Node:
 			var t := float(i) / SR
 			th[i] = th[i] * exp(-t * 18.0) * 2.0 + sin(TAU * 62.0 * t) * exp(-t * 12.0) * 0.7
 		streams["s_thud"] = _wav(th)
+		# an alarm siren: a wail rising and falling (loops)
+		var nsi := int(SR * 2.4)
+		var si := PackedFloat32Array()
+		si.resize(nsi)
+		var ph := 0.0
+		for i in nsi:
+			var t := float(i) / SR
+			var f: float = 620.0 + 380.0 * (0.5 - 0.5 * cos(TAU * t / 2.4))
+			ph += TAU * f / SR
+			si[i] = (sin(ph) * 0.6 + sin(ph * 2.0) * 0.15 + sin(ph * 3.0) * 0.08) * 0.8
+		streams["s_siren"] = _wav(si, true)
+		# a diesel generator's hum (loops)
+		var nh := int(SR * 1.0)
+		var hm := _noise(nh, 0.02)
+		for i in nh:
+			var t := float(i) / SR
+			hm[i] = hm[i] * 1.2 + sin(TAU * 50.0 * t) * 0.25 + sin(TAU * 100.0 * t) * 0.18 + sin(TAU * 25.0 * t) * 0.2 * (0.6 + 0.4 * sin(TAU * 12.5 * t))
+		streams["s_hum"] = _wav(hm, true)
 		# a fire: low roar with crackles (loops)
 		var nfi := int(SR * 2.0)
 		var fi := _noise(nfi, 0.03)
@@ -2010,8 +2324,13 @@ class Snd extends Node:
 			"rpg":
 				_play("ak", at, 0.85, 2.0, 0.48, 0.3, true)
 
+	## The player's RPG: the launch and the rocket's roar going away (the user's recording, its first 3.5 s).
 	func rocket(_pos: Vector3) -> void:
-		_play("whoosh", 0.0, 2.5, 2.0, 1.0, 0.8)
+		_play("rpg", 0.08, 3.5, 1.0, 1.0, 0.9, true)
+
+	## A sniper's single shot, from where he is.
+	func enemy_single(pos: Vector3) -> void:
+		_play3d("ak", pos, AK_SINGLE[randi() % AK_SINGLE.size()], 0.85, -1.0, 0.8, 0.2, true)
 
 	## The shotgun's pump: the bolt rack from the rifle reload, a little quicker.
 	func pump() -> void:
@@ -2046,9 +2365,9 @@ class Snd extends Node:
 		var g: Array = GRUNTS[randi() % GRUNTS.size()]
 		_play3d("grunts", pos, g[0], g[1] - g[0] + 0.05, -4.0, randf_range(0.92, 1.05))
 
-	## A drum going up: the impact hit near the end of the action trailer, from where it happened.
+	## An explosion (drum, grenade, rocket): the user's blast recording, from where it happened.
 	func explosion(pos: Vector3) -> void:
-		_play3d("boom", pos, 20.0, 4.2, 4.0, 1.0, 0.0, true)
+		_play3d("blast", pos, 0.0, 2.9, 5.0, randf_range(0.94, 1.04), 0.3, true)
 
 	## An enemy burst: the enemy rifle recording from where he stands, a little quieter than the player's gun.
 	func enemy_burst(pos: Vector3, shots: int) -> void:

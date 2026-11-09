@@ -1,8 +1,13 @@
 # Operation Dust Signal (Godot)
 
-A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. So far: the soldier, the rifles and a practice yard with enemy soldiers. The Hadra base mission and the rest of the earlier browser version come back in later phases.
+A third-person tactical shooter for Android, rebuilt in **Godot 4.3**: missions (30 planned, opening one after another) and a training yard with every gun.
 
-## What is in phase 1
+## Missions
+
+- MISSIONS on the start screen lists all thirty: the first is open, each one completed opens the next (progress kept on the phone). They are all inside the game itself, nothing extra to download; missions not built yet show "coming soon". Each starts with a briefing and its objectives; the objectives stay on screen with a marker (and distance) on the next one. Killed: mission failed, try again. In a mission you carry what the briefing says, ammunition runs out, and you take guns and magazines from the guards you kill.
+- Mission 1, BROKEN RELAY: a fenced militia radio station in the desert. A gate with a guard booth and barrier, a watchtower with a sniper (Dragunov), a barracks with a guard on its roof, a command hut with a plank door, a lattice radio mast and the diesel generator that powers it; patrols inside the wire, a torn stretch of fence on the east side. Take the relay codes from the command hut, knock out the generator, get out through the north gate to the pickup point (green smoke). A guard who has seen you raises the alarm a few seconds later unless he is dead by then: a siren, and four more soldiers come up the road from the north.
+
+## Training yard and everything in it
 
 - The practice yard: rippled sand with gentle dunes beyond the yard and hazy rocky mountains on the horizon, corrugated shipping containers (one stack two high), wooden crates, concrete T-wall barriers, a sandbag wall laid bag by bag, ribbed fuel drums, a plastered building with door, barred windows, air conditioner and roof tank, boulders, steel targets and a barbed-wire fence. Neutral daylight: white sun, blue sky, a soft fill light, so everything keeps its real colour.
 - Mixamo "Swat Guy" with walk, run, strafe, walk/run backwards, crouch walk, kneel, aim and jump clips, driven by an AnimationTree: one direction clip at a time with a short crossfade, and the aim or reload pose on the arms and chest while the legs keep walking.
@@ -21,9 +26,13 @@ A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. So far: t
 - HOLSTER slings the rifle on the back (the pistol goes into a thigh holster): the arms hang free and he runs a little faster; HOLSTER again or FIRE draws it.
 - Climbing: JUMP next to a crate, drum, the sandbag wall or a container climbs up onto it; at a concrete T-wall he goes up and over (the button reads CLIMB when there is something to climb). Concrete stairs with a railing go up the side of the building to its roof, which has a parapet to take cover behind; one enemy keeps watch from the roof.
 - Sound: gunfire and explosions with a little open-air reverb and late echoes off the hills, far-off shots duller; rounds striking steel, wood, sand, concrete or a body each sound different; enemy rounds that pass close crack by; burning drums roar and crackle; spent cases fly out of the guns (red shells from the shotgun's pump). These effect sounds are made in the game from noise and tones.
+- Wounds: rounds hit where they meet the body. A leg hit makes a soldier limp (he cannot run, he bleeds); both legs, or one heavy round, put him down: he fights on lying on the ground and crawls. An arm hit spoils his aim. The player hit in a leg cannot sprint for a while; in an arm, aims less steadily.
+- Wooden doors: rounds go through and leave holes on both faces, enough of them and the door comes apart into its planks; ACTION (KICK) next to a closed door bursts it open (and breaks a shot-up one).
+- ACTION next to a dead soldier (TAKE AK, TAKE SVD...): the player kneels, rolls the body onto its side and takes the gun out of his hand: a new gun, or two more magazines for one already carried.
+- Every round leaves a mark: a spurt of dust and grit and a small dimple in sand, sparks off steel, chips and grey dust off concrete and rock, splinters off wood, sand out of sandbags; bullet holes stay.
 - Player health with a hit flash and a mark toward the shooter; health comes back after a few quiet seconds; when killed the player is back at the start a moment later.
 - Practice yard: the reserve ammunition refills, so the rifles never end up at 0 / 0.
-- Phone controls: move with the bottom-left thumb, drag anywhere else to look, FIRE (slide the same finger to aim while firing), AIM, CROUCH, JUMP / CLIMB, RELOAD, SWAP, GRENADE, HOLSTER, VIEW, MENU. On a computer: WASD, mouse, left/right click, Shift, C, Space, R, Q or 1-6, G, H, V, Esc.
+- Phone controls: move with the bottom-left thumb, drag anywhere else to look, FIRE (slide the same finger to aim while firing), AIM, CROUCH, JUMP / CLIMB, RELOAD, SWAP, GRENADE, HOLSTER, ACTION (shows what it will do: KICK, TAKE AK, TAKE CODES...), VIEW, MENU. On a computer: WASD, mouse, left/right click, Shift, C, Space, R, Q or 1-6, G, H, E, V, Esc.
 
 ## Project
 
@@ -31,7 +40,8 @@ A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. So far: t
   - `scripts/main.gd`: the yard, lighting, effects, sounds and the update check
   - `scripts/player.gd`: movement, animation, guns, IK, camera, shooting, health; also builds the other soldiers (first-person arms, enemies) with the same grip
   - `scripts/enemy.gd`: the enemy soldier
-  - `scripts/touch.gd`: on-screen controls, keyboard/mouse, HUD, start and pause menus
+  - `scripts/touch.gd`: on-screen controls, keyboard/mouse, HUD, start, mission list, briefing, result and pause menus
+  - `scripts/missions.gd`: the missions (level, soldiers, objectives, alarm, pickup point) and the progress
   - `assets/soldier.glb`: the soldier with its Mixamo animations
   - `assets/guns/`: the AK-47, M4A1 (with red-dot sight), suppressed SD-9 pistol, Dragunov SVD (PSO-1 scope), pump shotgun (sliding pump) and RPG-7 (removable rocket), `assets/sfx/`: the sound files (unedited)
 - `tools/envbuild/`: the script that builds the yard's props and textures in `godot/assets/env/` (shipping containers, wooden crates, concrete T-walls, fuel drums, sandbags, the building and its outside stairs; sand, rock and concrete textures); `ONLY=building,stairs` rebuilds just those
@@ -61,5 +71,5 @@ Sounds in `godot/assets/sfx/` are unedited sound effects from [Pixabay](https://
 - Enemy rifles: "Machin gun AK47 sound effect 6" (beetpro)
 - Music and atmosphere (`godot/assets/music/`): "Cinematic action epic trailer: Iron Vanguard" (openmindaudio), "Descent whoosh" (viralaudio), "Tense suspense ambience" (absolutesound), "Mid nights sound" (ncprime), "Raven call" (freesound_community), "Scary sound effect" and "Heartbeat sound" (dragon-studio), "Action loop E 90 BPM" (brvhrtz), "Action trailer" (arctsound)
 - Deaths: "Male death scream horror", "Dramatic death collapse" and "Character fall impact" (universfield), "Male death sound" (vinodadora); the player's last breath is the player's own recording
-- The soldiers' grunts when hit are the player's own ElevenLabs recording
+- The soldiers' grunts when hit are the player's own ElevenLabs recording; the RPG launch and the explosions are the player's own recordings
 - The SVD, shotgun and RPG fire the single shots from the AK-47 recording played lower and louder; the shotgun's pump is the rifle reload sound
