@@ -115,6 +115,11 @@ var left_xf := {}                   # per gun: left hand target on the gun
 var ik_magnet := Vector3.ZERO
 var model_scale := 1.0
 var spawn := Vector3(0, 0.05, 6)
+var main_data := {}                 # grip data of the player's soldier
+var rig_data := {}                  # per character kind: grip data, size, animation library
+# the other soldiers (enemies): the player's own clips are copied onto them
+const KINDS := {"soldier": "res://assets/soldier.glb", "gasmask": "res://assets/chars/gasmask.glb",
+	"olive": "res://assets/chars/olive.glb", "blue": "res://assets/chars/blue.glb"}
 var ik_tgt: Node3D
 var hp := 100.0
 var dead := false
@@ -164,7 +169,6 @@ func _build_model() -> void:
 		if ap.has_animation(n):
 			ap.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	_calibrate_and_attach()
-	_setup_fingers()
 	_build_tree()
 
 
@@ -189,28 +193,29 @@ func _skin(sc: Node3D, tint: Color, fade_near := false) -> void:
 
 ## Another soldier with the same grip on the given guns (first-person arms, enemies). Add r.root to the tree,
 ## then call start_rig(r).
-func make_rig(tint: Color, keys: Array, fade_near := false) -> Dictionary:
-	var sc: Node3D = load("res://assets/soldier.glb").instantiate()
-	sc.scale = Vector3.ONE * model_scale
+func make_rig(tint: Color, keys: Array, fade_near := false, kind := "soldier") -> Dictionary:
+	var info := _kind(kind)
+	var sc: Node3D = load(KINDS[kind]).instantiate()
+	sc.scale = Vector3.ONE * float(info["scale"])
 	sc.rotation.y = PI
 	_skin(sc, tint, fade_near)
-	var sk: Skeleton3D
-	for n in sc.find_children("*", "Skeleton3D", true, false):
-		sk = n
-	var r := {"root": sc, "skel": sk, "ap": sc.find_child("AnimationPlayer", true, false), "guns": {}, "muzzles": {}}
+	var sk: Skeleton3D = sc.find_children("*", "Skeleton3D", true, false)[0]
+	var cap: AnimationPlayer = _rig_player(sc, kind)
+	var d: Dictionary = info["data"]
+	var r := {"root": sc, "skel": sk, "ap": cap, "guns": {}, "muzzles": {}, "data": d, "kind": kind}
 	var att := BoneAttachment3D.new()
 	att.bone_name = "mixamorigRightHand"
 	sk.add_child(att)
 	for k in keys:
 		var holder := Node3D.new()
 		holder.name = k
-		holder.transform = holder_xf[k]
+		holder.transform = d["holder"][k]
 		att.add_child(holder)
 		var g := _load_gun(k, not fade_near)
 		holder.add_child(g)
 		var tgt := Marker3D.new()
 		tgt.name = "LeftGrip"
-		tgt.transform = left_xf[k]
+		tgt.transform = d["left"][k]
 		holder.add_child(tgt)
 		r["guns"][k] = holder
 		r["muzzles"][k] = g.find_child("muzzle", true, false)
@@ -219,7 +224,7 @@ func make_rig(tint: Color, keys: Array, fade_near := false) -> Dictionary:
 	k_ik.tip_bone = "mixamorigLeftHand"
 	k_ik.override_tip_basis = true
 	k_ik.use_magnet = true
-	k_ik.magnet = ik_magnet
+	k_ik.magnet = d["magnet"]
 	sk.add_child(k_ik)
 	r["ik"] = k_ik
 	var tgt := Node3D.new()
@@ -227,6 +232,68 @@ func make_rig(tint: Color, keys: Array, fade_near := false) -> Dictionary:
 	sk.add_child(tgt)
 	r["ik_target"] = tgt
 	return r
+
+
+## The animation player of another soldier: the soldier's own, or (other characters) a new one carrying the
+## player's clips with their bone paths pointed at this skeleton and the hips moves scaled to its size.
+func _rig_player(sc: Node3D, kind: String) -> AnimationPlayer:
+	if kind == "soldier":
+		return sc.find_child("AnimationPlayer", true, false)
+	var cap := AnimationPlayer.new()
+	sc.add_child(cap)
+	cap.add_animation_library("", _kind(kind)["lib"])
+	return cap
+
+
+## Size, grip data and clips of a character kind, worked out once on a spare copy.
+func _kind(kind: String) -> Dictionary:
+	if rig_data.has(kind) and rig_data[kind].has("scale"):
+		return rig_data[kind]
+	if kind == "soldier":
+		rig_data[kind] = {"scale": model_scale, "data": main_data}
+		return rig_data[kind]
+	var sc: Node3D = load(KINDS[kind]).instantiate()
+	var sk: Skeleton3D = sc.find_children("*", "Skeleton3D", true, false)[0]
+	var info := {"lib": _retarget(sc, sk)}
+	var holder := Node3D.new()
+	get_parent().add_child(holder)
+	holder.add_child(sc)
+	var lo := INF
+	var hi := -INF
+	for m in sc.find_children("*", "MeshInstance3D", true, false):
+		var bb: AABB = m.global_transform * m.get_aabb()
+		lo = min(lo, bb.position.y)
+		hi = max(hi, bb.end.y)
+	info["scale"] = 1.8 / max(0.01, hi - lo)
+	sc.scale = Vector3.ONE * float(info["scale"])
+	sc.rotation.y = PI
+	var cap := AnimationPlayer.new()
+	sc.add_child(cap)
+	cap.add_animation_library("", info["lib"])
+	info["data"] = calibrate(sk, cap, Vector3(0, 0, -1))
+	holder.queue_free()
+	rig_data[kind] = info
+	return info
+
+
+func _retarget(sc: Node3D, sk: Skeleton3D) -> AnimationLibrary:
+	var src: AnimationLibrary = ap.get_animation_library("")
+	var lib := AnimationLibrary.new()
+	var path := str(sc.get_path_to(sk))
+	var k: float = sk.get_bone_rest(sk.find_bone("mixamorigHips")).origin.y / skel.get_bone_rest(skel.find_bone("mixamorigHips")).origin.y
+	for name in src.get_animation_list():
+		var a: Animation = src.get_animation(name).duplicate()
+		for i in range(a.get_track_count() - 1, -1, -1):
+			var bone := str(a.track_get_path(i)).get_slice(":", 1)
+			if sk.find_bone(bone) < 0:
+				a.remove_track(i)
+				continue
+			a.track_set_path(i, NodePath(path + ":" + bone))
+			if a.track_get_type(i) == Animation.TYPE_POSITION_3D:
+				for key in a.track_get_key_count(i):
+					a.track_set_key_value(i, key, a.track_get_key_value(i, key) * k)
+		lib.add_animation(name, a)
+	return lib
 
 
 func start_rig(r: Dictionary, gun: String) -> void:
@@ -237,21 +304,23 @@ func start_rig(r: Dictionary, gun: String) -> void:
 
 
 ## Wrist turn and closed fingers on any of the soldiers (after its clips have been applied).
-func pose_rig_hands(sk: Skeleton3D, gun: String) -> void:
+func pose_rig_hands(sk: Skeleton3D, gun: String, d := {}) -> void:
+	var dd: Dictionary = main_data if d.is_empty() else d
 	var b := sk.find_bone("mixamorigRightHand")
-	sk.set_bone_pose_rotation(b, sk.get_bone_pose_rotation(b) * r_corr)
+	sk.set_bone_pose_rotation(b, sk.get_bone_pose_rotation(b) * dd["r_corr"])
 	var lc: float = LEFT_HOLD[gun].get("c", 1.0)
-	for f in finger_set:
+	for f in dd["fingers"]:
 		sk.set_bone_pose_rotation(f[0], f[1] * Quaternion(f[2], f[3] * (lc if f[4] else 1.0)))
 
 
 ## Turn a soldier's chest (shared over the three spine bones) so its rifle points along want (world), weight w.
-func aim_chest(sk: Skeleton3D, want: Vector3, w: float) -> void:
+func aim_chest(sk: Skeleton3D, want: Vector3, w: float, d := {}) -> void:
 	if w < 0.01:
 		return
+	var dd: Dictionary = main_data if d.is_empty() else d
 	var sk_inv: Basis = sk.global_transform.basis.orthonormalized().inverse()
 	var hb: Basis = sk.get_bone_global_pose(sk.find_bone("mixamorigRightHand")).basis.orthonormalized()
-	var gun_dir: Vector3 = (hb * gun_in_hand_b).z.normalized()
+	var gun_dir: Vector3 = (hb * Basis(dd["gib"])).z.normalized()
 	var want_s: Vector3 = (sk_inv * want).normalized()
 	if gun_dir.dot(want_s) > 0.99999:
 		return
@@ -270,11 +339,11 @@ func turn_chest(sk: Skeleton3D, q: Quaternion) -> void:
 
 
 ## Hand axes in skeleton space: d along the back of the hand to the knuckles, n out of the palm.
-func _hand_axes(side: String, rest: bool) -> Dictionary:
+func _hand_axes(sk: Skeleton3D, side: String, rest: bool) -> Dictionary:
 	var pos := {}
 	for b in ["Hand", "HandIndex1", "HandMiddle1", "HandPinky1"]:
-		var id := skel.find_bone("mixamorig%s%s" % [side, b])
-		var tr: Transform3D = skel.get_bone_global_rest(id) if rest else skel.get_bone_global_pose(id)
+		var id := sk.find_bone("mixamorig%s%s" % [side, b])
+		var tr: Transform3D = sk.get_bone_global_rest(id) if rest else sk.get_bone_global_pose(id)
 		pos[b] = tr.origin
 	var d: Vector3 = (pos["HandMiddle1"] - pos["Hand"]).normalized()
 	var a: Vector3 = (pos["HandIndex1"] - pos["HandPinky1"]).normalized()   # toward the thumb side
@@ -304,30 +373,30 @@ func _load_gun(k: String, shadows := true) -> Node3D:
 ## Put each gun's pistol grip inside the curled right hand and the left palm under the handguard.
 ## The Mixamo clips hold an invisible rifle; the right wrist gets the small fixed turn (r_corr) that lines a
 ## properly gripped gun up with it, so the barrel still points where the clips (and the crosshair) point.
-func _calibrate_and_attach() -> void:
-	var sg := skel.global_transform
+## Works on any Mixamo-rigged soldier (sk, with its own animation player in the aim clip), facing `ahead`.
+func calibrate(sk: Skeleton3D, cap: AnimationPlayer, ahead: Vector3) -> Dictionary:
+	var sg := sk.global_transform
 	var sc: float = sg.basis.get_scale().x
-	var rh := skel.find_bone("mixamorigRightHand")
-	var lh := skel.find_bone("mixamorigLeftHand")
-	var le := skel.find_bone("mixamorigLeftForeArm")
-	var hr := _hand_axes("Right", true)
-	var hl := _hand_axes("Left", true)
-	var rbr: Basis = skel.get_bone_global_rest(rh).basis.orthonormalized().inverse()
-	var lbr: Basis = skel.get_bone_global_rest(lh).basis.orthonormalized().inverse()
+	var rh := sk.find_bone("mixamorigRightHand")
+	var lh := sk.find_bone("mixamorigLeftHand")
+	var le := sk.find_bone("mixamorigLeftForeArm")
+	var hr := _hand_axes(sk, "Right", true)
+	var hl := _hand_axes(sk, "Left", true)
+	var rbr: Basis = sk.get_bone_global_rest(rh).basis.orthonormalized().inverse()
+	var lbr: Basis = sk.get_bone_global_rest(lh).basis.orthonormalized().inverse()
 	var r_loc := _frame(rbr * hr["d"], rbr * hr["n"])
 	var l_loc := _frame(lbr * hl["d"], lbr * hl["n"])
 	var r_len: float = hr["len"] * sc
 	var l_len: float = hl["len"] * sc
 
-	ap.play("aim")
-	ap.seek(0.6, true)
-	skel.force_update_all_bone_transforms()
-	var hand_w: Transform3D = sg * skel.get_bone_global_pose(rh)
+	cap.play("aim")
+	cap.seek(0.6, true)
+	sk.force_update_all_bone_transforms()
+	var hand_w: Transform3D = sg * sk.get_bone_global_pose(rh)
 	var hn_w := Transform3D(hand_w.basis.orthonormalized(), hand_w.origin)
-	var elbow_skel: Vector3 = skel.get_bone_global_pose(le).origin
-	var ahead := -global_transform.basis.z          # the way the body faces (and the crosshair, in the aim pose)
+	var elbow_skel: Vector3 = sk.get_bone_global_pose(le).origin
 	var want := Basis.looking_at(ahead, Vector3.UP, true)   # +Z of the gun along the barrel
-	ap.stop()
+	cap.stop()
 
 	# right hand round the grip: index side up the grip, palm against its right side. The hand may roll round
 	# the grip; take the roll that needs the least wrist turn.
@@ -350,54 +419,58 @@ func _calibrate_and_attach() -> void:
 			d_best = d_t
 			n_best = n_t
 	var gun_b := hn_w.basis * r_basis_g.inverse()            # gun axes (world) with the hand as it is in the clip
-	r_corr = (hn_w.basis.inverse() * (want * gun_b.inverse()) * hn_w.basis).get_rotation_quaternion()
+	var d := {"r_corr": (hn_w.basis.inverse() * (want * gun_b.inverse()) * hn_w.basis).get_rotation_quaternion(),
+		"holder": {}, "left": {}, "gib": Basis(), "fingers": _finger_set(sk),
+		"magnet": elbow_skel + Vector3(0, -sk.get_bone_rest(sk.find_bone("mixamorigHips")).origin.y * 0.16, 0)}
 	print("grip: wrist turn %.1f deg" % rad_to_deg(best))
-
-	var att := BoneAttachment3D.new()
-	att.bone_name = "mixamorigRightHand"
-	skel.add_child(att)
 	for k in ["pistol", "m4", "ak"]:
 		var gs: float = GUN_SCALE[k]
 		var grip_c := GRIP_DOWN.normalized() * 0.05 * gs
 		var wrist_g := grip_c - d_best * (r_len * 0.78) - n_best * 0.03
 		var gun_in_hand := Transform3D(r_basis_g, wrist_g).affine_inverse()
-		gun_in_hand_b = gun_in_hand.basis
-		var holder := Node3D.new()
-		holder.name = k
+		d["gib"] = gun_in_hand.basis
 		# relative to the hand bone (which carries the wrist turn at run time); the bone's scale cancels out
-		holder.transform = hand_w.affine_inverse() * hn_w * gun_in_hand
-		att.add_child(holder)
-		var g := _load_gun(k)
-		holder.add_child(g)
-		var mz: Node3D = g.find_child("muzzle", true, false)
-		if mz == null:
-			mz = Node3D.new()
-			g.add_child(mz)
-			mz.position = Vector3(0, 0.03, 0.7 if k != "pistol" else 0.3)
+		d["holder"][k] = hand_w.affine_inverse() * hn_w * gun_in_hand
 		var hold: Dictionary = LEFT_HOLD[k]
 		var lf := _frame(hold["d"], hold["n"])
-		var tgt := Marker3D.new()
-		tgt.name = "LeftGrip"
 		var wrist_l: Vector3
 		if hold.has("k"):
 			wrist_l = hold["k"] * gs - lf.x * l_len
 		else:
 			wrist_l = hold["p"] * gs - lf.x * (l_len * 0.55) - lf.y * 0.025
-		tgt.transform = Transform3D(lf * l_loc.inverse(), wrist_l)
-		holder.add_child(tgt)
-		holder_xf[k] = holder.transform
-		left_xf[k] = tgt.transform
+		d["left"][k] = Transform3D(lf * l_loc.inverse(), wrist_l)
+	return d
+
+
+func _calibrate_and_attach() -> void:
+	main_data = calibrate(skel, ap, -global_transform.basis.z)
+	rig_data["soldier"] = main_data
+	r_corr = main_data["r_corr"]
+	gun_in_hand_b = main_data["gib"]
+	finger_set = main_data["fingers"]
+	holder_xf = main_data["holder"]
+	left_xf = main_data["left"]
+	ik_magnet = main_data["magnet"]
+	var att := BoneAttachment3D.new()
+	att.bone_name = "mixamorigRightHand"
+	skel.add_child(att)
+	for k in ["pistol", "m4", "ak"]:
+		var holder := Node3D.new()
+		holder.name = k
+		holder.transform = holder_xf[k]
+		att.add_child(holder)
+		var g := _load_gun(k)
+		holder.add_child(g)
+		var mz: Node3D = g.find_child("muzzle", true, false)
 		guns[k] = holder
 		muzzles[k] = mz
 		holder.visible = false
-
 	ik = SkeletonIK3D.new()
 	ik.root_bone = "mixamorigLeftArm"
 	ik.tip_bone = "mixamorigLeftHand"
 	ik.override_tip_basis = true
 	ik.use_magnet = true
-	ik.magnet = elbow_skel + Vector3(0, -15, 0)
-	ik_magnet = ik.magnet
+	ik.magnet = ik_magnet
 	skel.add_child(ik)
 	_select_gun()
 	ik.start()
@@ -405,31 +478,33 @@ func _calibrate_and_attach() -> void:
 
 ## Finger curls, measured once from the rest pose: each joint turns about the line square to the finger and the palm.
 ## The rest pose has the fingers fanned out; the first joint also turns them in, side by side.
-func _setup_fingers() -> void:
+func _finger_set(sk: Skeleton3D) -> Array:
+	var out := []
 	for side in ["Right", "Left"]:
-		var hx := _hand_axes(side, true)
+		var hx := _hand_axes(sk, side, true)
 		var n_s: Vector3 = hx["n"]
 		var d_s: Vector3 = hx["d"]
 		var table: Dictionary = CURL_R if side == "Right" else CURL_L
 		for f in table:
 			for seg in 3:
-				var b := skel.find_bone("mixamorig%sHand%s%d" % [side, f, seg + 1])
-				var c := skel.find_bone("mixamorig%sHand%s%d" % [side, f, seg + 2])
+				var b := sk.find_bone("mixamorig%sHand%s%d" % [side, f, seg + 1])
+				var c := sk.find_bone("mixamorig%sHand%s%d" % [side, f, seg + 2])
 				if b < 0 or c < 0:
 					continue
-				var gb: Transform3D = skel.get_bone_global_rest(b)
-				var along: Vector3 = (skel.get_bone_global_rest(c).origin - gb.origin).normalized()
+				var gb: Transform3D = sk.get_bone_global_rest(b)
+				var along: Vector3 = (sk.get_bone_global_rest(c).origin - gb.origin).normalized()
 				var ax: Vector3 = along.cross(n_s)
 				if ax.length() < 0.05:
 					continue
 				var inv: Basis = gb.basis.orthonormalized().inverse()
 				var ax_l: Vector3 = (inv * ax.normalized()).normalized()
-				var q := skel.get_bone_rest(b).basis.get_rotation_quaternion()
+				var q := sk.get_bone_rest(b).basis.get_rotation_quaternion()
 				if seg == 0 and f != "Thumb":
 					var flat: Vector3 = (along - n_s * along.dot(n_s)).normalized()
 					var spread: float = atan2(d_s.cross(flat).dot(n_s), d_s.dot(flat))
 					q = q * Quaternion((inv * n_s).normalized(), -spread * CLOSE_FINGERS)
-				finger_set.append([b, q, ax_l, deg_to_rad(table[f][seg]), side == "Left"])
+				out.append([b, q, ax_l, deg_to_rad(table[f][seg]), side == "Left"])
+	return out
 
 
 ## After the clips: the right wrist turn and the closed fingers.
@@ -453,9 +528,10 @@ func _select_gun() -> void:
 
 ## Where the left hand goes this frame: the gun's handguard as the right hand holds it now. (The gun's own
 ## marker only moves after the skeleton has been drawn, a frame late, which made the left hand shake.)
-func place_left_target(sk: Skeleton3D, tgt: Node3D, gun: String) -> void:
+func place_left_target(sk: Skeleton3D, tgt: Node3D, gun: String, d := {}) -> void:
+	var dd: Dictionary = main_data if d.is_empty() else d
 	var hand: Transform3D = sk.global_transform * sk.get_bone_global_pose(sk.find_bone("mixamorigRightHand"))
-	tgt.global_transform = hand * holder_xf[gun] * left_xf[gun]
+	tgt.global_transform = hand * Transform3D(dd["holder"][gun]) * Transform3D(dd["left"][gun])
 
 
 func _build_tree() -> void:

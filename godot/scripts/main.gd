@@ -20,6 +20,7 @@ const POSTS := [
 	[Vector3(-20, 0, -10), -PI * 0.5, Vector3(-20, 0, -2)],
 	[Vector3(0, 0, -27), PI, Vector3(-6, 0, -27)],
 ]
+const ENEMY_KINDS := ["gasmask", "olive", "blue"]
 var enemies := []
 var wave := 0
 var wave_t := -1.0
@@ -319,7 +320,8 @@ func _spawn_wave() -> void:
 		var e = load("res://scripts/enemy.gd").new()
 		e.name = "Enemy%d" % enemies.size()
 		add_child(e)
-		e.setup(self, p[0] + Vector3(0, 0.05, 0), p[1], p[2])
+		# the three enemy characters, two of each, in a different order every wave
+		e.setup(self, p[0] + Vector3(0, 0.05, 0), p[1], p[2], ENEMY_KINDS[(enemies.size() + wave) % ENEMY_KINDS.size()])
 		enemies.append(e)
 	ui.message("WAVE %d" % wave, "%d enemy soldiers in the yard" % enemies.size(), 2.5)
 

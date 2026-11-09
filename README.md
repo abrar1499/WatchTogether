@@ -10,7 +10,7 @@ A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. So far: t
 - SD-9 pistol, M4A1 and AK-47 with their own sounds, recoil and bullet holes. Muzzle flash: a white-hot star seen from the front and the flame leaving the muzzle seen from the side, a warm flash of light and a wisp of smoke (only a small spark from the suppressed pistol). Tracers: short orange streaks that fly down the bullet's path, ours and the enemy's.
 - Over-the-shoulder camera with a close and a closer view, a zoomed aim, and first person with the soldier's own arms and gun in view (iron sights on the AK and pistol, through the red dot on the M4).
 - While aiming or firing the chest turns so the rifle stays on the crosshair whichever way the legs are running.
-- Enemy soldiers in the yard (six per wave, desert uniforms, AK-47s): they stand guard or walk a short beat, see the player in front of them (slower to notice a crouched player, quicker up close), hear unsuppressed gunfire, call the soldiers near them, then aim and fire bursts, close in or hunt the last place they saw the player. Headshots kill at once; they die with Mixamo death clips. A new wave comes when the yard is clear.
+- Enemy soldiers in the yard (six per wave, two each of three characters: a gas-masked SWAT officer, an olive-drab soldier and a blue-uniformed soldier, all with AK-47s; the player's own clips and grip are fitted to each): they stand guard or walk a short beat, see the player in front of them (slower to notice a crouched player, quicker up close), hear unsuppressed gunfire, call the soldiers near them, then aim and fire bursts, close in or hunt the last place they saw the player. Headshots kill at once; they die with Mixamo death clips. A new wave comes when the yard is clear.
 - Music from the earlier version, soft and mixed by what is happening: a whoosh and the opening of a trailer when the game starts; while the yard is quiet a low suspense bed, a night sound and now and then a raven; a short stinger when a soldier spots the player; in a firefight one action piece at a time, faded in and out with a rest between pieces; a heartbeat at low health; everything fades when the player is killed.
 - Player health with a hit flash and a mark toward the shooter; health comes back after a few quiet seconds; when killed the player is back at the start a moment later.
 - Practice yard: the reserve ammunition refills, so the rifles never end up at 0 / 0.
@@ -25,6 +25,7 @@ A third-person tactical shooter for Android, rebuilt in **Godot 4.3**. So far: t
   - `scripts/touch.gd`: on-screen controls, keyboard/mouse, HUD, start and pause menus
   - `assets/soldier.glb`: the soldier with its Mixamo animations
   - `assets/guns/`: the AK-47, M4A1 (with red-dot sight) and suppressed SD-9 pistol, `assets/sfx/`: the sound files (unedited)
+- `tools/charbuild/`: how the enemy characters in `godot/assets/chars/` were made from the original Mixamo FBX files
 - `tools/fxbuild/`: the script that draws the muzzle-flash and tracer textures in `godot/assets/fx/`
 - `tools/gunbuild/`: the Python script that builds the three gun models (real size, rounded edges, wood-grain and metal textures); run `python3 build_guns.py ../../godot/assets/guns` (needs numpy, Pillow, mapbox_earcut)
 - `android/debug.keystore`: the signing key of the original app, so the game installs as its update
@@ -38,7 +39,7 @@ To open the project on a computer, install Godot 4.3 and open `godot/project.god
 
 ## Credits
 
-Soldier character and animations from [Mixamo](https://www.mixamo.com) (Adobe).
+Soldier character, the three enemy characters and the animations from [Mixamo](https://www.mixamo.com) (Adobe).
 
 Sounds in `godot/assets/sfx/` are unedited sound effects from [Pixabay](https://pixabay.com/sound-effects/), used under the Pixabay Content License:
 - AK-47: "AK-47 sound effect" by sovetsky_rastov72

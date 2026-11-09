@@ -52,7 +52,7 @@ var detour_sign := 1.0
 var shot_n := 0
 
 
-func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3) -> void:
+func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasmask") -> void:
 	main = m
 	player = m.player
 	body = CollisionShape3D.new()
@@ -70,7 +70,7 @@ func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3) -> void:
 	yaw = face
 	rotation.y = yaw
 	kneels = randf() < 0.4
-	rig = player.make_rig(Color(0.86, 0.74, 0.58), ["ak"])   # desert-tinted uniform
+	rig = player.make_rig(Color(0.86, 0.74, 0.58) if kind == "soldier" else Color(1, 1, 1), ["ak"], false, kind)
 	add_child(rig["root"])
 	skel = rig["skel"]
 	muzzle = rig["muzzles"]["ak"]
@@ -118,7 +118,7 @@ func _physics_process(dt: float) -> void:
 		dead_t += dt
 		if dead_t < 6.0:
 			tree.advance(dt)
-			player.pose_rig_hands(skel, "ak")
+			player.pose_rig_hands(skel, "ak", rig["data"])
 		return
 	grace = max(0.0, grace - dt)
 	hit_t = max(0.0, hit_t - dt)
@@ -239,13 +239,13 @@ func _physics_process(dt: float) -> void:
 		scale = clamp(hs / 3.16, 0.6, 1.5)
 	tree.set("parameters/speed/scale", scale)
 	tree.advance(dt)
-	player.pose_rig_hands(skel, "ak")
+	player.pose_rig_hands(skel, "ak", rig["data"])
 	if aim_w > 0.01:
 		var chest: Vector3 = player.global_position + Vector3(0, 0.85 if player.crouch else 1.25, 0)
 		if not sees:
 			chest = last_seen + Vector3(0, 1.2, 0)
-		player.aim_chest(skel, (chest - muzzle.global_position).normalized(), aim_w)
-	player.place_left_target(skel, rig["ik_target"], "ak")
+		player.aim_chest(skel, (chest - muzzle.global_position).normalized(), aim_w, rig["data"])
+	player.place_left_target(skel, rig["ik_target"], "ak", rig["data"])
 
 
 func _eye() -> Vector3:
