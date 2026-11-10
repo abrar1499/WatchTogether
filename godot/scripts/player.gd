@@ -151,6 +151,9 @@ var cover_low := false
 var cover_edge := 0              # the wall ends here: -1 / +1 along the wall, 0 not at an end
 var cover_peek := 0.0            # how far out of the end he has stepped to shoot
 var cover_hit := {}
+var cover_cool := 0.0           # after leaving cover: no automatic cover for a moment
+var touch_t := 0.0              # how long he has been walking into a wall
+var end_t := 0.0                # how long the stick has pushed past the end of the wall
 var cover_reach := 0.0          # how far he steps to clear the end of the wall
 var act_doing := ""
 var act_obj: Node = null
@@ -1078,6 +1081,7 @@ func cycle_view() -> void:
 
 func _physics_process(dt: float) -> void:
 	t += dt
+	cover_cool = max(0.0, cover_cool - dt)
 	hurt_t = max(0.0, hurt_t - dt)
 	groan_t = max(0.0, groan_t - dt)
 	pump_t += dt
@@ -1125,6 +1129,22 @@ func _physics_process(dt: float) -> void:
 			if act_t >= 0.0:
 				spd = 0.0
 			target = md * spd
+			# walking into a wall (or something solid and low) for a moment: take cover against it
+			var ch := {}
+			if cover_cool <= 0.0 and is_on_floor() and not (aiming or firing) and act_t < 0.0 and not busy():
+				var cq := PhysicsRayQueryParameters3D.create(global_position + Vector3(0, 0.55, 0), global_position + Vector3(0, 0.55, 0) + md * 0.85)
+				cq.collision_mask = 1
+				cq.exclude = [get_rid()]
+				ch = get_world_3d().direct_space_state.intersect_ray(cq)
+			if not ch.is_empty() and abs(ch["normal"].y) < 0.3 and ch["collider"] is StaticBody3D and ch["collider"].get_meta("kind", "") != "door" \
+					and md.dot(-(ch["normal"] as Vector3)) > 0.75:
+				touch_t += dt
+				if touch_t > 0.28:
+					_enter_cover(ch)
+			else:
+				touch_t = 0.0
+		else:
+			touch_t = 0.0
 		var accel := 9.0 if target.length() > Vector2(vel.x, vel.z).length() else 14.0
 		var hv := Vector3(vel.x, 0, vel.z).lerp(target, min(1.0, dt * accel))
 		if hv.length() < 0.02:
@@ -1347,12 +1367,7 @@ func action() -> void:
 		leave_cover()
 		return
 	if act_kind == "cover":
-		cover = true
-		var cn: Vector3 = cover_hit["normal"]
-		cover_n = Vector3(cn.x, 0, cn.z).normalized()
-		cover_edge = 0
-		cover_peek = 0.0
-		firing = false
+		_enter_cover(cover_hit)
 		return
 	act_doing = act_kind
 	act_obj = act_node
@@ -1633,7 +1648,7 @@ func _update_camera(dt: float) -> void:
 	if cover and cover_edge != 0:
 		# at the end of a wall the camera goes to the open side, so the corner is not in the way
 		var out_dir: Vector3 = Vector3(cover_n.z, 0, -cover_n.x) * cover_edge
-		ts = abs(ts) * (1.0 if out_dir.dot(Vector3(cos(yaw), 0, -sin(yaw))) >= 0.0 else -1.0)
+		ts = abs(ts) * (1.0 if (out_dir + cover_n).dot(Vector3(cos(yaw), 0, -sin(yaw))) >= 0.0 else -1.0)
 	cam_len = lerp(cam_len, tl, min(1.0, dt * 10.0))
 	cam_side = lerp(cam_side, ts, min(1.0, dt * 10.0))
 	cam_h = lerp(cam_h, th, min(1.0, dt * (14.0 if climb_t >= 0.0 else 8.0)))
@@ -1786,16 +1801,30 @@ func aim_dir() -> Vector3:
 	return -cam.global_transform.basis.z
 
 
+func _enter_cover(hit: Dictionary) -> void:
+	cover = true
+	var cn: Vector3 = hit["normal"]
+	cover_n = Vector3(cn.x, 0, cn.z).normalized()
+	cover_edge = 0
+	cover_peek = 0.0
+	touch_t = 0.0
+	end_t = 0.0
+	firing = false
+
+
 func leave_cover() -> void:
 	if cover and cover_low:
 		crouch = false
 	cover = false
 	cover_peek = 0.0
 	cover_edge = 0
+	cover_cool = 0.7
+	touch_t = 0.0
 
 
-## In cover: held against the wall, sidestepping along it (never past its end), crouched behind anything lower
-## than his head; to shoot he leans out of the end of a wall, or stands up over a low one.
+## In cover: held against the wall, sidestepping along it, crouched behind anything lower than his head. To shoot he
+## leans out of the nearer end (standing or crouched as he is), the camera on that side; in the middle of something
+## low he stands up over it. Pulling the stick away, or pushing on past the end of the wall, leaves cover.
 func _cover_step(dt: float) -> void:
 	var space := get_world_3d().direct_space_state
 	var n := cover_n
@@ -1812,13 +1841,15 @@ func _cover_step(dt: float) -> void:
 		return
 	cover_low = (ray.call(base + Vector3(0, 1.5, 0), base + Vector3(0, 1.5, 0) - n * 1.7) as Dictionary).is_empty()
 	var shooting := aiming or firing or throw_t >= 0.0
-	crouch = cover_low and not shooting
+	# behind something low he stays down; he only stands to shoot when there is no end near to lean round
+	if cover_low:
+		crouch = not (shooting and cover_edge == 0)
 	var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
 	var right := Vector3(cos(yaw), 0, -sin(yaw))
 	var want := fwd * move_in.y + right * move_in.x
 	var mag: float = min(1.0, move_in.length())
-	if mag > 0.6 and want.normalized().dot(n) > 0.75:
-		leave_cover()          # the stick pulled straight away from the wall
+	if mag > 0.3 and want.normalized().dot(n) > 0.4:
+		leave_cover()          # the stick pulled away from the wall
 		return
 	var along := want.dot(tan)
 	# where the wall ends (he can lean out there) and where something stands in the way, each side
@@ -1850,13 +1881,21 @@ func _cover_step(dt: float) -> void:
 			var sg := 1 if along > 0 else -1
 			if not ends[sg] and not blocked[sg]:
 				v_t = sg * lerp(0.5, 1.5, clamp((abs(along) - 0.2) / 0.8, 0.0, 1.0))
-	elif cover_edge != 0 and not cover_low and cover_peek < cover_reach:
+				end_t = 0.0
+			elif ends[sg] and abs(along) > 0.5:
+				end_t += dt          # still pushing past the end of the wall: walk on round it
+				if end_t > 0.35:
+					leave_cover()
+					return
+		else:
+			end_t = 0.0
+	elif cover_edge != 0 and cover_peek < cover_reach:
 		v_t = float(cover_edge) * 3.5      # step out of the end to shoot
 		cover_peek += 3.5 * dt
 	var v_n := 0.0
 	if not wall.is_empty():
 		var off: float = (global_position - (wall["position"] as Vector3)).dot(n)
-		v_n = clamp((0.46 - off) * 10.0, -3.0, 3.0)
+		v_n = clamp((0.54 - off) * 10.0, -3.0, 3.0)
 	vel.x = tan.x * v_t + n.x * v_n
 	vel.z = tan.z * v_t + n.z * v_n
 	vel.y = 0.0 if is_on_floor() else vel.y - GRAVITY * dt

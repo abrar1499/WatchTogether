@@ -807,11 +807,11 @@ func _m2() -> Vector3:
 	for r in [[290, 540, 92, 82], [392, 540, 100, 92], [502, 530, 94, 102]]:
 		await _block_of(r, [], [3, 5])
 	_avenue(S(261, 700), S(261, 431), 26.0 / 3.0)
-	_avenue(S(248, 431), S(608, 431), 26.0 / 3.0)
+	_avenue(S(248, 431), S(608, 431), 34.0 / 3.0)          # pavements up to the shop fronts
 	for i in 7:
 		var x := 285 + i * 50
 		city.led_lamp(S(x, 418 if i % 2 == 0 else 444), Vector3(0, 0, 1) if i % 2 == 0 else Vector3(0, 0, -1))
-		_planter(S(x + 25, 416.5 if i % 2 == 0 else 445.5), 0.0)
+		_planter(S(x + 25, 416.5 if i % 2 == 0 else 445.5, 0.165), 0.0)
 	for i in 4:
 		city.led_lamp(S(250 if i % 2 == 0 else 272, 470 + i * 55), Vector3(1, 0, 0) if i % 2 == 0 else Vector3(-1, 0, 0))
 	city.shelter(S(420, 446.5), PI)
@@ -827,6 +827,7 @@ func _m2() -> Vector3:
 	var a := S(600, 340)
 	var b := S(772, 512)
 	city.box("g_pavers", Vector3((a.x + b.x) * 0.5, 0.04, (a.z + b.z) * 0.5), Vector3(b.x - a.x, 0.06, b.z - a.z))
+	city.step_collider(Vector3((a.x + b.x) * 0.5, 0, (a.z + b.z) * 0.5), Vector3(b.x - a.x, 0.07, b.z - a.z))
 	city.commit(false)
 	for r in [[610, 522, 80, 70], [700, 522, 90, 70]]:
 		await _block_of(r, ["n"], [5, 7])
@@ -846,6 +847,7 @@ func _m2() -> Vector3:
 	city.traffic_light(S(598, 440), Vector3(-1, 0, 0), false)
 	var tp := S(751, 487)
 	city.box("g_kerb", tp + Vector3(0, 0.15, 0), Vector3(4, 0.3, 4))
+	city.step_collider(tp, Vector3(4, 0.3, 4))
 	city.commit()
 	_transformer(tp + Vector3(0, 0.3, 0), 1)
 	city.screen(S(786, 360, 14.0), Vector3(-1, 0, 0), 16.0, 9.0, city.ad_image(1))
@@ -1081,6 +1083,7 @@ func _avenue(a: Vector3, b: Vector3, width: float) -> void:
 		# pavement of square pavers behind a kerb stone
 		city.box("g_pavers", mid + side * sg * (width * 0.5 - 0.7) + Vector3(0, 0.08, 0), Vector3(1.4, 0.16, L), yaw)
 		city.box("g_kerb", mid + side * sg * (width * 0.5 - 1.5) + Vector3(0, 0.09, 0), Vector3(0.2, 0.18, L), yaw)
+		city.step_collider(mid + side * sg * (width * 0.5 - 0.8), Vector3(1.6, 0.165, L), yaw)
 	city.dashes(a, b)
 
 

@@ -2616,10 +2616,8 @@ class Snd extends Node:
 		_play(k, 0.0, 9.0)
 
 	func step(run: bool, crouch: bool) -> void:
-		if run:
-			_play("steps_run", RUN_STEPS[randi() % RUN_STEPS.size()], 0.28, -3.0)
-		else:
-			_play("steps_sand", SAND_STEPS[randi() % SAND_STEPS.size()], 0.45, -12.0 if crouch else -5.0)
+		# boots on hard ground at every pace (the wet sand recording sounded like water): softer for a walk
+		_play("steps_run", RUN_STEPS[randi() % RUN_STEPS.size()], 0.28 if run else 0.24, -3.0 if run else (-17.0 if crouch else -10.0))
 
 	func _process(_dt: float) -> void:
 		if auto.playing and auto.get_playback_position() >= auto_loop[1]:

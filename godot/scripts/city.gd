@@ -168,6 +168,28 @@ func collider(c: Vector3, s: Vector3, yaw := 0.0, surf := "concrete") -> StaticB
 	return b
 
 
+## Something low to walk on (a pavement, a plinth): solid, with a short slope up every side so feet stand on its top
+## and nobody is stopped by its edge. c: centre of its base; s: size (its top at s.y).
+func step_collider(c: Vector3, s: Vector3, yaw := 0.0, surf := "concrete") -> StaticBody3D:
+	var b := StaticBody3D.new()
+	b.set_meta("surf", surf)
+	var r: float = max(0.25, s.y * 1.3)
+	var pts := PackedVector3Array()
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			pts.append(Vector3(sx * (s.x * 0.5 + r), 0.0, sz * (s.z * 0.5 + r)))
+			pts.append(Vector3(sx * s.x * 0.5, s.y, sz * s.z * 0.5))
+	var sh := ConvexPolygonShape3D.new()
+	sh.points = pts
+	var cs := CollisionShape3D.new()
+	cs.shape = sh
+	b.add_child(cs)
+	main.add_child(b)
+	b.global_position = c
+	b.rotation.y = yaw
+	return b
+
+
 # ---------------- street furniture ----------------
 ## Rubble: broken blocks and slabs in a heap.
 func rubble(p: Vector3, r: float) -> void:
