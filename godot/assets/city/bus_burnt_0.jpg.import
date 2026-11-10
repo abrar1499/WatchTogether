@@ -18,7 +18,7 @@ dest_files=["res://.godot/imported/bus_burnt_0.jpg-4c48dfe06a75c72ad40390afe4e66
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

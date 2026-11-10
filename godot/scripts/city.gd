@@ -461,7 +461,6 @@ var near := {}          # material key -> SurfaceTool: near pieces of the buildi
 var far := {}
 var prop_meshes := {}
 var kit_ready := false
-var shutter := "rollershutter_door"
 var occluders: Array[AABB] = []
 
 
@@ -740,7 +739,6 @@ func apartment(x0: float, z0: float, x1: float, z1: float, floors: int, shops :=
 	var tone: int = opts.get("tone", rng.randi() % PLASTER.size())
 	var wins: Array = opts.get("wins", WINDOW_SETS[rng.randi() % WINDOW_SETS.size()])
 	var row: int = opts.get("row", [2, 2, 3, 1][rng.randi() % 4])
-	shutter = "rollershutter_door" if rng.randf() < 0.6 else "rollershutter_door_graffiti"
 	var h := floors * 3.0
 	var sides := {"s": [Vector3(0, 0, 1), Vector3(x0, 0, z1), x1 - x0], "n": [Vector3(0, 0, -1), Vector3(x1, 0, z0), x1 - x0],
 		"e": [Vector3(1, 0, 0), Vector3(x1, 0, z1), z1 - z0], "w": [Vector3(-1, 0, 0), Vector3(x0, 0, z0), z1 - z0]}
@@ -823,7 +821,7 @@ func _shop_bay(o: Vector3, X: Vector3, n: Vector3, w: float, tone: int) -> void:
 	sign_board(c + Vector3(0, 2.74, 0) + n * 0.05, X, n, w - 0.45, (w - 0.45) / 8.0 * 1.0 + 0.1, rng.randi() % SIGN_ROWS)
 	var sw := (w - 0.2) / 1.08
 	var open_ := night and rng.randf() < 0.14
-	var node := shutter
+	var node := "rollershutter_door" if rng.randf() < 0.7 else "rollershutter_door_graffiti"
 	if open_:
 		# shutter rolled up into its box; the shop inside: lit back wall, shelves, a counter
 		prop_piece(SHUTTER_SCENE, node, Transform3D(Basis(X * sw, Vector3.UP * 0.18, n), c + Vector3(0, 2.05, 0)))
