@@ -678,8 +678,8 @@ var card_scroll: ScrollContainer
 var card_row: HBoxContainer
 
 
-## The missions along the bottom of the start screen: the one to play next as a white card (picture above, name
-## below), the others dark with their names over the picture; the ones not built yet say so.
+## The missions along the bottom of the start screen: each a picture with its name on a dark band; the one to play
+## next is larger, with a bright edge and a bar under it; the ones not built yet say so.
 func _build_cards() -> void:
 	for c in card_row.get_children():
 		c.queue_free()
@@ -697,7 +697,11 @@ func _build_cards() -> void:
 		b.disabled = not ok
 		b.clip_contents = true
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(1, 1, 1) if sel else Color(0.07, 0.1, 0.18, 0.92)
+		sb.bg_color = Color(0.07, 0.1, 0.18, 0.92)
+		if sel:      # the next mission: a bright edge and a bar under it
+			sb.border_color = AMBER
+			sb.set_border_width_all(int(2 * k))
+			sb.border_width_bottom = int(7 * k)
 		for st in ["normal", "hover", "pressed", "disabled", "focus"]:
 			b.add_theme_stylebox_override(st, sb)
 		if built:
@@ -707,20 +711,33 @@ func _build_cards() -> void:
 			th.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 			th.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			th.anchor_right = 1.0
-			th.anchor_bottom = 0.56 if sel else 1.0
-			th.modulate = Color(1, 1, 1) if sel else (Color(0.62, 0.68, 0.8) if ok else Color(0.25, 0.28, 0.34))
+			th.anchor_bottom = 1.0
+			th.offset_left = 2 * k if sel else 0.0
+			th.offset_top = 2 * k if sel else 0.0
+			th.offset_right = -2 * k if sel else 0.0
+			th.offset_bottom = -7 * k if sel else 0.0
+			th.modulate = Color(0.95, 0.97, 1.0) if sel else (Color(0.55, 0.62, 0.75) if ok else Color(0.25, 0.28, 0.34))
+			# a dark band under the words so they read over any picture
+			var band := ColorRect.new()
+			band.color = Color(0.03, 0.06, 0.14, 0.72)
+			band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			band.anchor_right = 1.0
+			band.anchor_top = 0.6
+			band.anchor_bottom = 1.0
+			band.offset_bottom = -7 * k if sel else 0.0
+			b.add_child(band)
 			b.add_child(th)
 		var tv := VBoxContainer.new()
 		tv.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		tv.anchor_right = 1.0
-		tv.anchor_top = 0.56 if sel else 0.5
+		tv.anchor_top = 0.6
 		tv.anchor_bottom = 1.0
 		tv.alignment = BoxContainer.ALIGNMENT_CENTER
 		tv.add_theme_constant_override("separation", int(4 * k))
 		b.add_child(tv)
-		var ink := Color(0.1, 0.12, 0.16) if sel else (Color(1, 1, 1) if ok else Color(0.6, 0.66, 0.75))
+		var ink := Color(1, 1, 1) if ok else Color(0.6, 0.66, 0.75)
 		var lines := [["MISSION %02d" % i, 13, ink.lerp(Color(0.5, 0.55, 0.6), 0.4)], [info[0] if built else "CLASSIFIED", 22 if sel else 19, ink],
-			[("NEXT UP" if sel else ("COMPLETE" if i < open else "OPEN")) if ok else ("COMING SOON" if i <= open else "LOCKED"), 12, ink.lerp(Color(0.5, 0.55, 0.6), 0.5)]]
+			[("NEXT UP" if sel else ("COMPLETE" if i < open else "OPEN")) if ok else ("COMING SOON" if i <= open else "LOCKED"), 12, AMBER if sel else ink.lerp(Color(0.5, 0.55, 0.6), 0.5)]]
 		for ln in lines:
 			var l := Label.new()
 			l.text = ln[0]
