@@ -23,7 +23,6 @@ var buttons := [
 var mission_panel: PanelContainer
 var brief_panel: PanelContainer
 var result_panel: PanelContainer
-var mission_grid: GridContainer
 var held := {}          # touch index -> button id
 var joy_id := -1
 var joy_origin := Vector2.ZERO
@@ -32,7 +31,7 @@ var look_ids := {}      # touch index -> last position
 var keys := {}
 
 var font: Font
-var start_panel: PanelContainer
+var start_panel: Control
 var pause_panel: PanelContainer
 var update_btn: Button
 var update_url := ""
@@ -468,28 +467,67 @@ func _button(parent: Node, text: String, cb: Callable, primary := false) -> Butt
 
 
 func _build_panels() -> void:
-	start_panel = _panel()
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 12)
-	start_panel.add_child(v)
+	# the start screen: the soldier in the yard behind a blue haze; the name top left, the menu bottom left,
+	# the missions as a row of picture cards along the bottom
+	var k := _scale()
+	mono = FontVariation.new()
+	mono.base_font = ThemeDB.fallback_font
+	mono.spacing_glyph = 3
+	menu_back = MenuBack.new()
+	menu_back.set_anchors_preset(Control.PRESET_FULL_RECT)
+	menu_back.mouse_filter = Control.MOUSE_FILTER_STOP
+	menu_back.visible = false
+	add_child(menu_back)
+	start_panel = Control.new()
+	start_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	start_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(start_panel)
 	var t := Label.new()
-	t.text = "OPERATION DUST SIGNAL"
-	t.add_theme_font_size_override("font_size", 30)
-	v.add_child(t)
-	var sub := Label.new()
-	sub.text = "Missions open one after another. The training yard has every gun."
-	sub.add_theme_font_size_override("font_size", 14)
-	sub.add_theme_color_override("font_color", Color(0.75, 0.73, 0.65))
-	v.add_child(sub)
-	_button(v, "Missions", func(): show_missions(), true)
-	_button(v, "Training yard", func(): main.start_game())
-	update_btn = _button(v, "Update", func(): OS.shell_open(update_url))
+	t.text = "OPERATION\nDUST SIGNAL"
+	var tf := FontVariation.new()
+	tf.base_font = ThemeDB.fallback_font
+	tf.spacing_glyph = 6
+	tf.variation_embolden = 0.9
+	t.add_theme_font_override("font", tf)
+	t.add_theme_font_size_override("font_size", int(46 * k))
+	t.add_theme_color_override("font_color", TERM)
+	t.add_theme_constant_override("line_spacing", int(-8 * k))
+	t.add_theme_color_override("font_shadow_color", Color(0.05, 0.15, 0.3, 0.6))
+	t.add_theme_constant_override("shadow_offset_y", 2)
+	t.position = Vector2(70, 46) * k
+	start_panel.add_child(t)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", int(4 * k))
+	v.anchor_top = 1.0
+	v.anchor_bottom = 1.0
+	v.offset_left = 62 * k
+	v.offset_top = -330 * k
+	v.offset_bottom = -30 * k
+	v.alignment = BoxContainer.ALIGNMENT_END
+	start_panel.add_child(v)
+	_entry(v, "PLAY", func(): main.go_level("m%d" % mini(main.unlocked(), main.MISSIONS_BUILT)))
+	_entry(v, "ALL MISSIONS", func(): show_missions())
+	_entry(v, "TRAINING YARD", func(): menu_back.visible = false; main.start_game())
+	update_btn = _entry(v, "UPDATE", func(): OS.shell_open(update_url))
 	update_btn.visible = false
-	_button(v, "Exit", func(): get_tree().quit())
+	_entry(v, "QUIT", func(): get_tree().quit())
 	ver_label = Label.new()
-	ver_label.add_theme_font_size_override("font_size", 13)
-	ver_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.55))
+	ver_label.add_theme_font_size_override("font_size", int(12 * k))
+	ver_label.add_theme_color_override("font_color", TERM_DIM)
 	v.add_child(ver_label)
+	card_scroll = ScrollContainer.new()
+	card_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	card_scroll.anchor_left = 0.0
+	card_scroll.anchor_right = 1.0
+	card_scroll.anchor_top = 1.0
+	card_scroll.anchor_bottom = 1.0
+	card_scroll.offset_left = 330 * k
+	card_scroll.offset_top = -292 * k
+	card_scroll.offset_bottom = -44 * k
+	start_panel.add_child(card_scroll)
+	card_row = HBoxContainer.new()
+	card_row.add_theme_constant_override("separation", int(8 * k))
+	card_scroll.add_child(card_row)
 	start_panel.visible = false
 
 	pause_panel = _panel()
@@ -509,21 +547,26 @@ func _build_panels() -> void:
 	_button(pv, "Exit", func(): get_tree().quit())
 	pause_panel.visible = false
 
-	# the list of thirty missions
+	# the thirty missions: a list, a picture of each one built so far
 	mission_panel = _panel()
+	mission_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	var mv := VBoxContainer.new()
-	mv.add_theme_constant_override("separation", 10)
+	mv.add_theme_constant_override("separation", 8)
 	mission_panel.add_child(mv)
 	var mt := Label.new()
-	mt.text = "MISSIONS"
-	mt.add_theme_font_size_override("font_size", 26)
+	mt.text = "MISSION SELECT"
+	mt.add_theme_font_override("font", mono)
+	mt.add_theme_font_size_override("font_size", 28)
+	mt.add_theme_color_override("font_color", TERM)
 	mv.add_child(mt)
-	mission_grid = GridContainer.new()
-	mission_grid.columns = 6
-	mission_grid.add_theme_constant_override("h_separation", 8)
-	mission_grid.add_theme_constant_override("v_separation", 8)
-	mv.add_child(mission_grid)
-	_button(mv, "Back", func(): mission_panel.visible = false; start_panel.visible = true; _center(start_panel))
+	mission_scroll = ScrollContainer.new()
+	mission_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	mv.add_child(mission_scroll)
+	mission_grid = VBoxContainer.new()
+	mission_grid.add_theme_constant_override("separation", 6)
+	mission_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mission_scroll.add_child(mission_grid)
+	_entry(mv, "BACK", func(): mission_panel.visible = false; start_panel.visible = true; menu_back.deep = false; menu_back.queue_redraw())
 	mission_panel.visible = false
 
 	brief_panel = _panel()
@@ -532,32 +575,212 @@ func _build_panels() -> void:
 	result_panel.visible = false
 
 
+const MISSION_INFO := {
+	1: ["BROKEN RELAY", "A militia radio station in the desert, at dusk. Take the codes, kill the generator, get out."],
+	2: ["SHEHAR 2026", "A border city under curfew, at night. The message, the transformer, the Courier, his laptop."]}
+
+
 func show_missions() -> void:
 	for c in mission_grid.get_children():
 		c.queue_free()
 	var open: int = main.unlocked()
+	var vs := get_viewport_rect().size
+	var w: float = min(920.0, vs.x - 120.0)
+	mission_scroll.custom_minimum_size = Vector2(w, vs.y - 190.0)
 	for i in range(1, 31):
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(118, 64)
-		b.add_theme_font_size_override("font_size", 15)
 		var built: bool = i <= main.MISSIONS_BUILT
 		var ok: bool = i <= open and built
-		b.text = "%d\n%s" % [i, ("PLAY" if ok else ("COMING SOON" if i <= open else "LOCKED"))]
-		b.disabled = not ok
+		var info: Array = MISSION_INFO.get(i, ["CLASSIFIED", ""])
+		var row := Button.new()
+		row.custom_minimum_size = Vector2(w - 16.0, 104 if built else 58)
+		row.disabled = not ok
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0.95, 0.71, 0.27) if ok else Color(0.12, 0.13, 0.12)
-		sb.border_color = Color(0.95, 0.71, 0.27) if ok else Color(0.3, 0.3, 0.28)
-		sb.set_border_width_all(2)
-		for st in ["normal", "hover", "pressed", "disabled"]:
-			b.add_theme_stylebox_override(st, sb)
-		b.add_theme_color_override("font_color", Color(0.1, 0.08, 0.03) if ok else Color(0.6, 0.6, 0.55))
-		b.add_theme_color_override("font_disabled_color", Color(0.5, 0.5, 0.46))
+		sb.bg_color = Color(0.06, 0.1, 0.2, 0.85)
+		sb.border_color = TERM if ok else Color(0.25, 0.32, 0.45)
+		sb.border_width_left = 4
+		sb.border_width_bottom = 1
+		var sbh: StyleBoxFlat = sb.duplicate()
+		sbh.bg_color = Color(0.14, 0.24, 0.42, 0.95)
+		sbh.border_color = AMBER
+		for st in ["normal", "disabled"]:
+			row.add_theme_stylebox_override(st, sb)
+		for st in ["hover", "pressed", "focus"]:
+			row.add_theme_stylebox_override(st, sbh)
+		var h := HBoxContainer.new()
+		h.set_anchors_preset(Control.PRESET_FULL_RECT)
+		h.offset_left = 12
+		h.offset_right = -12
+		h.offset_top = 6
+		h.offset_bottom = -6
+		h.add_theme_constant_override("separation", 14)
+		h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(h)
+		if built:
+			var th := TextureRect.new()
+			th.texture = load("res://assets/ui/m%d.jpg" % i)
+			th.custom_minimum_size = Vector2(164, 92)
+			th.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			th.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+			th.modulate = Color(1, 1, 1) if ok else Color(0.35, 0.35, 0.35)
+			th.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			h.add_child(th)
+		var tv := VBoxContainer.new()
+		tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tv.alignment = BoxContainer.ALIGNMENT_CENTER
+		tv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		h.add_child(tv)
+		var l1 := Label.new()
+		l1.text = "MISSION %02d   %s" % [i, info[0] if (built and i <= open) else ("CLASSIFIED" if not built else info[0])]
+		l1.add_theme_font_override("font", mono)
+		l1.add_theme_font_size_override("font_size", 20 if built else 16)
+		l1.add_theme_color_override("font_color", TERM if ok else TERM_DIM)
+		tv.add_child(l1)
+		if built:
+			var l2 := Label.new()
+			l2.text = info[1]
+			l2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			l2.add_theme_font_size_override("font_size", 13)
+			l2.add_theme_color_override("font_color", Color(0.72, 0.78, 0.7) if ok else Color(0.4, 0.44, 0.4))
+			tv.add_child(l2)
+		var tag := Label.new()
+		tag.text = ("COMPLETE" if i < open else "OPEN") if ok else ("COMING SOON" if i <= open else "LOCKED")
+		tag.add_theme_font_override("font", mono)
+		tag.add_theme_font_size_override("font_size", 14)
+		tag.add_theme_color_override("font_color", (Color(0.55, 0.75, 0.5) if i < open else AMBER) if ok else Color(0.45, 0.48, 0.44))
+		tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		h.add_child(tag)
 		var lv := "m%d" % i
-		b.pressed.connect(func(): main.go_level(lv))
-		mission_grid.add_child(b)
+		row.pressed.connect(func(): main.go_level(lv))
+		mission_grid.add_child(row)
 	start_panel.visible = false
 	mission_panel.visible = true
-	_center(mission_panel)
+	menu_back.visible = true
+	menu_back.deep = true
+	menu_back.queue_redraw()
+	_place_menu(mission_panel)
+
+
+## Start and mission screens sit left of centre, over the map table.
+func _place_menu(p: Control) -> void:
+	if p == start_panel:
+		return
+	await get_tree().process_frame
+	var vs := get_viewport_rect().size
+	p.reset_size()
+	p.position = Vector2(max(40.0, vs.x * 0.07), max(20.0, (vs.y - p.size.y) * 0.5))
+
+
+const TERM := Color(0.96, 0.98, 1.0)
+const TERM_DIM := Color(0.66, 0.78, 0.9)
+const AMBER := Color(0.55, 0.9, 1.0)
+var mono: FontVariation
+var card_scroll: ScrollContainer
+var card_row: HBoxContainer
+
+
+## The missions along the bottom of the start screen: the one to play next as a white card (picture above, name
+## below), the others dark with their names over the picture; the ones not built yet say so.
+func _build_cards() -> void:
+	for c in card_row.get_children():
+		c.queue_free()
+	var k := _scale()
+	var open: int = main.unlocked()
+	var cur: int = mini(open, main.MISSIONS_BUILT)
+	for i in range(1, 31):
+		var built: bool = i <= main.MISSIONS_BUILT
+		var ok: bool = i <= open and built
+		var info: Array = MISSION_INFO.get(i, ["CLASSIFIED", ""])
+		var sel := i == cur
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(390 if sel else 290, 248 if sel else 236) * k
+		b.size_flags_vertical = Control.SIZE_SHRINK_END
+		b.disabled = not ok
+		b.clip_contents = true
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(1, 1, 1) if sel else Color(0.07, 0.1, 0.18, 0.92)
+		for st in ["normal", "hover", "pressed", "disabled", "focus"]:
+			b.add_theme_stylebox_override(st, sb)
+		if built:
+			var th := TextureRect.new()
+			th.texture = load("res://assets/ui/m%d.jpg" % i)
+			th.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			th.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+			th.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			th.anchor_right = 1.0
+			th.anchor_bottom = 0.56 if sel else 1.0
+			th.modulate = Color(1, 1, 1) if sel else (Color(0.62, 0.68, 0.8) if ok else Color(0.25, 0.28, 0.34))
+			b.add_child(th)
+		var tv := VBoxContainer.new()
+		tv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tv.anchor_right = 1.0
+		tv.anchor_top = 0.56 if sel else 0.5
+		tv.anchor_bottom = 1.0
+		tv.alignment = BoxContainer.ALIGNMENT_CENTER
+		tv.add_theme_constant_override("separation", int(4 * k))
+		b.add_child(tv)
+		var ink := Color(0.1, 0.12, 0.16) if sel else (Color(1, 1, 1) if ok else Color(0.6, 0.66, 0.75))
+		var lines := [["MISSION %02d" % i, 13, ink.lerp(Color(0.5, 0.55, 0.6), 0.4)], [info[0] if built else "CLASSIFIED", 22 if sel else 19, ink],
+			[("NEXT UP" if sel else ("COMPLETE" if i < open else "OPEN")) if ok else ("COMING SOON" if i <= open else "LOCKED"), 12, ink.lerp(Color(0.5, 0.55, 0.6), 0.5)]]
+		for ln in lines:
+			var l := Label.new()
+			l.text = ln[0]
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			l.add_theme_font_override("font", mono)
+			l.add_theme_font_size_override("font_size", int(ln[1] * k))
+			l.add_theme_color_override("font_color", ln[2])
+			l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			tv.add_child(l)
+		var lv := "m%d" % i
+		b.pressed.connect(func(): main.go_level(lv))
+		card_row.add_child(b)
+var menu_back: Control
+var mission_scroll: ScrollContainer
+var mission_grid: VBoxContainer
+
+
+## A menu entry: plain capitals, a dot beside the one touched.
+func _entry(parent: Node, text: String, cb: Callable) -> Button:
+	var k := _scale()
+	var b := Button.new()
+	b.text = text
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.custom_minimum_size = Vector2(250, 46) * k
+	b.add_theme_font_override("font", mono)
+	b.add_theme_font_size_override("font_size", int(21 * k))
+	var sb := StyleBoxEmpty.new()
+	sb.content_margin_left = 26 * k
+	var sh := StyleBoxFlat.new()
+	sh.bg_color = Color(1, 1, 1, 0.0)
+	sh.border_color = Color(1, 1, 1)
+	sh.border_width_left = int(6 * k)
+	sh.content_margin_left = 20 * k
+	b.add_theme_stylebox_override("normal", sb)
+	for st in ["hover", "pressed", "focus"]:
+		b.add_theme_stylebox_override(st, sh)
+	b.add_theme_color_override("font_color", TERM)
+	b.add_theme_color_override("font_hover_color", AMBER)
+	b.add_theme_color_override("font_pressed_color", AMBER)
+	b.add_theme_color_override("font_shadow_color", Color(0.03, 0.1, 0.25, 0.7))
+	b.add_theme_constant_override("shadow_offset_y", 1)
+	b.pressed.connect(cb)
+	parent.add_child(b)
+	return b
+
+
+## Over the 3D scene behind the menus: a haze, pale blue-green above and deep blue below (deeper for the list).
+class MenuBack extends Control:
+	var deep := false
+	func _draw() -> void:
+		var vs := get_viewport_rect().size
+		var top := Color(0.3, 0.72, 0.85, 0.42)
+		var mid := Color(0.12, 0.38, 0.7, 0.5)
+		var bot := Color(0.04, 0.08, 0.36, 0.9)
+		if deep:
+			top = Color(0.05, 0.12, 0.3, 0.9)
+			mid = Color(0.04, 0.09, 0.28, 0.93)
+		var h := vs.y * 0.55
+		draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(vs.x, 0), Vector2(vs.x, h), Vector2(0, h)]), PackedColorArray([top, top, mid, mid]))
+		draw_polygon(PackedVector2Array([Vector2(0, h), Vector2(vs.x, h), Vector2(vs.x, vs.y), Vector2(0, vs.y)]), PackedColorArray([mid, mid, bot, bot]))
 
 
 ## Before a mission: its name, the briefing and the objectives.
@@ -629,9 +852,14 @@ func show_result(win: bool, title: String, sub: String, n: int) -> void:
 
 
 func show_start(ver: int) -> void:
-	ver_label.text = "Installed: v%d" % ver if ver > 0 else "Installed: test build"
+	ver_label.text = "      v%d" % ver if ver > 0 else "      test build"
+	_build_cards()
+	start_panel.position = Vector2.ZERO
+	start_panel.size = get_viewport_rect().size
 	start_panel.visible = true
-	_center(start_panel)
+	menu_back.visible = true
+	menu_back.deep = false
+	main.hero_shot(true)
 	if Engine.get_meta("show_missions", false):
 		Engine.set_meta("show_missions", false)
 		show_missions()
@@ -639,6 +867,8 @@ func show_start(ver: int) -> void:
 
 func hide_start() -> void:
 	start_panel.visible = false
+	menu_back.visible = false
+	main.hero_shot(false)
 
 
 func show_pause() -> void:

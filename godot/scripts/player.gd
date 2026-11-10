@@ -15,8 +15,9 @@ const JUMP_V := 4.6
 const GRAVITY := 12.0
 
 # natural speed (m/s) of each clip, measured from its root motion
-const NAT := {"walk": 1.0, "walkBack": 1.1, "walkR": 1.92, "walkL": 1.9, "run": 3.16, "runBack": 2.59,
-	"runStrafeR": 3.31, "runStrafeL": 2.83, "crouchWalk2": 1.22, "crouchBack": 1.23, "crouchRun": 1.3}
+# the ground speed each clip's feet really walk at (measured: the planted foot must not slide)
+const NAT := {"walk": 0.8, "walkBack": 0.95, "walkR": 1.75, "walkL": 1.78, "run": 2.45, "runBack": 1.8,
+	"runStrafeR": 2.2, "runStrafeL": 1.7, "crouchWalk2": 1.06, "crouchBack": 1.17, "crouchRun": 1.3}
 const STATES := {"idle": "idle", "aim": "aim", "kneel": "kneel", "kneel_aim": "crouchFire", "jump": "jump",
 	"walk": "walk", "walk_b": "walkBack", "walk_r": "walkR", "walk_l": "walkL",
 	"run": "run", "run_b": "runBack", "run_r": "runStrafeR", "run_l": "runStrafeL",
@@ -143,6 +144,13 @@ var infinite := true                # practice yard: the reserve never runs dry 
 var act_kind := ""                  # what the ACTION button would do here: "kick" a door, "take" a dead man's gun, "item"
 var act_node: Node = null
 var act_label := ""
+# cover: back to a wall (or crouched behind something low), sliding along it, leaning out at its end to shoot
+var cover := false
+var cover_n := Vector3.ZERO      # out of the wall
+var cover_low := false
+var cover_edge := 0              # the wall ends here: -1 / +1 along the wall, 0 not at an end
+var cover_peek := 0.0            # how far out of the end he has stepped to shoot
+var cover_hit := {}
 var act_doing := ""
 var act_obj: Node = null
 var act_t := -1.0                   # doing it: time into it
@@ -822,6 +830,8 @@ func toggle_crouch() -> void:
 func jump() -> void:
 	if dead or climb_t >= 0.0:
 		return
+	if cover:
+		leave_cover()
 	if _climb_probe(true):
 		return
 	if is_on_floor() and not crouch:
@@ -1085,6 +1095,8 @@ func _physics_process(dt: float) -> void:
 	# ---- movement: camera-relative, speeds that match the clips ----
 	if climb_t >= 0.0:
 		_climb_step(dt)
+	elif cover and not dead:
+		_cover_step(dt)
 	else:
 		var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
 		var right := Vector3(cos(yaw), 0, -sin(yaw))
@@ -1112,7 +1124,7 @@ func _physics_process(dt: float) -> void:
 			if act_t >= 0.0:
 				spd = 0.0
 			target = md * spd
-		var accel := 5.0 if target.length() > Vector2(vel.x, vel.z).length() else 9.0
+		var accel := 9.0 if target.length() > Vector2(vel.x, vel.z).length() else 14.0
 		var hv := Vector3(vel.x, 0, vel.z).lerp(target, min(1.0, dt * accel))
 		if hv.length() < 0.02:
 			hv = Vector3.ZERO
@@ -1128,7 +1140,12 @@ func _physics_process(dt: float) -> void:
 		vel = velocity
 		_step_up(target, dt)
 	speed = Vector2(vel.x, vel.z).length()
-	rotation.y = yaw
+	if cover and not (aiming or firing or t - last_shot < 0.6):
+		rotation.y = lerp_angle(rotation.y, atan2(-cover_n.x, -cover_n.z), min(1.0, dt * 12.0))    # back to the wall
+	elif cover:
+		rotation.y = lerp_angle(rotation.y, yaw, min(1.0, dt * 16.0))
+	else:
+		rotation.y = yaw
 	climb_check_t -= dt
 	if climb_check_t <= 0.0:
 		climb_check_t = 0.25
@@ -1304,10 +1321,37 @@ func _probe_action() -> void:
 				act_node = e
 				act_label = "TAKE " + {"ak": "AK", "svd": "SVD", "shotgun": "SHOTGUN", "m4": "M4", "pistol": "PISTOL", "rpg": "RPG"}.get(e.gun, "GUN")
 				return
+	if cover:
+		act_kind = "uncover"
+		act_label = "LEAVE"
+		return
+	# a wall (or something solid and low) just ahead: take cover against it
+	if is_on_floor():
+		for hy in [1.0, 0.55]:
+			var cq := PhysicsRayQueryParameters3D.create(global_position + Vector3(0, hy, 0), global_position + Vector3(0, hy, 0) + fwd * 1.3)
+			cq.collision_mask = 1
+			cq.exclude = [get_rid()]
+			var ch := get_world_3d().direct_space_state.intersect_ray(cq)
+			if ch and abs(ch["normal"].y) < 0.3 and ch["collider"] is StaticBody3D and ch["collider"].get_meta("kind", "") != "door":
+				act_kind = "cover"
+				act_label = "COVER"
+				cover_hit = ch
+				return
 
 
 func action() -> void:
 	if act_kind == "" or busy():
+		return
+	if act_kind == "uncover":
+		leave_cover()
+		return
+	if act_kind == "cover":
+		cover = true
+		var cn: Vector3 = cover_hit["normal"]
+		cover_n = Vector3(cn.x, 0, cn.z).normalized()
+		cover_edge = 0
+		cover_peek = 0.0
+		firing = false
 		return
 	act_doing = act_kind
 	act_obj = act_node
@@ -1468,9 +1512,10 @@ func _animate(dt: float) -> void:
 	var w: Dictionary = weapons[wi]
 	var acting := throw_t >= 0.0 or hol_t >= 0.0 or holstered or knife_t >= 0.0
 	var doing := act_t >= 0.0
-	var aim_now := (aiming or firing or t - last_shot < 2.5) and not acting and climb_t < 0.0 and not doing
+	var aim_now := (aiming or firing or t - last_shot < (0.6 if cover else 2.5)) and not acting and climb_t < 0.0 and not doing
 	var moving := speed > 0.25
-	var local := Vector2(vel.dot(Vector3(cos(yaw), 0, -sin(yaw))), vel.dot(Vector3(-sin(yaw), 0, -cos(yaw))))  # x right, y forward
+	var ry := rotation.y
+	var local := Vector2(vel.dot(Vector3(cos(ry), 0, -sin(ry))), vel.dot(Vector3(-sin(ry), 0, -cos(ry))))  # x right, y forward
 	if moving:
 		var fwd_axis := dir == "F" or dir == "B"
 		var use_f = abs(local.y) >= abs(local.x) * 0.75 if fwd_axis else abs(local.y) > abs(local.x) * 1.35
@@ -1594,7 +1639,16 @@ func _update_camera(dt: float) -> void:
 	cam_pivot.global_position = global_position + Vector3(0, cam_h, 0)
 	var shk := Vector2(sin(t * 37.0), sin(t * 53.0)) * shake * 0.05
 	cam_pivot.rotation = Vector3(pitch + kick_p + shk.y, yaw + shk.x, 0)
-	cam_pivot.get_node("Side").position = Vector3(cam_side, 0, 0)
+	# the shoulder offset must not put the camera's arm through a wall beside him
+	var side_now := cam_side
+	if abs(cam_side) > 0.02:
+		var sq := PhysicsRayQueryParameters3D.create(cam_pivot.global_position, cam_pivot.global_position + cam_pivot.global_transform.basis.x * (cam_side + 0.3 * sign(cam_side)))
+		sq.collision_mask = 1
+		sq.exclude = [get_rid()]
+		var sh := get_world_3d().direct_space_state.intersect_ray(sq)
+		if sh:
+			side_now = sign(cam_side) * max(0.0, cam_pivot.global_position.distance_to(sh["position"]) - 0.3)
+	cam_pivot.get_node("Side").position = Vector3(side_now, 0, 0)
 	cam_arm.spring_length = cam_len
 	var fov := 62.0
 	if aiming:
@@ -1605,7 +1659,8 @@ func _update_camera(dt: float) -> void:
 	if scoped:
 		cam.fov = float(w["scope"])
 	var fp := (view == 2 or scoped) and not dead
-	model.visible = not fp
+	# (pressed against a wall the camera can end up right behind his head: do not fill the screen with him)
+	model.visible = not fp and not (cam_len > 0.6 and cam_arm.get_hit_length() < 0.45)
 	vm.visible = fp and not scoped and not (holstered and act_w > 0.9)
 	if vm.visible:
 		_update_arms(dt)
@@ -1724,3 +1779,67 @@ func _respawn() -> void:
 
 func aim_dir() -> Vector3:
 	return -cam.global_transform.basis.z
+
+
+func leave_cover() -> void:
+	if cover and cover_low:
+		crouch = false
+	cover = false
+	cover_peek = 0.0
+	cover_edge = 0
+
+
+## In cover: held against the wall, sidestepping along it (never past its end), crouched behind anything lower
+## than his head; to shoot he leans out of the end of a wall, or stands up over a low one.
+func _cover_step(dt: float) -> void:
+	var space := get_world_3d().direct_space_state
+	var n := cover_n
+	var tan := Vector3(n.z, 0, -n.x)
+	var ray := func(from: Vector3, to: Vector3) -> Dictionary:
+		var q := PhysicsRayQueryParameters3D.create(from, to)
+		q.collision_mask = 1
+		q.exclude = [get_rid()]
+		return space.intersect_ray(q)
+	var base := global_position + n * 0.1
+	var wall: Dictionary = ray.call(base + Vector3(0, 0.55, 0), base + Vector3(0, 0.55, 0) - n * 1.7)
+	if wall.is_empty() and cover_peek < 0.05:
+		leave_cover()
+		return
+	cover_low = (ray.call(base + Vector3(0, 1.5, 0), base + Vector3(0, 1.5, 0) - n * 1.7) as Dictionary).is_empty()
+	var shooting := aiming or firing or throw_t >= 0.0
+	crouch = cover_low and not shooting
+	var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
+	var right := Vector3(cos(yaw), 0, -sin(yaw))
+	var want := fwd * move_in.y + right * move_in.x
+	var mag: float = min(1.0, move_in.length())
+	if mag > 0.6 and want.normalized().dot(n) > 0.75:
+		leave_cover()          # the stick pulled straight away from the wall
+		return
+	var along := want.dot(tan)
+	var v_t := 0.0
+	if not shooting:
+		if cover_peek > 0.0:       # back in from the lean
+			v_t = -float(cover_edge) * 2.4
+			cover_peek = max(0.0, cover_peek - 2.4 * dt)
+		elif abs(along) > 0.2:
+			var sgn := 1 if along > 0 else -1
+			# does the wall go on that way?
+			var ahead: Vector3 = base + tan * (sgn * 0.5) + Vector3(0, 0.55, 0)
+			if (ray.call(ahead, ahead - n * 1.2) as Dictionary).is_empty() or not (ray.call(base + Vector3(0, 0.55, 0), ahead + n * 0.2) as Dictionary).is_empty():
+				cover_edge = sgn
+			else:
+				cover_edge = 0
+				v_t = sgn * lerp(0.5, 1.5, clamp((abs(along) - 0.2) / 0.8, 0.0, 1.0))
+	elif cover_edge != 0 and not cover_low and cover_peek < 0.62:
+		v_t = float(cover_edge) * 3.0      # lean out of the end to shoot
+		cover_peek += 3.0 * dt
+	var v_n := 0.0
+	if not wall.is_empty():
+		var off: float = (global_position - (wall["position"] as Vector3)).dot(n)
+		v_n = clamp((0.46 - off) * 10.0, -3.0, 3.0)
+	vel.x = tan.x * v_t + n.x * v_n
+	vel.z = tan.z * v_t + n.z * v_n
+	vel.y = 0.0 if is_on_floor() else vel.y - GRAVITY * dt
+	velocity = vel
+	move_and_slide()
+	vel = velocity

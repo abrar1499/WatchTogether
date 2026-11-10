@@ -37,9 +37,9 @@ func build(num: int) -> Vector3:
 	n = num
 	match num:
 		1:
-			return _m1()
+			return await _m1()
 		2:
-			return _m2()
+			return await _m2()
 	return Vector3(0, 0.05, 6)
 
 
@@ -497,8 +497,10 @@ func _m1() -> Vector3:
 	main.flat_c = Vector2(0, -25)
 	main.flat_r = 80.0
 	main.area = Rect2(-33, -54, 66, 58)
+	await main.breathe(5)
 	main._build_ground()
 	main._build_mountains()
+	await main.breathe(5)
 	main._build_rocks(main._tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true), 70.0, false)
 	main.scatter(1200, 260, 44.0)
 	main.apply_dusk()
@@ -539,6 +541,7 @@ func _m1() -> Vector3:
 	_sandbags(Vector3(-14, 0, -25.5), 4)
 	_drum(Vector3(-16, 0, -18.5), "red")
 	_drum(Vector3(-16.6, 0, -19.1), "blue")
+	await main.breathe(5)
 	# inner compound: command hut, barracks, a third tower, mast and generator
 	var hut_c := Vector3(8, 0, -12)
 	_hut(hut_c, 6.0, 5.0, 1.2, "x")
@@ -726,6 +729,7 @@ func _block_of(r: Array, shops := [], floors := [4, 7], towers := 0) -> void:
 	city.commit_kit()
 	city.commit(true, city.KIT_GONE)
 	city.block_tones = []
+	await main.breathe(38)
 
 
 func _road(r: Array, _col := Color()) -> void:
@@ -784,11 +788,11 @@ func _m2() -> Vector3:
 	for r in [[20, 20, 90, 70, 0], [120, 20, 110, 90, 1], [20, 104, 90, 128, 0], [120, 124, 110, 104, 1], [20, 246, 66, 160, 0], [96, 244, 134, 76, 0],
 			[96, 332, 134, 74, 0], [250, 76, 130, 90, 1], [392, 76, 64, 90, 0], [250, 178, 100, 62, 0], [362, 178, 94, 62, 0], [468, 76, 90, 164, 1],
 			[250, 252, 150, 70, 0], [410, 252, 148, 70, 0]]:
-		_block_of([r[0], r[1], r[2], r[3]], [], [4, 8], r[4])
+		await _block_of([r[0], r[1], r[2], r[3]], [], [4, 8], r[4])
 	# ---- the market street: shuttered shops under their name boards; the informant's shop is open ----
 	city.force_open = S(442, 414)
 	for r in [[280, 338, 60, 76], [346, 338, 60, 76], [412, 338, 60, 76], [478, 338, 60, 76], [544, 338, 52, 76]]:
-		_block_of(r, ["s"], [4, 6])
+		await _block_of(r, ["s"], [4, 6])
 	var msg_at := S(442, 414, 1.03)
 	if not city.opened_bay.is_empty():
 		var ob: Array = city.opened_bay
@@ -798,9 +802,9 @@ func _m2() -> Vector3:
 	msg.set_meta("obj", 0)
 	items.append(msg)
 	for r in [[280, 448, 70, 72], [356, 448, 70, 72], [432, 448, 80, 72], [518, 448, 78, 72]]:
-		_block_of(r, ["n"], [4, 6])
+		await _block_of(r, ["n"], [4, 6])
 	for r in [[290, 540, 92, 82], [392, 540, 100, 92], [502, 530, 94, 102]]:
-		_block_of(r, [], [3, 5])
+		await _block_of(r, [], [3, 5])
 	_avenue(S(261, 700), S(261, 431), 26.0 / 3.0)
 	_avenue(S(248, 431), S(608, 431), 26.0 / 3.0)
 	for i in 7:
@@ -824,10 +828,10 @@ func _m2() -> Vector3:
 	city.box("g_pavers", Vector3((a.x + b.x) * 0.5, 0.04, (a.z + b.z) * 0.5), Vector3(b.x - a.x, 0.06, b.z - a.z))
 	city.commit(false)
 	for r in [[610, 522, 80, 70], [700, 522, 90, 70]]:
-		_block_of(r, ["n"], [5, 7])
+		await _block_of(r, ["n"], [5, 7])
 	for r in [[786, 290, 92, 100], [786, 402, 92, 110]]:
-		_block_of(r, ["w"], [5, 8])
-	_block_of([890, 290, 96, 222], [], [6, 9], 2)
+		await _block_of(r, ["w"], [5, 8])
+	await _block_of([890, 290, 96, 222], [], [6, 9], 2)
 	_clock_tower(S(686, 426))
 	city.cyl("trim", S(632, 382), 3.2, 0.6, 24, Color(0.75, 0.74, 0.72))
 	city.cyl("glass", S(632, 382, 0.45), 2.9, 0.02, 24)
@@ -854,7 +858,7 @@ func _m2() -> Vector3:
 		_barrier(S(604 + k * 8, 520), 0.0)
 	# ---- the residential lanes: blocks of flats close together ----
 	for r in [[566, 270, 96, 62], [694, 270, 60, 62], [566, 200, 66, 40], [694, 200, 58, 40], [566, 72, 66, 118], [662, 72, 90, 118]]:
-		_block_of(r, [], [4, 6])
+		await _block_of(r, [], [4, 6])
 	for r in [[670, 196, 15, 146], [566, 248, 206, 13], [640, 58, 13, 140]]:
 		_road(r, Color(0.3, 0.3, 0.31))
 	city.led_lamp(S(668, 258), Vector3(1, 0, 0))

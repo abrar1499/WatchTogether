@@ -253,7 +253,10 @@ func led_lamp(p: Vector3, dir: Vector3) -> void:
 	var l := OmniLight3D.new()
 	l.light_color = Color(1.0, 0.86, 0.68)
 	l.light_energy = 6.0
-	l.omni_range = 22.0
+	l.omni_range = 17.0
+	l.distance_fade_enabled = true      # far lamps light nothing the player can see: their halo and pool remain
+	l.distance_fade_begin = 42.0
+	l.distance_fade_length = 10.0
 	l.omni_attenuation = 1.3
 	main.add_child(l)
 	l.global_position = c

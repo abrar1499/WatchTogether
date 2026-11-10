@@ -50,6 +50,8 @@ func _ready() -> void:
 		if a.begins_with("--level="):
 			level = a.substr(8)
 	_build_environment()
+	if OS.has_feature("mobile"):
+		get_viewport().scaling_3d_scale = 0.8        # a phone's screen is dense: fewer pixels to shade, the same picture
 	add_child(fx)
 	add_child(snd)
 	var spawn := Vector3(0, 0.05, 6)
@@ -59,7 +61,14 @@ func _ready() -> void:
 		mission = load("res://scripts/missions.gd").new()
 		mission.main = self
 		add_child(mission)
-		spawn = mission.build(int(level.substr(1)))
+		if test_mode == "" or test_mode == "loadtest":
+			# the loading screen, drawn before the level is built and kept moving while it is
+			loader = Loader.new()
+			loader.num = int(level.substr(1))
+			add_child(loader)
+			await get_tree().process_frame
+			await get_tree().process_frame
+		spawn = await mission.build(int(level.substr(1)))
 	music.main = self
 	add_child(music)
 	player = load("res://scripts/player.gd").new()
@@ -88,6 +97,9 @@ func _ready() -> void:
 		else:
 			_run_test()
 		return
+	if loader:
+		loader.finish()
+		loader = null
 	if mission:
 		ui.show_briefing(mission)
 	else:
@@ -169,31 +181,6 @@ func _run_test() -> void:
 
 
 # ---------------- world ----------------
-## The camera's own look over the picture (under the HUD): darker corners and a faint moving film grain.
-func _build_lens() -> void:
-	var layer := CanvasLayer.new()
-	layer.layer = -1
-	add_child(layer)
-	var r := ColorRect.new()
-	r.set_anchors_preset(Control.PRESET_FULL_RECT)
-	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sh := Shader.new()
-	sh.code = """shader_type canvas_item;
-float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-void fragment() {
-	vec2 d = UV - 0.5;
-	float av = smoothstep(0.35, 0.95, length(d * vec2(1.0, 0.8)) * 1.45) * 0.38;
-	float g = hash(floor(FRAGCOORD.xy * 0.5) + floor(TIME * 24.0) * 7.31) - 0.5;
-	float ag = abs(g) * 0.05;
-	COLOR = vec4(mix(vec3(step(0.0, g)), vec3(0.0), av / (av + ag + 0.0001)), av + ag);
-}
-"""
-	var m := ShaderMaterial.new()
-	m.shader = sh
-	r.material = m
-	layer.add_child(r)
-
-
 func _build_environment() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
@@ -223,7 +210,6 @@ func _build_environment() -> void:
 	env.adjustment_saturation = 0.84
 	env.adjustment_contrast = 1.07
 	env.adjustment_brightness = 0.98
-	_build_lens()
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -1370,6 +1356,120 @@ func unlock(n: int) -> void:
 
 
 ## Load a level (reloads the scene): "" the practice yard and menu, "m<n>" mission n.
+var hero_cam: Camera3D
+## The start screen's picture: the soldier seen from the front, low and to one side.
+func hero_shot(on: bool) -> void:
+	if on and level == "":
+		if hero_cam == null:
+			hero_cam = Camera3D.new()
+			hero_cam.fov = 38.0
+			add_child(hero_cam)
+		var pp: Vector3 = player.global_position
+		var from := pp + Vector3(0.5, 1.0, -2.3)
+		hero_cam.global_transform = Transform3D(Basis.looking_at((pp + Vector3(-0.55, 1.42, 0)) - from), from)
+		hero_cam.current = true
+	elif hero_cam:
+		hero_cam.current = false
+		player.cam.current = true
+
+
+var loader: Loader
+var load_step := 0
+## Called between the parts of a level being built: lets the loading screen draw a frame.
+func breathe(total: int) -> void:
+	load_step += 1
+	if loader:
+		loader.progress = clamp(float(load_step) / total, 0.0, 1.0)
+		await get_tree().process_frame
+		if test_mode == "loadtest" and load_step % 15 == 14:
+			for i in 12:
+				await get_tree().process_frame
+			get_viewport().get_texture().get_image().save_png(OS.get_environment("SHOT") + "load_%d.png" % load_step)
+
+
+## The loading screen: the mission's number, a turning dial of segments, a sweep, a bar and its percentage,
+## lines of a terminal log typed out as the level comes together.
+class Loader extends CanvasLayer:
+	var num := 1
+	var progress := 0.0
+	var shown := 0.0
+	var t := 0.0
+	var c: Control
+	var font: SystemFont
+	var fade := -1.0
+	const LOG := ["LINK ESTABLISHED", "SATELLITE PASS ACQUIRED", "TERRAIN MODEL", "STRUCTURES", "STREET GRID", "HOSTILE POSITIONS", "INSERTION POINT", "READY"]
+	func _ready() -> void:
+		layer = 50
+		font = SystemFont.new()
+		font.font_names = PackedStringArray(["monospace", "Courier New", "DejaVu Sans Mono"])
+		c = Control.new()
+		c.set_anchors_preset(Control.PRESET_FULL_RECT)
+		c.mouse_filter = Control.MOUSE_FILTER_STOP
+		add_child(c)
+		c.draw.connect(_paint)
+	func finish() -> void:
+		progress = 1.0
+		fade = 0.0
+	func _process(dt: float) -> void:
+		t += dt
+		shown = move_toward(shown, progress, dt * 1.6)
+		if fade >= 0.0:
+			fade += dt
+			c.modulate.a = clamp(1.0 - (fade - 0.25) / 0.35, 0.0, 1.0)
+			if fade > 0.6:
+				queue_free()
+		c.queue_redraw()
+	func _paint() -> void:
+		var vs := c.get_viewport_rect().size
+		var g := Color(0.96, 0.98, 1.0)
+		var dim := Color(0.5, 0.64, 0.82)
+		var amber := Color(0.45, 0.85, 1.0)
+		c.draw_rect(Rect2(Vector2.ZERO, vs), Color(0.03, 0.06, 0.16))
+		var k := vs.y / 590.0
+		var ctr := Vector2(vs.x * 0.5, vs.y * 0.42)
+		var r := 92.0 * k
+		# the dial: segments light up round the ring with the progress; two arcs turn against each other
+		var n := 48
+		for i in n:
+			var a0 := -PI * 0.5 + TAU * i / n
+			var on := float(i) / n < shown
+			c.draw_arc(ctr, r, a0 + 0.012, a0 + TAU / n - 0.012, 4, amber if on else Color(0.16, 0.24, 0.4), 9.0 * k if on else 5.0 * k)
+		c.draw_arc(ctr, r + 22.0 * k, t * 1.7, t * 1.7 + 1.4, 24, g, 2.5 * k)
+		c.draw_arc(ctr, r + 22.0 * k, t * 1.7 + PI, t * 1.7 + PI + 1.4, 24, g, 2.5 * k)
+		c.draw_arc(ctr, r - 20.0 * k, -t * 2.3, -t * 2.3 + 2.2, 24, dim, 2.0 * k)
+		for q in 12:
+			var qa := t * 2.6 - q * 0.05
+			c.draw_line(ctr, ctr + Vector2(cos(qa), sin(qa)) * (r - 26.0 * k), Color(0.6, 0.9, 1.0, 0.28 * (1.0 - q / 12.0)), 2.0 * k)
+		var pct := "%d%%" % int(shown * 100.0)
+		var ps := int(34 * k)
+		var pw := font.get_string_size(pct, HORIZONTAL_ALIGNMENT_LEFT, -1, ps).x
+		c.draw_string(font, ctr + Vector2(-pw * 0.5, ps * 0.35), pct, HORIZONTAL_ALIGNMENT_LEFT, -1, ps, g)
+		var title := "MISSION %02d" % num
+		var ts := int(26 * k)
+		var tw := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, ts).x
+		c.draw_string(font, Vector2(vs.x * 0.5 - tw * 0.5, ctr.y - r - 52.0 * k), title, HORIZONTAL_ALIGNMENT_LEFT, -1, ts, g)
+		# the bar
+		var bw := 420.0 * k
+		var bp := Vector2(vs.x * 0.5 - bw * 0.5, ctr.y + r + 50.0 * k)
+		c.draw_rect(Rect2(bp, Vector2(bw, 6.0 * k)), Color(0.12, 0.18, 0.32))
+		c.draw_rect(Rect2(bp, Vector2(bw * shown, 6.0 * k)), amber)
+		c.draw_rect(Rect2(bp + Vector2(bw * shown - 3.0 * k, -4.0 * k), Vector2(6.0 * k, 14.0 * k)), g)
+		# the log, typed
+		var li := mini(LOG.size() - 1, int(shown * LOG.size()))
+		var ls := int(14 * k)
+		for j in 3:
+			var idx := li - 2 + j
+			if idx < 0:
+				continue
+			var line: String = "> " + LOG[idx]
+			if idx == li:
+				var frac: float = fposmod(shown * LOG.size(), 1.0)
+				line = line.substr(0, 2 + int(ceil((line.length() - 2) * clamp(frac * 2.5, 0.0, 1.0)))) + ("_" if fmod(t, 0.5) < 0.25 else "")
+			else:
+				line += "  OK"
+			c.draw_string(font, bp + Vector2(0, (34.0 + j * 20.0) * k), line, HORIZONTAL_ALIGNMENT_LEFT, -1, ls, g if idx == li else dim)
+
+
 func go_level(l: String) -> void:
 	Engine.set_meta("level", l)
 	get_tree().paused = false
