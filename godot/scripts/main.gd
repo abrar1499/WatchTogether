@@ -35,7 +35,7 @@ var flat_c := Vector2(0, -8)               # the ground is flat round here, dune
 var flat_r := 58.0
 var extra_cover := []                      # low cover besides crates and drums: [position, half size]
 var doors := []
-const MISSIONS_BUILT := 1                  # missions that exist so far (of 30)
+const MISSIONS_BUILT := 2                  # missions that exist so far (of 30)
 
 
 func _ready() -> void:
@@ -248,7 +248,7 @@ func apply_night() -> void:
 	sm.sun_angle_max = 2.0
 	sm.sun_curve = 0.3
 	world_env.ambient_light_color = Color(0.32, 0.38, 0.52)
-	world_env.ambient_light_energy = 0.2
+	world_env.ambient_light_energy = 0.26
 	world_env.fog_light_color = Color(0.05, 0.055, 0.075)
 	world_env.fog_density = 0.006
 	world_env.tonemap_exposure = 1.2

@@ -1268,8 +1268,8 @@ func _ray_seg(o: Vector3, d: Vector3, a: Vector3, b: Vector3) -> Array:
 	return [(o + d * t - (a + u * s)).length(), t]
 
 
-## What the ACTION button does here: kick a closed door just ahead, take the gun from a dead soldier, or pick up a
-## mission item.
+## What the ACTION button does here: kick a closed door just ahead, pick up a mission item, or take the gun from a
+## dead soldier.
 func _probe_action() -> void:
 	act_kind = ""
 	act_node = null
@@ -1287,6 +1287,14 @@ func _probe_action() -> void:
 				act_node = d
 				act_label = "KICK"
 				return
+	# a mission item before a dead man's gun (the Courier's laptop lies by his body)
+	if world.mission:
+		var it = world.mission.item_near(global_position)
+		if it:
+			act_kind = "item"
+			act_node = it
+			act_label = it.get_meta("label", "TAKE")
+			return
 	for e in world.enemies:
 		if e.dead and not e.taken:
 			var body: Vector3 = e.skel.global_transform * e.skel.get_bone_global_pose(e.hips_b).origin
@@ -1295,12 +1303,6 @@ func _probe_action() -> void:
 				act_node = e
 				act_label = "TAKE " + {"ak": "AK", "svd": "SVD", "shotgun": "SHOTGUN", "m4": "M4", "pistol": "PISTOL", "rpg": "RPG"}.get(e.gun, "GUN")
 				return
-	if world.mission:
-		var it = world.mission.item_near(global_position)
-		if it:
-			act_kind = "item"
-			act_node = it
-			act_label = it.get_meta("label", "TAKE")
 
 
 func action() -> void:

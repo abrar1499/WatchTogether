@@ -23,6 +23,13 @@ var start_t := 0.0
 var t := 0.0
 var mats := {}
 var start_yaw := 0.0
+var alarm_text := "The station knows you are here. More soldiers are coming."
+var reinf_spots := [Vector3(70, 0, -27), Vector3(72, 0, -24), Vector3(70, 0, -21), Vector3(73, 0, -19)]
+var target_post := -1         # a soldier whose death is an objective (index into posts)
+var target_obj := -1
+var target: Node = null
+var power_zone := Rect2()     # where the lights go out when the mission's power supply is destroyed
+var power_cut := false
 
 
 ## Build mission `num` into main; returns where the player starts.
@@ -59,6 +66,9 @@ func begin() -> void:
 		e.setup(main, ps[0] + Vector3(0, 0.05, 0), ps[1], ps[0], ps[2], ps[3], ps[4])
 		e.grace = 1.0
 		main.enemies.append(e)
+		_far_cull(e)
+	if target_post >= 0:
+		target = main.enemies[target_post]
 	main.ui.message("MISSION %d" % n, title, 3.5)
 
 
@@ -99,6 +109,10 @@ func take_item(it: Node3D) -> void:
 
 
 func on_destroyed(m: Node) -> void:
+	if m.get_meta("power", false):
+		power_cut = true
+		city.power_cut(power_zone)
+		get_tree().create_timer(1.5).timeout.connect(func(): if not over: main.ui.message("POWER CUT", "The streets round the hotel go dark. Their alarm has no power now.", 3.5))
 	if m.has_meta("obj"):
 		complete_objective(int(m.get_meta("obj")))
 
@@ -124,6 +138,8 @@ func _process(dt: float) -> void:
 	_sweep(dt)
 	if over or not main.playing:
 		return
+	if target != null and target.dead and target_obj >= 0 and not objectives[target_obj]["done"]:
+		complete_objective(target_obj)
 	var p = main.player
 	# the alarm: a soldier in a fight raises it a few seconds later unless he is dead by then
 	if not alarm:
@@ -156,10 +172,21 @@ func _process(dt: float) -> void:
 			_win()
 
 
+## A soldier is not drawn beyond 150 m (far past where he can see or hit anyone).
+func _far_cull(e: Node) -> void:
+	for g in e.find_children("*", "GeometryInstance3D", true, false):
+		g.visibility_range_end = 150.0
+
+
 func _raise_alarm() -> void:
 	alarm = true
 	reinf_t = 9.0
-	main.ui.message("ALARM!", "The station knows you are here. More soldiers are coming.", 3.5)
+	if power_cut and power_zone.has_point(Vector2(alarm_src.global_position.x, alarm_src.global_position.z)):
+		# no power for the siren here: the fight is heard, but nobody else is called in
+		reinf_t = -1.0
+		main.ui.message("ALARM!", "They have seen you, but their alarm is dead. No one else is coming.", 3.5)
+	else:
+		main.ui.message("ALARM!", alarm_text, 3.5)
 	main.music.alarm()
 	for e in main.enemies:
 		if not e.dead:
@@ -167,7 +194,7 @@ func _raise_alarm() -> void:
 
 
 func _reinforce() -> void:
-	var spots := [Vector3(70, 0, -27), Vector3(72, 0, -24), Vector3(70, 0, -21), Vector3(73, 0, -19)]
+	var spots := reinf_spots
 	var kinds := ["olive", "blue", "gasmask", "olive"]
 	for i in spots.size():
 		var e = load("res://scripts/enemy.gd").new()
@@ -176,6 +203,7 @@ func _reinforce() -> void:
 		e.setup(main, spots[i] + Vector3(0, 0.05, 0), 0.0, spots[i], kinds[i], "ak", [])
 		e.grace = 0.0
 		main.enemies.append(e)
+		_far_cull(e)
 		e.alarm(main.player.global_position)
 
 
@@ -664,6 +692,7 @@ func _block_of(r: Array, shops := [], floors := [4, 7], towers := 0) -> void:
 	var depth: float = (b.z - a.z) if along_x else (b.x - a.x)
 	var rows := 2 if depth > 24.0 else 1
 	var n_tower := towers
+	city.block_tones = [city.rng.randi() % city.PLASTER.size(), city.rng.randi() % city.PLASTER.size()]
 	for row in rows:
 		var d0: float = depth * row / rows
 		var d1: float = depth * (row + 1) / rows
@@ -695,7 +724,8 @@ func _block_of(r: Array, shops := [], floors := [4, 7], towers := 0) -> void:
 				city.apartment(q[0], q[1], q[2], q[3], city.rng.randi_range(floors[0], floors[1]), my_shops, blank)
 			s0 += wdt
 	city.commit_kit()
-	city.commit()
+	city.commit(true, city.KIT_GONE)
+	city.block_tones = []
 
 
 func _road(r: Array, _col := Color()) -> void:
@@ -710,7 +740,7 @@ func _car(kind: String, p: Vector3, yaw: float) -> void:
 	if kind.begins_with("sedan") or kind.begins_with("suv"):
 		path = "res://assets/city/props/covered_car/covered_car_game.gltf"
 		kind = "sedan"
-	var cb: StaticBody3D = main._prop(path, p, yaw, Vector3.ZERO, "metal")
+	var cb: StaticBody3D = _merged_prop(path, p, yaw, "metal") if kind == "sedan" else main._prop(path, p, yaw, Vector3.ZERO, "metal")
 	var big := kind.begins_with("bus")
 	var size := Vector3(2.5, 3.0, 10.1) if big else (Vector3(1.9, 2.2, 5.1) if kind == "pickup" else Vector3(1.8, 1.45, 4.6))
 	var cs := CollisionShape3D.new()
@@ -725,16 +755,21 @@ func _car(kind: String, p: Vector3, yaw: float) -> void:
 
 func _m2() -> Vector3:
 	title = "SHEHAR 2026"
-	briefing = "The relay codes name the man who gives the militia its orders: the Courier. He runs them from a hotel tower in " + \
-		"the centre of a border city under curfew.\n\nGet in from the dry riverbed, collect the informant's message on the market " + \
-		"street, cut the power at the clock tower square, deal with the Courier, take his laptop and get out to the helicopter " + \
-		"in the rail yard."
+	briefing = "The relay codes name the man who gives the militia its orders: the Courier. He runs them from an old hotel in " + \
+		"the middle of a border city under curfew; only militia patrols are out tonight.\n\nYou start in the dry riverbed south-west " + \
+		"of the town. On the market street one shop has its shutter up and its light on: the informant has left you a message " + \
+		"on its counter. Blow the transformer at the clock tower square: the streets round the hotel go dark and their alarm " + \
+		"loses its power. Kill the Courier in the hotel forecourt, take his laptop, and get out through the back of the hotel " + \
+		"to the helicopter in the rail yard.\n\nYou carry an AK-47, an SD-9 pistol, a knife and three grenades. A sniper watches " + \
+		"from the clock tower, another from the water tower by the bus terminal, a third from the hotel roof."
 	main.flat_c = Vector2(0, 0)
 	main.flat_r = 205.0
 	main.area = Rect2(-160, -126, 330, 244)
 	main._build_ground()
 	main._build_mountains()
 	main.apply_night()
+	# no moon shadows in the town: at night they barely show, and they cost as much as the town itself
+	main.sun.shadow_enabled = false
 	# a city at night: a faint orange glow of street lighting on the haze at the horizon
 	var sm: ProceduralSkyMaterial = main.world_env.sky.sky_material
 	sm.sky_horizon_color = Color(0.17, 0.14, 0.15)
@@ -750,9 +785,18 @@ func _m2() -> Vector3:
 			[96, 332, 134, 74, 0], [250, 76, 130, 90, 1], [392, 76, 64, 90, 0], [250, 178, 100, 62, 0], [362, 178, 94, 62, 0], [468, 76, 90, 164, 1],
 			[250, 252, 150, 70, 0], [410, 252, 148, 70, 0]]:
 		_block_of([r[0], r[1], r[2], r[3]], [], [4, 8], r[4])
-	# ---- the market street: shops behind glass, LED signs ----
+	# ---- the market street: shuttered shops under their name boards; the informant's shop is open ----
+	city.force_open = S(442, 414)
 	for r in [[280, 338, 60, 76], [346, 338, 60, 76], [412, 338, 60, 76], [478, 338, 60, 76], [544, 338, 52, 76]]:
 		_block_of(r, ["s"], [4, 6])
+	var msg_at := S(442, 414, 1.03)
+	if not city.opened_bay.is_empty():
+		var ob: Array = city.opened_bay
+		msg_at = ob[0] - ob[2] * 0.45 + ob[1] * (ob[3] * 0.15) + Vector3(0, 1.03, 0)
+	var msg := _block(msg_at, Vector3(0.3, 0.05, 0.22), "white", "wood", 0.4, false)
+	msg.set_meta("label", "TAKE MESSAGE")
+	msg.set_meta("obj", 0)
+	items.append(msg)
 	for r in [[280, 448, 70, 72], [356, 448, 70, 72], [432, 448, 80, 72], [518, 448, 78, 72]]:
 		_block_of(r, ["n"], [4, 6])
 	for r in [[290, 540, 92, 82], [392, 540, 100, 92], [502, 530, 94, 102]]:
@@ -796,12 +840,9 @@ func _m2() -> Vector3:
 	city.traffic_light(S(598, 422), Vector3(-1, 0, 0), true)
 	city.traffic_light(S(598, 440), Vector3(-1, 0, 0), false)
 	var tp := S(751, 487)
-	city.box("trim", tp + Vector3(0, 0.15, 0), Vector3(4, 0.3, 4), 0.0, Color(0.55, 0.55, 0.52))
-	city.box("steel", tp + Vector3(0, 1.3, 0), Vector3(1.8, 2.0, 1.2), 0.0, Color(0.42, 0.48, 0.44))
-	for k in 3:
-		city.cyl("trim", tp + Vector3(-0.5 + k * 0.5, 2.3, 0), 0.08, 0.6, 8, Color(0.75, 0.72, 0.65))
-	city.collider(tp + Vector3(0, 1.2, 0), Vector3(1.8, 2.4, 1.2), 0.0, "metal")
+	city.box("g_kerb", tp + Vector3(0, 0.15, 0), Vector3(4, 0.3, 4))
 	city.commit()
+	_transformer(tp + Vector3(0, 0.3, 0), 1)
 	city.screen(S(786, 360, 14.0), Vector3(-1, 0, 0), 16.0, 9.0, city.ad_image(1))
 	city.screen(S(650, 522, 13.0), Vector3(0, 0, -1), 12.0, 6.75, city.ad_image(2))
 	_car("bus_burnt", S(669, 365), -0.25 + PI * 0.5)
@@ -849,6 +890,7 @@ func _m2() -> Vector3:
 	for k in 3:
 		_barrier(S(850 + k * 8, 252), 0.0)
 	city.commit()
+	_courier_post(S(893, 158))
 	_car("pickup", S(917, 204), PI * 0.6)
 	_car("pickup", S(885, 218), PI * 0.45)
 	_car("suv_black", S(842, 210), PI * 0.5)
@@ -895,24 +937,130 @@ func _m2() -> Vector3:
 	city.commit()
 	# ---- the rail yard and the landing zone ----
 	_railway()
-	main.scatter(900, 140, 200.0)
+	main.scatter(250, 100, 200.0)
 	main._restore_breakables()
+	# the soldiers: [position, facing (0 faces north, PI/2 west), character, gun, patrol route]
 	posts = []
+	var kinds := ["olive", "blue", "gasmask"]
 	for q in [[250, 512], [272, 512], [168, 600], [330, 428], [342, 436], [440, 436], [560, 452], [634, 478], [650, 482], [726, 374], [616, 380],
 			[752, 452], [620, 255], [706, 252], [677, 214], [646, 120], [760, 262], [852, 268], [878, 268], [876, 176], [926, 170], [950, 230],
-			[842, 110], [900, 128], [560, 34], [800, 30]]:
-		posts.append([S(q[0], q[1]), city.rng.randf() * TAU, ["olive", "blue", "gasmask"][posts.size() % 3], "ak", []])
+			[560, 34], [800, 30]]:
+		posts.append([_outside(S(q[0], q[1])), city.rng.randf() * TAU, kinds[posts.size() % 3], "ak", []])
+	# patrols: along the market street, round the clock tower square, through the rail yard
+	posts.append([S(300, 431), -PI * 0.5, "blue", "ak", [S(300, 431), S(580, 431)]])
+	posts.append([S(620, 360), PI, "olive", "ak", [S(620, 360), S(760, 360), S(760, 500), S(620, 500)]])
+	posts.append([S(620, 32), -PI * 0.5, "gasmask", "ak", [S(620, 32), S(900, 32)]])
+	# snipers: the clock tower, the water tower by the terminal, the hotel roof
 	posts.append([S(686, 426, 15.1) + Vector3(2.2, 0, 2.2), PI * 0.25, "gasmask", "svd", []])
 	posts.append([S(214, 492, 10.1) + Vector3(1.0, 0, 1.0), PI * 0.3, "olive", "svd", []])
+	posts.append([S(826, 136, 30.1), PI * 0.75, "gasmask", "svd", []])
+	# the Courier at his table in the hotel forecourt, a bodyguard either side
+	target_post = posts.size()
+	posts.append([S(893, 163), PI, "blue", "ak", []])
+	posts.append([S(884, 166), PI * 0.9, "olive", "ak", []])
+	posts.append([S(902, 166), PI * 1.1, "gasmask", "ak", []])
+	target_obj = 2
+	reinf_spots = [S(992, 258), S(992, 266), S(986, 258), S(986, 266)]
+	alarm_text = "The militia knows you are in the town. More soldiers are coming."
+	power_zone = Rect2(S(560, 0).x, S(0, 0).z, 200.0, (S(0, 330).z - S(0, 0).z))
 	lz = S(720, -22)
 	objectives = [
-		{"text": "Take the informant's message from the shut shop on the market street", "done": false, "pos": S(442, 398, 1.0)},
-		{"text": "Blow the transformer at the clock tower square", "done": false, "pos": S(751, 487, 1.5)},
-		{"text": "Deal with the Courier in the hotel", "done": false, "pos": S(888, 104, 1.0)},
-		{"text": "Take the Courier's laptop", "done": false, "pos": S(914, 104, 1.0)},
-		{"text": "Get to the helicopter in the rail yard", "done": false, "pos": lz + Vector3(0, 1, 0), "needs": [0, 1, 2, 3], "lz": true}]
+		{"text": "Take the informant's message from the open shop on the market street", "done": false, "pos": msg_at},
+		{"text": "Blow the transformer at the clock tower square", "done": false, "pos": tp + Vector3(0, 1.5, 0)},
+		{"text": "Kill the Courier in the hotel forecourt", "done": false, "pos": S(893, 163, 1.6)},
+		{"text": "Take the Courier's laptop", "done": false, "pos": S(893, 160, 1.0), "needs": [2]},
+		{"text": "Get out through the back of the hotel to the helicopter in the rail yard", "done": false, "pos": lz + Vector3(0, 1, 0), "needs": [0, 1, 2, 3], "lz": true}]
 	start_yaw = -PI * 0.25
 	return S(96, 616, 0.05)
+
+
+## p moved out of any building it falls in: to the nearest spot just outside a wall that is not inside another one.
+func _outside(p: Vector3) -> Vector3:
+	var inside := func(q: Vector3) -> bool:
+		for r in city.footprints:
+			if r.grow(0.8).has_point(Vector2(q.x, q.z)):
+				return true
+		return false
+	if not inside.call(p):
+		return p
+	var best := p
+	var best_d := INF
+	for r in city.footprints:
+		var g: Rect2 = r.grow(1.0)
+		if not g.has_point(Vector2(p.x, p.z)):
+			continue
+		for q in [Vector3(g.position.x, p.y, p.z), Vector3(g.end.x, p.y, p.z), Vector3(p.x, p.y, g.position.y), Vector3(p.x, p.y, g.end.y)]:
+			if not inside.call(q) and q.distance_to(p) < best_d:
+				best = q
+				best_d = q.distance_to(p)
+	return best
+
+
+## The transformer at the clock tower square: a pad-mounted unit with cooling fins and insulators, on a concrete
+## plinth. It powers the streets round the hotel; destroyed, they go dark and its alarm is dead.
+func _transformer(c: Vector3, obj: int) -> StaticBody3D:
+	var g := StaticBody3D.new()
+	g.set_meta("surf", "metal")
+	g.set_meta("kind", "machine")
+	g.set_meta("hp", 650.0)
+	g.set_meta("obj", obj)
+	g.set_meta("power", true)
+	var parts := [[Vector3(0, 0.95, 0), Vector3(1.7, 1.9, 1.1), "steel"], [Vector3(0, 1.95, 0), Vector3(1.8, 0.1, 1.2), "steel"],
+		[Vector3(0, 0.05, 0), Vector3(1.9, 0.1, 1.3), "dark"], [Vector3(0.0, 1.0, 0.56), Vector3(0.5, 0.4, 0.02), "white"]]
+	for k in 7:
+		parts.append([Vector3(-0.75 + k * 0.25, 0.9, -0.62), Vector3(0.03, 1.5, 0.16), "steel"])
+		parts.append([Vector3(-0.75 + k * 0.25, 0.9, 0.62), Vector3(0.03, 1.5, 0.16), "steel"])
+	for k in 3:
+		parts.append([Vector3(-0.5 + k * 0.5, 2.25, 0), Vector3(0.14, 0.5, 0.14), "white"])
+		parts.append([Vector3(-0.5 + k * 0.5, 2.55, 0), Vector3(0.04, 0.25, 0.04), "dark"])
+	for pt in parts:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = pt[1]
+		mi.mesh = bm
+		mi.material_override = _m(pt[2])
+		mi.position = pt[0]
+		g.add_child(mi)
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = Vector3(1.8, 2.0, 1.3)
+	cs.shape = sh
+	cs.position = Vector3(0, 1.0, 0)
+	g.add_child(cs)
+	main.add_child(g)
+	g.global_position = c
+	main.machines.append(g)
+	return g
+
+
+## The Courier's table in the hotel forecourt (c: the table), under an awning and a bare bulb: a laptop on it
+## (the objective's item), chairs, a radio.
+func _courier_post(c: Vector3) -> void:
+	_block(c + Vector3(0, 0.38, 0), Vector3(1.6, 0.05, 0.8), "wood", "wood")
+	for sx in [-0.7, 0.7]:
+		for sz in [-0.33, 0.33]:
+			_block(c + Vector3(sx, 0.18, sz), Vector3(0.05, 0.36, 0.05), "steel", "metal", 0.0, false)
+	for cx in [-0.5, 0.5]:
+		_block(c + Vector3(cx, 0.22, 0.75), Vector3(0.45, 0.45, 0.45), "steel", "metal")
+	_block(c + Vector3(0.55, 0.47, -0.1), Vector3(0.22, 0.12, 0.1), "dark", "metal", 0.0, false)
+	var lap := _block(c + Vector3(-0.2, 0.42, 0.05), Vector3(0.34, 0.03, 0.24), "dark", "metal", 0.0, false)
+	lap.set_meta("label", "TAKE LAPTOP")
+	lap.set_meta("obj", 3)
+	items.append(lap)
+	var scr := _block(c + Vector3(-0.2, 0.53, -0.07), Vector3(0.34, 0.22, 0.02), "glass", "metal", 0.0, false)
+	scr.reparent(lap)
+	city.box("frame", c + Vector3(0, 2.6, 0.3), Vector3(4.0, 0.08, 3.0), 0.0, Color(0.3, 0.32, 0.3))
+	for sx in [-1.9, 1.9]:
+		for sz in [-1.1, 1.7]:
+			city.cyl("frame", c + Vector3(sx, 0, sz), 0.05, 2.6, 6, Color(0.3, 0.3, 0.3))
+	city.commit()
+	var l := OmniLight3D.new()
+	l.light_color = Color(1.0, 0.82, 0.6)
+	l.light_energy = 2.5
+	l.omni_range = 9.0
+	main.add_child(l)
+	l.global_position = c + Vector3(0, 2.4, 0.2)
+	city.glow(c + Vector3(0, 2.45, 0.2), Color(1.0, 0.8, 0.55, 0.8), 0.7)
 
 
 ## A city street from a to b (straight, along x or z): asphalt, kerbed pavements both sides, a dashed centre line.
@@ -1057,16 +1205,24 @@ func _sandbags(c: Vector3, n_bags: int) -> void:
 	var bag_mesh: Mesh = bag_scene.find_children("*", "MeshInstance3D", true, false)[0].mesh
 	bag_scene.free()
 	var w := n_bags * 0.55
+	var xs := []
 	for layer in 5:
 		var off := 0.0 if layer % 2 == 0 else 0.275
 		var x := -w * 0.5 + off
 		while x < w * 0.5 - 0.2:
-			var mi := MeshInstance3D.new()
-			mi.mesh = bag_mesh
-			main.add_child(mi)
-			mi.global_position = c + Vector3(x + 0.27, layer * 0.15, 0)
-			mi.rotation.y = PI * 0.5 + randf_range(-0.06, 0.06)
+			xs.append(Transform3D(Basis(Vector3.UP, PI * 0.5 + randf_range(-0.06, 0.06)), Vector3(x + 0.27, layer * 0.15, 0)))
 			x += 0.55
+	# the whole wall in one draw
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = bag_mesh
+	mm.instance_count = xs.size()
+	for i in xs.size():
+		mm.set_instance_transform(i, xs[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	main.add_child(mmi)
+	mmi.global_position = c
 	var sb := _block(c + Vector3(0, 0.4, 0), Vector3(w, 0.8, 0.55), "plaster", "sandbag")
 	sb.get_child(0).visible = false
 	main.extra_cover.append([c, 0.3])
@@ -1082,3 +1238,40 @@ func _barrier(p: Vector3, yaw: float) -> void:
 	var b: StaticBody3D = main._prop("res://assets/city/props/concrete_road_barrier/concrete_road_barrier_game.gltf", p, yaw, Vector3(1.55, 0.82, 0.6), "concrete")
 	b.scale = Vector3(1.0, 1.0, 1.0)
 	main.extra_cover.append([p, 0.6])
+
+
+var merged := {}
+## A prop scene drawn as one mesh (its parts merged by material), as a static body at p turned by yaw.
+func _merged_prop(path: String, p: Vector3, yaw: float, surf: String) -> StaticBody3D:
+	if not merged.has(path):
+		var root: Node3D = load(path).instantiate()
+		var sts := {}
+		var mats_ := {}
+		for mi in root.find_children("*", "MeshInstance3D", true, false):
+			var xf: Transform3D = mi.transform
+			var par: Node = mi.get_parent()
+			while par != root and par is Node3D:
+				xf = par.transform * xf
+				par = par.get_parent()
+			for k in mi.mesh.get_surface_count():
+				var mat: Material = mi.mesh.surface_get_material(k)
+				if not sts.has(mat):
+					var st := SurfaceTool.new()
+					st.begin(Mesh.PRIMITIVE_TRIANGLES)
+					sts[mat] = st
+				sts[mat].append_from(mi.mesh, k, xf)
+		var am := ArrayMesh.new()
+		for mat in sts:
+			sts[mat].commit(am)
+			am.surface_set_material(am.get_surface_count() - 1, mat)
+		root.free()
+		merged[path] = am
+	var b := StaticBody3D.new()
+	b.position = p
+	b.rotation.y = yaw
+	b.set_meta("surf", surf)
+	var m := MeshInstance3D.new()
+	m.mesh = merged[path]
+	b.add_child(m)
+	main.add_child(b)
+	return b

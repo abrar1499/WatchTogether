@@ -137,7 +137,7 @@ func cyl(key: String, base: Vector3, r: float, h: float, seg := 10, col := Color
 
 
 ## Put everything added since the last commit into one mesh (one surface per material) in the world.
-func commit(shadows := true) -> MeshInstance3D:
+func commit(shadows := true, gone := 0.0) -> MeshInstance3D:
 	var am := ArrayMesh.new()
 	for key in sts:
 		var st: SurfaceTool = sts[key]
@@ -149,6 +149,7 @@ func commit(shadows := true) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = am
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visibility_range_end = gone
 	main.add_child(mi)
 	return mi
 
@@ -214,19 +215,21 @@ func _glow_material(col: Color, billboard: bool) -> StandardMaterial3D:
 
 
 ## A soft halo round a light (the bloom a camera sees at night).
-func glow(p: Vector3, col: Color, size: float) -> void:
+func glow(p: Vector3, col: Color, size: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var q := QuadMesh.new()
 	q.size = Vector2(size, size)
 	mi.mesh = q
 	mi.material_override = _glow_material(col, true)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visibility_range_end = 90.0 + size * 10.0
 	main.add_child(mi)
 	mi.global_position = p
+	return mi
 
 
 ## The pool of light a lamp throws on the ground.
-func pool(p: Vector3, col: Color, r: float) -> void:
+func pool(p: Vector3, col: Color, r: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var q := QuadMesh.new()
 	q.size = Vector2(r * 2.0, r * 2.0)
@@ -234,8 +237,10 @@ func pool(p: Vector3, col: Color, r: float) -> void:
 	mi.mesh = q
 	mi.material_override = _glow_material(col, false)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visibility_range_end = 50.0
 	main.add_child(mi)
 	mi.global_position = p + Vector3(0, 0.06, 0)
+	return mi
 
 
 ## A modern LED street light: slim pole, long flat head, cool white; its glow and the pool under it.
@@ -252,8 +257,16 @@ func led_lamp(p: Vector3, dir: Vector3) -> void:
 	l.omni_attenuation = 1.3
 	main.add_child(l)
 	l.global_position = c
-	glow(c, Color(0.85, 0.75, 0.6, 0.8), 2.2)
-	pool(Vector3(c.x, p.y, c.z), Color(0.3, 0.26, 0.2, 1.0), 6.5)
+	lamps.append([p, l, glow(c, Color(0.85, 0.75, 0.6, 0.8), 2.2), pool(Vector3(c.x, p.y, c.z), Color(0.3, 0.26, 0.2, 1.0), 6.5)])
+
+
+## Street lights within `zone` (x, z) go dark: the light, its halo, the pool on the ground.
+func power_cut(zone: Rect2) -> void:
+	for lp in lamps:
+		var at: Vector3 = lp[0]
+		if zone.has_point(Vector2(at.x, at.z)):
+			for k in [1, 2, 3]:
+				lp[k].visible = false
 
 
 func crossing(c: Vector3, along: Vector3, width: float, length: float) -> void:
@@ -337,6 +350,7 @@ func office_tower(x0: float, z0: float, x1: float, z1: float, floors: int, band 
 		face("panel", b0 + Vector3(0, h - 0.6, 0) + nn * 0.05, uu * L * 0.5, Vector3.UP * 0.1, band)
 	box("frame", c + Vector3(0, h * 0.5 + 0.3, 0), Vector3(w + 0.2, 0.6, d + 0.2), 0.0, Color(0.55, 0.56, 0.58))
 	collider(c, Vector3(w, h, d))
+	footprints.append(Rect2(x0, z0, w, d))
 	occluders.append(AABB(Vector3(x0 + 0.3, 0, z0 + 0.3), Vector3(w - 0.6, h - 0.3, d - 0.6)))
 	box("frame", c + Vector3(0, h * 0.5 + 1.8, 0), Vector3(w * 0.5, 2.4, d * 0.5), 0.0, Color(0.5, 0.5, 0.52))
 	var mast := c + Vector3(0, h * 0.5 + 3.0, 0)
@@ -447,7 +461,9 @@ func ad_image(seed_: int) -> ImageTexture:
 ## or door fits the same frame. A building is assembled twice, from the near pieces and from the light ones; the two
 ## meshes swap at KIT_SWAP metres. Props from the same library (roller shutters, air conditioners, lamps) join in.
 const KIT := "res://assets/city/kit/"
-const KIT_SWAP := 40.0
+const KIT_SWAP := 32.0
+const KIT_FAR := 75.0         # beyond this, a building is flat walls with its window panes on them
+const KIT_GONE := 270.0       # and beyond this (deep in the haze) it is not drawn
 const PLASTER := [Color(0.93, 0.9, 0.84), Color(0.84, 0.83, 0.8), Color(0.96, 0.87, 0.74), Color(0.76, 0.75, 0.72),
 	Color(0.93, 0.83, 0.78), Color(0.8, 0.84, 0.86), Color(0.9, 0.9, 0.9), Color(0.82, 0.76, 0.66)]
 const WINDOW_SETS := [["centered_large"], ["centered_small"], ["centered_double"], ["centered_large", "centered_small"],
@@ -459,9 +475,15 @@ const AIRCON_SCENE := "res://assets/city/props/exterior_aircon_unit/exterior_air
 var kit := {}
 var near := {}          # material key -> SurfaceTool: near pieces of the building being made
 var far := {}
+var vfar := {}
+var block_tones := []   # the plaster colours of the block being built (a few, so a block needs few materials)
 var prop_meshes := {}
 var kit_ready := false
 var occluders: Array[AABB] = []
+var footprints: Array[Rect2] = []   # buildings' ground plans (x, z), to keep soldiers out of them
+var lamps := []                     # street lights: [foot, light, halo, pool]
+var force_open := Vector3(INF, 0, INF)   # the shop bay nearest this point is open and lit (a mission's)
+var opened_bay := []                # that bay: [centre on the facade, along, out, width]
 
 
 func _pbr(diff: String, nor: String, arm: String, tint: Color, uv := 1.0) -> StandardMaterial3D:
@@ -639,6 +661,14 @@ func piece(name: String, xf: Transform3D, tone: int, lit := Color(0, 0, 0)) -> v
 			if sn == "plaster":
 				key = "k_plaster%d" % tone
 			_kst(far if lo else near, key).append_from(m, s, xf)
+	# very far: a plain wall for every wall piece, the panes laid on it; no frames, mouldings or piers
+	if name.begins_with("wall_") and not name.begins_with("wall_pier"):
+		_kst(vfar, "k_plaster%d" % tone).append_from(_kit_mesh("wall_standard_standard_01", true), 0, xf)
+	elif name.begins_with("window_") or name.begins_with("door_"):
+		var m2 := _kit_mesh(name, true)
+		for s in m2.get_surface_count():
+			if m2.surface_get_name(s) == "glass":
+				_kst(vfar, "k_glass").append_from(_glass_mesh(m2, s, lit), 0, Transform3D(xf.basis, xf.origin + xf.basis.z.normalized() * 0.26))
 
 
 ## A piece's glass with every vertex coloured (black: dark glass; else the light of the room).
@@ -678,11 +708,13 @@ func prop_piece(scene: String, node: String, xf: Transform3D, far_too := true) -
 		_kst(near, key).append_from(m, s, xf * pm[1])
 		if far_too:
 			_kst(far, key).append_from(m, s, xf * pm[1])
+			if scene == SHUTTER_SCENE:
+				_kst(vfar, key).append_from(m, s, xf * pm[1])
 
 
-## The building made so far, as a near mesh and a far one that take turns by distance.
+## The buildings made so far, as a near mesh, a far one and a very far one that take turns by distance.
 func commit_kit(shadows := true) -> void:
-	for level in [near, far]:
+	for level in [near, far, vfar]:
 		if level.is_empty():
 			continue
 		var am := ArrayMesh.new()
@@ -696,13 +728,21 @@ func commit_kit(shadows := true) -> void:
 			mi.visibility_range_end = KIT_SWAP
 			mi.visibility_range_end_margin = 3.0
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		else:
+		elif level == far:
 			mi.visibility_range_begin = KIT_SWAP
 			mi.visibility_range_begin_margin = 3.0
+			mi.visibility_range_end = KIT_FAR
+			mi.visibility_range_end_margin = 5.0
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		else:
+			mi.visibility_range_begin = KIT_FAR
+			mi.visibility_range_begin_margin = 5.0
+			mi.visibility_range_end = KIT_GONE
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		main.add_child(mi)
 	near = {}
 	far = {}
+	vfar = {}
 	for bx in occluders:
 		var oc := OccluderInstance3D.new()
 		var bo := BoxOccluder3D.new()
@@ -736,7 +776,7 @@ func _wname(kind: String, row: int, i: int) -> String:
 ## cornice over the ground floor. Ground floor shops (roller shutters, name boards, a few open and lit) on the sides in
 ## `shops`, a front door on the others. `blank`: sides against a neighbour, plain plaster.
 func apartment(x0: float, z0: float, x1: float, z1: float, floors: int, shops := [], blank := [], opts := {}) -> void:
-	var tone: int = opts.get("tone", rng.randi() % PLASTER.size())
+	var tone: int = opts.get("tone", block_tones[rng.randi() % block_tones.size()] if not block_tones.is_empty() else rng.randi() % PLASTER.size())
 	var wins: Array = opts.get("wins", WINDOW_SETS[rng.randi() % WINDOW_SETS.size()])
 	var row: int = opts.get("row", [2, 2, 3, 1][rng.randi() % 4])
 	var h := floors * 3.0
@@ -759,12 +799,14 @@ func apartment(x0: float, z0: float, x1: float, z1: float, floors: int, shops :=
 	occluders.append(AABB(Vector3(x0 + 0.3, 0, z0 + 0.3), Vector3(x1 - x0 - 0.6, h - 0.3, z1 - z0 - 0.6)))
 	if opts.get("bare_roof", false):
 		collider(c - Vector3(0, h * 0.5, 0), Vector3(x1 - x0, h, z1 - z0))
+		footprints.append(Rect2(x0, z0, x1 - x0, z1 - z0))
 		return
 	var sh := Vector3(c.x + (x1 - x0) * 0.2, h, c.z - (z1 - z0) * 0.15)
 	box("kq_plaster%d" % tone, sh + Vector3(0, 1.3, 0), Vector3(2.6, 2.6, 3.0))
 	for k in rng.randi_range(1, 3):
 		cyl("dark", Vector3(c.x - (x1 - x0) * 0.25 + k * 1.6, h + 0.1, c.z + (z1 - z0) * 0.2), 0.62, 1.3, 12, Color(0.08, 0.08, 0.09))
 	collider(c - Vector3(0, h * 0.5, 0), Vector3(x1 - x0, h, z1 - z0))
+	footprints.append(Rect2(x0, z0, x1 - x0, z1 - z0))
 
 
 func _kit_side(A: Vector3, X: Vector3, n: Vector3, L: float, floors: int, wins: Array, row: int, shops: bool, tone: int) -> void:
@@ -821,6 +863,9 @@ func _shop_bay(o: Vector3, X: Vector3, n: Vector3, w: float, tone: int) -> void:
 	sign_board(c + Vector3(0, 2.74, 0) + n * 0.05, X, n, w - 0.45, (w - 0.45) / 8.0 * 1.0 + 0.1, rng.randi() % SIGN_ROWS)
 	var sw := (w - 0.2) / 1.08
 	var open_ := night and rng.randf() < 0.14
+	if Vector2(c.x - force_open.x, c.z - force_open.z).length() < w * 0.5 and opened_bay.is_empty():
+		open_ = true
+		opened_bay = [c, X, n, w]
 	var node := "rollershutter_door" if rng.randf() < 0.7 else "rollershutter_door_graffiti"
 	if open_:
 		# shutter rolled up into its box; the shop inside: lit back wall, shelves, a counter
