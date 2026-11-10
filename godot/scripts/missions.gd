@@ -678,7 +678,7 @@ func _deck(top: Vector3) -> Array:
 	return [top + Vector3(-0.9, 0, -0.9), top + Vector3(-0.9, 0, 0.9), top + Vector3(0.7, 0, 0.9), top + Vector3(0.7, 0, -0.9)]
 
 
-# =============== MISSION 2: SHEHAR 2026 (a border city under curfew, at night) ===============
+# =============== MISSION 2: CITY 2026 (a border city under curfew, at night) ===============
 ## Map units from the design sheet: 3 px to a metre, the sheet's centre at the origin, north = -z.
 func S(x: float, y: float, h := 0.0) -> Vector3:
 	return Vector3((x - 500.0) / 3.0, h, (y - 350.0) / 3.0)
@@ -758,7 +758,7 @@ func _car(kind: String, p: Vector3, yaw: float) -> void:
 
 
 func _m2() -> Vector3:
-	title = "SHEHAR 2026"
+	title = "CITY 2026"
 	briefing = "The relay codes name the man who gives the militia its orders: the Courier. He runs them from an old hotel in " + \
 		"the middle of a border city under curfew; only militia patrols are out tonight.\n\nYou start in the dry riverbed south-west " + \
 		"of the town. On the market street one shop has its shutter up and its light on: the informant has left you a message " + \
