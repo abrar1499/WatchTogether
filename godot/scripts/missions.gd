@@ -188,8 +188,9 @@ func _raise_alarm() -> void:
 	else:
 		main.ui.message("ALARM!", alarm_text, 3.5)
 	main.music.alarm()
+	# the ones within earshot come to look; the rest of the town keeps its posts
 	for e in main.enemies:
-		if not e.dead:
+		if not e.dead and e.global_position.distance_to(main.player.global_position) < 80.0:
 			e.investigate(main.player.global_position)
 
 

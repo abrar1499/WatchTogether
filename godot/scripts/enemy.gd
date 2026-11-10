@@ -31,6 +31,7 @@ var hp := 100.0
 var dead := false
 var dead_t := 0.0
 var home := Vector3.ZERO
+var lod_n := randi() % 6
 var beat := Vector3.ZERO       # the other end of his beat (same as home: stands guard)
 var to_beat := true
 var wait_t := 2.0
@@ -202,6 +203,12 @@ func _physics_process(dt: float) -> void:
 			var axis: Vector3 = (skel.get_bone_global_pose(skel.find_bone("mixamorigSpine2")).origin - skel.get_bone_global_pose(hips_b).origin).normalized()
 			skel.set_bone_pose_rotation(hips_b, Quaternion(axis, roll) * hips_base)
 		return
+	# far from the player and not fighting: think and move at a sixth of the rate (nobody can see the difference)
+	if mode != "combat" and global_position.distance_squared_to(player.global_position) > 70.0 * 70.0:
+		lod_n += 1
+		if lod_n % 6 != 0:
+			return
+		dt *= 6.0
 	grace = max(0.0, grace - dt)
 	t_life += dt
 	hit_t = max(0.0, hit_t - dt)

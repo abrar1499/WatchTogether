@@ -5,9 +5,9 @@ extends CharacterBody3D
 
 const WALK := 1.2
 const WALK_BACK := 1.1
-const RUN := 3.6
-const RUN_SIDE := 3.2
-const RUN_BACK := 2.6
+const RUN := 3.1
+const RUN_SIDE := 2.6
+const RUN_BACK := 2.1
 const CROUCH := 1.1
 const CROUCH_RUN := 1.6
 const AIM_WALK := 1.2
@@ -151,6 +151,7 @@ var cover_low := false
 var cover_edge := 0              # the wall ends here: -1 / +1 along the wall, 0 not at an end
 var cover_peek := 0.0            # how far out of the end he has stepped to shoot
 var cover_hit := {}
+var cover_reach := 0.0          # how far he steps to clear the end of the wall
 var act_doing := ""
 var act_obj: Node = null
 var act_t := -1.0                   # doing it: time into it
@@ -1118,7 +1119,7 @@ func _physics_process(dt: float) -> void:
 				top = RUN_BACK if fw < -0.3 else (RUN_SIDE if fw < 0.5 else RUN)
 				if holstered:
 					top *= 1.2    # nothing in the hands: a little quicker
-			var spd: float = lerp(0.55, top, pow(push, 1.25))
+			var spd: float = lerp(0.55, top, pow(push, 2.0))     # most of the stick is walking; the run is at its edge
 			if leg_t > 0.0:
 				spd = min(spd, 1.9)      # a leg wound: no sprinting
 			if act_t >= 0.0:
@@ -1550,7 +1551,7 @@ func _animate(dt: float) -> void:
 		state = st
 	var scale := 1.0
 	if nat > 0:
-		scale = clamp(speed / nat, 0.5, 1.9)
+		scale = clamp(speed / nat, 0.5, 1.6)
 	elif st == "kneel_aim":
 		scale = 1.0 if (firing or t - last_shot < 0.3) else 0.0
 	tree.set("parameters/speed/scale", scale)
@@ -1629,6 +1630,10 @@ func _update_camera(dt: float) -> void:
 		tl = 0.95
 		ts = 0.42
 		th += 0.02
+	if cover and cover_edge != 0:
+		# at the end of a wall the camera goes to the open side, so the corner is not in the way
+		var out_dir: Vector3 = Vector3(cover_n.z, 0, -cover_n.x) * cover_edge
+		ts = abs(ts) * (1.0 if out_dir.dot(Vector3(cos(yaw), 0, -sin(yaw))) >= 0.0 else -1.0)
 	cam_len = lerp(cam_len, tl, min(1.0, dt * 10.0))
 	cam_side = lerp(cam_side, ts, min(1.0, dt * 10.0))
 	cam_h = lerp(cam_h, th, min(1.0, dt * (14.0 if climb_t >= 0.0 else 8.0)))
@@ -1705,7 +1710,7 @@ func _footsteps(dt: float) -> void:
 	var length := 1.0
 	if ap.has_animation(clip):
 		length = max(0.3, ap.get_animation(clip).length)
-	stride_t += dt * 2.0 * clamp(speed / nat, 0.5, 1.9) / length
+	stride_t += dt * 2.0 * clamp(speed / nat, 0.5, 1.6) / length
 	if stride_t >= 1.0:
 		stride_t -= 1.0
 		snd.step(speed > 2.4, crouch)
@@ -1816,23 +1821,38 @@ func _cover_step(dt: float) -> void:
 		leave_cover()          # the stick pulled straight away from the wall
 		return
 	var along := want.dot(tan)
+	# where the wall ends (he can lean out there) and where something stands in the way, each side
+	var ends := {}
+	var blocked := {}
+	var gap := {}        # how far along the wall to its end, each side (99: further than he would lean)
+	for sgn in [-1, 1]:
+		var ahead: Vector3 = base + tan * (sgn * 0.55) + Vector3(0, 0.55, 0)
+		ends[sgn] = (ray.call(ahead, ahead - n * 1.7) as Dictionary).is_empty()
+		blocked[sgn] = not (ray.call(base + Vector3(0, 0.55, 0), ahead + n * 0.2) as Dictionary).is_empty()
+		gap[sgn] = 99.0
+		for st in [0.3, 0.55, 0.8, 1.05, 1.3]:
+			var q2: Vector3 = base + tan * (sgn * st) + Vector3(0, 0.55, 0)
+			if (ray.call(q2, q2 - n * 1.7) as Dictionary).is_empty():
+				gap[sgn] = st
+				break
+	if cover_peek <= 0.0:
+		if gap[-1] < 99.0 and gap[1] < 99.0:
+			cover_edge = 1 if fwd.dot(tan) > 0.0 else -1      # a narrow pillar: the side he is looking past
+		else:
+			cover_edge = -1 if gap[-1] < 99.0 else (1 if gap[1] < 99.0 else 0)
+		cover_reach = (float(gap[cover_edge]) + 0.3) if cover_edge != 0 else 0.0
 	var v_t := 0.0
 	if not shooting:
 		if cover_peek > 0.0:       # back in from the lean
-			v_t = -float(cover_edge) * 2.4
-			cover_peek = max(0.0, cover_peek - 2.4 * dt)
+			v_t = -float(cover_edge) * 3.0
+			cover_peek = max(0.0, cover_peek - 3.0 * dt)
 		elif abs(along) > 0.2:
-			var sgn := 1 if along > 0 else -1
-			# does the wall go on that way?
-			var ahead: Vector3 = base + tan * (sgn * 0.5) + Vector3(0, 0.55, 0)
-			if (ray.call(ahead, ahead - n * 1.2) as Dictionary).is_empty() or not (ray.call(base + Vector3(0, 0.55, 0), ahead + n * 0.2) as Dictionary).is_empty():
-				cover_edge = sgn
-			else:
-				cover_edge = 0
-				v_t = sgn * lerp(0.5, 1.5, clamp((abs(along) - 0.2) / 0.8, 0.0, 1.0))
-	elif cover_edge != 0 and not cover_low and cover_peek < 0.62:
-		v_t = float(cover_edge) * 3.0      # lean out of the end to shoot
-		cover_peek += 3.0 * dt
+			var sg := 1 if along > 0 else -1
+			if not ends[sg] and not blocked[sg]:
+				v_t = sg * lerp(0.5, 1.5, clamp((abs(along) - 0.2) / 0.8, 0.0, 1.0))
+	elif cover_edge != 0 and not cover_low and cover_peek < cover_reach:
+		v_t = float(cover_edge) * 3.5      # step out of the end to shoot
+		cover_peek += 3.5 * dt
 	var v_n := 0.0
 	if not wall.is_empty():
 		var off: float = (global_position - (wall["position"] as Vector3)).dot(n)
