@@ -305,7 +305,7 @@ func shelter(p: Vector3, yaw: float) -> void:
 		box("frame", p + b * Vector3(sx, 1.25, -0.7), Vector3(0.08, 2.5, 0.08), yaw, Color(0.25, 0.26, 0.28))
 	box("railglass", p + b * Vector3(0, 1.3, -0.72), Vector3(3.7, 2.0, 0.02), yaw)
 	var ad: Vector3 = p + b * Vector3(1.9, 1.3, 0.0)
-	box("led", ad, Vector3(0.06, 1.8, 1.2), yaw, LEDS[rng.randi() % LEDS.size()].lerp(Color(1, 1, 1), 0.5))
+	box("led", ad, Vector3(0.06, 1.8, 1.2), yaw, Color(0.75, 0.82, 0.9))
 	glow(ad, Color(0.5, 0.55, 0.6, 0.6), 2.6)
 	box("frame", p + b * Vector3(-0.4, 0.45, -0.4), Vector3(2.4, 0.06, 0.4), yaw, Color(0.3, 0.3, 0.3))
 
@@ -519,7 +519,7 @@ func _kit_mats() -> void:
 	# every pane in one surface: dark reflecting glass, or a lit room (the vertex colour, set per window)
 	var gs := Shader.new()
 	gs.code = """shader_type spatial;
-uniform float lit_energy = 1.5;
+uniform float lit_energy = 1.8;
 void fragment() {
 	float lit = step(0.02, COLOR.r + COLOR.g + COLOR.b);
 	ALBEDO = mix(vec3(0.03, 0.038, 0.046), COLOR.rgb * 0.2, lit);
@@ -551,6 +551,9 @@ void fragment() {
 	mats["k_sign"] = sg
 	# streets: worn asphalt, pavers, kerb stone, concrete walls
 	mats["g_asphalt"] = _pbr("res://assets/city/tex/asphalt_02_diff.jpg", "res://assets/city/tex/asphalt_02_nor.jpg", "", Color(0.78, 0.78, 0.78), 0.2)
+	# a road worn smooth by tyres: the lamps shine along it
+	mats["g_asphalt"].roughness = 0.62
+	mats["g_asphalt"].metallic_specular = 0.7
 	mats["g_worn"] = _pbr("res://assets/city/tex/worn_asphalt_diff.jpg", "res://assets/city/tex/worn_asphalt_nor.jpg", "", Color(0.8, 0.8, 0.8), 0.2)
 	mats["g_pavers"] = _pbr("res://assets/city/tex/square_concrete_pavers_diff.jpg", "res://assets/city/tex/square_concrete_pavers_nor.jpg", "", Color(0.72, 0.72, 0.74), 0.4)
 	mats["g_kerb"] = _pbr("res://assets/city/tex/concrete_pavement_diff.jpg", "res://assets/city/tex/concrete_pavement_nor.jpg", "", Color(0.85, 0.85, 0.83), 0.5)

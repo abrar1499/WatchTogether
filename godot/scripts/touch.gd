@@ -231,12 +231,17 @@ func _process(dt: float) -> void:
 	queue_redraw()
 
 
+var cine := false
 func _draw() -> void:
 	if not main or not main.playing:
 		return
 	var vs := get_viewport_rect().size
 	var s := _scale()
 	var c := vs * 0.5
+	if cine:        # recording: no HUD, only the view through a scope
+		if player.scoped():
+			_draw_scope(c, vs, s, player.weapons[player.wi]["gun"])
+		return
 	# hit: red edge flash and a mark toward the shooter
 	if player.hurt_t > 0.0:
 		var a: float = player.hurt_t / 0.6

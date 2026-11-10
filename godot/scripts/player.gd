@@ -1094,18 +1094,19 @@ func _physics_process(dt: float) -> void:
 		if mag > 0.12:
 			var md := (fwd * m.y + right * m.x).normalized()
 			var fw := m.normalized().y
-			var running := (run_in or mag > 0.88) and not crouch and not aiming
-			var spd: float
+			# the stick is analogue: a little push is a slow walk, more is faster, all the way is a run,
+			# and every speed between (the clip, and how fast it plays, follow the speed)
+			var push: float = 1.0 if run_in else clamp((mag - 0.12) / 0.83, 0.0, 1.0)
+			var top: float
 			if crouch:
-				spd = CROUCH_RUN if mag > 0.88 else CROUCH
-			elif running:
-				spd = RUN_BACK if fw < -0.3 else (RUN_SIDE if fw < 0.5 else RUN)
-				if holstered:
-					spd *= 1.2    # nothing in the hands: a little quicker
+				top = CROUCH_RUN
+			elif aiming:
+				top = AIM_WALK
 			else:
-				spd = WALK_BACK if fw < -0.3 else WALK
-			if aiming:
-				spd = min(spd, AIM_WALK)
+				top = RUN_BACK if fw < -0.3 else (RUN_SIDE if fw < 0.5 else RUN)
+				if holstered:
+					top *= 1.2    # nothing in the hands: a little quicker
+			var spd: float = lerp(0.55, top, pow(push, 1.25))
 			if leg_t > 0.0:
 				spd = min(spd, 1.9)      # a leg wound: no sprinting
 			if act_t >= 0.0:
@@ -1487,7 +1488,9 @@ func _animate(dt: float) -> void:
 	elif not is_on_floor() and vel.y > 0.5:
 		st = "jump"
 	elif moving:
-		var run := (speed > 1.35) if crouch else (speed > 2.4)
+		# (a little hysteresis, so a speed held near the change does not flick between the clips)
+		var was_run: bool = state in ["run", "run_b", "run_r", "run_l", "c_run"]
+		var run := (speed > (1.25 if was_run else 1.4)) if crouch else (speed > (1.7 if was_run else 1.95))
 		if crouch:
 			st = {"F": "c_run" if run else "c_walk", "B": "c_back", "R": "c_r", "L": "c_l"}[dir]
 		else:
@@ -1502,7 +1505,7 @@ func _animate(dt: float) -> void:
 		state = st
 	var scale := 1.0
 	if nat > 0:
-		scale = clamp(speed / nat, 0.6, 1.5)
+		scale = clamp(speed / nat, 0.5, 1.9)
 	elif st == "kneel_aim":
 		scale = 1.0 if (firing or t - last_shot < 0.3) else 0.0
 	tree.set("parameters/speed/scale", scale)
@@ -1647,10 +1650,14 @@ func _footsteps(dt: float) -> void:
 	var length := 1.0
 	if ap.has_animation(clip):
 		length = max(0.3, ap.get_animation(clip).length)
-	stride_t += dt * 2.0 * clamp(speed / nat, 0.6, 1.5) / length
+	stride_t += dt * 2.0 * clamp(speed / nat, 0.5, 1.9) / length
 	if stride_t >= 1.0:
 		stride_t -= 1.0
 		snd.step(speed > 2.4, crouch)
+		# boots are heard: a run from some way off, a walk only close by, a slow or crouched walk not at all
+		var loud: float = (speed - 1.0) * 3.2 * (0.45 if crouch else 1.0)
+		if loud > 1.5:
+			fx.get_parent().noise(global_position, loud)
 
 
 ## Hit by an enemy round.

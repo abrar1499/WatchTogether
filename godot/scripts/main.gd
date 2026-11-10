@@ -169,6 +169,31 @@ func _run_test() -> void:
 
 
 # ---------------- world ----------------
+## The camera's own look over the picture (under the HUD): darker corners and a faint moving film grain.
+func _build_lens() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = -1
+	add_child(layer)
+	var r := ColorRect.new()
+	r.set_anchors_preset(Control.PRESET_FULL_RECT)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sh := Shader.new()
+	sh.code = """shader_type canvas_item;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void fragment() {
+	vec2 d = UV - 0.5;
+	float av = smoothstep(0.35, 0.95, length(d * vec2(1.0, 0.8)) * 1.45) * 0.38;
+	float g = hash(floor(FRAGCOORD.xy * 0.5) + floor(TIME * 24.0) * 7.31) - 0.5;
+	float ag = abs(g) * 0.05;
+	COLOR = vec4(mix(vec3(step(0.0, g)), vec3(0.0), av / (av + ag + 0.0001)), av + ag);
+}
+"""
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	r.material = m
+	layer.add_child(r)
+
+
 func _build_environment() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
@@ -198,6 +223,7 @@ func _build_environment() -> void:
 	env.adjustment_saturation = 0.84
 	env.adjustment_contrast = 1.07
 	env.adjustment_brightness = 0.98
+	_build_lens()
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
