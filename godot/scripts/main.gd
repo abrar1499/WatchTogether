@@ -2645,7 +2645,7 @@ class Snd extends Node:
 ## Quiet yard: a low suspense bed and the night sound, the odd raven call. Seen: a short stinger. Firefight: one
 ## action piece at a time, faded in and out, with a rest between pieces so it never drums on. Low health: a heartbeat.
 class Music extends Node:
-	const LOOPS := ["amb", "night", "heart"]
+	const LOOPS := ["amb", "night", "heart", "bgm"]       # bgm: the player's own background music, as it is
 	const PIECES := ["combat", "escape", "intro"]
 	var main: Node
 	var streams := {}
@@ -2665,7 +2665,7 @@ class Music extends Node:
 	var raven_t := 40.0
 
 	func _ready() -> void:
-		for k in ["amb", "night", "heart", "combat", "escape", "intro", "spotted", "raven", "whoosh"]:
+		for k in ["amb", "night", "heart", "bgm", "combat", "escape", "intro", "spotted", "raven", "whoosh"]:
 			streams[k] = load("res://assets/music/%s.mp3" % k)
 		for k in LOOPS:
 			streams[k].loop = true
@@ -2702,7 +2702,6 @@ class Music extends Node:
 		quiet_start = main.mission != null
 		if not quiet_start:
 			_shot("whoosh", 0.5)
-			_start_piece("intro", 24.0, 0.2)
 		rest_until = t + (40.0 if quiet_start else 30.0)
 		for k in ["amb", "night"]:
 			var p: AudioStreamPlayer = layers[k]
@@ -2737,6 +2736,12 @@ class Music extends Node:
 			if p.playing and p.get_playback_position() >= float(p.get_meta("stop")):
 				p.stop()
 		if not on:
+			# the menus: the background music alone, softly
+			var bp: AudioStreamPlayer = layers["bgm"]
+			level["bgm"] = move_toward(level["bgm"], 0.13, 0.2 * dt)
+			if not bp.playing:
+				bp.play()
+			bp.volume_db = linear_to_db(max(level["bgm"], 0.001))
 			return
 		var pl = main.player
 		var fight := false
@@ -2756,7 +2761,10 @@ class Music extends Node:
 					break
 		var want := {"amb": 0.0 if dead else (0.04 if fight else (0.14 if quiet_start else 0.09)),
 			"night": 0.0 if dead else (0.06 if fight else 0.18),
-			"heart": (0.1 + clamp((30.0 - pl.hp) / 30.0, 0.0, 1.0) * 0.35) if (not dead and pl.hp < 30.0) else (0.12 if near_unseen else 0.0)}
+			"heart": (0.1 + clamp((30.0 - pl.hp) / 30.0, 0.0, 1.0) * 0.35) if (not dead and pl.hp < 30.0) else (0.12 if near_unseen else 0.0),
+			# the background music follows what is happening: light while moving about, nearly gone when creeping up
+			# on a soldier (the heartbeat takes over) or badly hurt, up in a fight, out when dead
+			"bgm": 0.0 if dead else (0.24 if fight else (0.035 if (near_unseen or pl.hp < 30.0) else 0.09))}
 		for k in LOOPS:
 			var rate := 0.25 if want[k] > level[k] else 0.12
 			level[k] = move_toward(level[k], want[k], rate * dt)
@@ -2769,7 +2777,7 @@ class Music extends Node:
 				p.stop()
 		# firefight pieces, one at a time with a rest between
 		var fight_on := fight and not dead
-		if fight_on and not piece.playing and t >= rest_until:
+		if false and fight_on and not piece.playing and t >= rest_until:
 			var k: String = PIECES[piece_i % PIECES.size()]
 			piece_i += 1
 			_start_piece(k, 36.0, 0.17)
