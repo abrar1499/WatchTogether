@@ -6,6 +6,7 @@ A third-person tactical shooter for Android, rebuilt in **Godot 4.3**: missions 
 
 - MISSIONS on the start screen lists all thirty: the first is open, each one completed opens the next (progress kept on the phone). They are all inside the game itself, nothing extra to download; missions not built yet show "coming soon". Each starts with a briefing and its objectives; the objectives stay on screen with a marker (and distance) on the next one. Killed: mission failed, try again. In a mission you carry what the briefing says, ammunition runs out, and you take guns and magazines from the guards you kill.
 - Mission 1, BROKEN RELAY: a fenced militia radio station in the desert, met a few soldiers at a time. The player starts behind a ruined wall to the west. Inside the fence: the west gate (booth, barrier, two guards), an outer yard with two watchtowers (a Dragunov sniper in one), containers and a patrol; then an inner wall of concrete T-walls with its own gate and two guards; behind it the command hut with a plank door, a barracks with a guard on its roof, a third tower, a lattice radio mast and the diesel generator that powers it, and another patrol. Take the relay codes from the command hut, knock out the generator, get out through the east gate to the pickup point (green smoke). Guards see (and shoot) through the chain-link fence. It is evening: the sun low, lamps on poles round the compound and a searchlight sweeping from each tower; whoever its beam lands on, its tower's man comes to look. The tower men walk round their platforms and the gate guards pace a few steps; after a fight or a false alarm everyone goes back to his post. The music stays quiet, with a slow heartbeat when you are close to a soldier who has not seen you. A guard who has seen you raises the alarm a few seconds later unless he is dead by then: a siren, and four more soldiers come up the road from the north.
+- Mission 2, SHEHAR 2026 (still locked, being built): a border city under curfew at night. So far the city itself: blocks of three- to ten-storey flats assembled from a photo-scanned facade kit (plaster walls tinted per building, sash windows in moulded surrounds, doors, cornices and crowned parapets, black water tanks on the roofs, air conditioners), lit rooms behind some windows; a market street of roller-shuttered shops under name boards, a few open and lit inside; asphalt streets with paver pavements and kerbs, warm street lights; the clock tower square, a ten-storey hotel inside a walled forecourt, glass office towers, a bus terminal and a rail yard with the helicopter pad. Each block is one near mesh and one lighter far one (swapped at 40 m) with occluders, so buildings behind buildings are not drawn.
 
 ## Training yard and everything in it
 
@@ -44,11 +45,14 @@ A third-person tactical shooter for Android, rebuilt in **Godot 4.3**: missions 
   - `scripts/enemy.gd`: the enemy soldier
   - `scripts/touch.gd`: on-screen controls, keyboard/mouse, HUD, start, mission list, briefing, result and pause menus
   - `scripts/missions.gd`: the missions (level, soldiers, objectives, alarm, pickup point) and the progress
+  - `scripts/city.gd`: mission 2's city: buildings from the scanned facade kit, shops and signs, office towers, streets
+  - `assets/city/`: the facade kit pieces (`kit/`, near and far), its textures, the street textures, the scanned props and the vehicles
   - `assets/soldier.glb`: the soldier with its Mixamo animations
   - `assets/guns/`: the AK-47, M4A1 (with red-dot sight), suppressed SD-9 pistol, Dragunov SVD (PSO-1 scope), pump shotgun (sliding pump) and RPG-7 (removable rocket), `assets/sfx/`: the sound files (unedited)
 - `tools/envbuild/`: the script that builds the yard's props and textures in `godot/assets/env/` (shipping containers, wooden crates, concrete T-walls, fuel drums, sandbags, the building and its outside stairs; sand, rock and concrete textures); `ONLY=building,stairs` rebuilds just those
 - `tools/charbuild/`: how the enemy characters in `godot/assets/chars/` were made from the original Mixamo FBX files
 - `tools/fxbuild/`: the script that draws the muzzle-flash and tracer textures in `godot/assets/fx/`
+- `tools/citybuild/`: how the city's scanned assets were downloaded and cut down for phones (`README.md` there), and the vehicle builder
 - `tools/gunbuild/`: the Python script that builds the six gun models (real size, rounded edges, wood-grain and metal textures); run `python3 build_guns.py ../../godot/assets/guns` (needs numpy, Pillow, mapbox_earcut)
 - `android/debug.keystore`: the signing key of the original app, so the game installs as its update
 - `.github/workflows/build.yml`: exports the APK with Godot and publishes it
@@ -62,6 +66,8 @@ To open the project on a computer, install Godot 4.3 and open `godot/project.god
 ## Credits
 
 Soldier character, the three enemy characters and the animations from [Mixamo](https://www.mixamo.com) (Adobe).
+
+City models and textures in `godot/assets/city/` from [Poly Haven](https://polyhaven.com), CC0 (public domain): "Modular Urban Apartments Facade", "Roller Shutter Door", "Exterior Aircon Unit", "Covered Car", "Planter Box 01", "Concrete Road Barrier", and the textures "Asphalt 02", "Worn Asphalt", "Square Concrete Pavers", "Concrete Pavement", "Gravel Concrete" and "Concrete Wall 006".
 
 Sounds in `godot/assets/sfx/` are unedited sound effects from [Pixabay](https://pixabay.com/sound-effects/), used under the Pixabay Content License:
 - AK-47: "AK-47 sound effect" by sovetsky_rastov72

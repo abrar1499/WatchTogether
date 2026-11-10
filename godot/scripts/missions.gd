@@ -31,6 +31,8 @@ func build(num: int) -> Vector3:
 	match num:
 		1:
 			return _m1()
+		2:
+			return _m2()
 	return Vector3(0, 0.05, 6)
 
 
@@ -188,6 +190,9 @@ func _m(key: String) -> StandardMaterial3D:
 			m.albedo_color = Color(0.92, 0.88, 0.8)
 		"concrete":
 			m = main._tex_mat("res://assets/env/stairs_0.jpg", "res://assets/env/stairs_1.png", 0.5, 0.92, true)
+		"cwall":
+			m = city.mats["g_wall"].duplicate()
+			m.uv1_triplanar = true
 		"steel":
 			m = main._mat(Color(0.32, 0.33, 0.31), Color(0.45, 0.46, 0.43), 0.6, 0.55, 0.5)
 		"green":
@@ -642,6 +647,411 @@ func _deck(top: Vector3) -> Array:
 	return [top + Vector3(-0.9, 0, -0.9), top + Vector3(-0.9, 0, 0.9), top + Vector3(0.7, 0, 0.9), top + Vector3(0.7, 0, -0.9)]
 
 
+# =============== MISSION 2: SHEHAR 2026 (a border city under curfew, at night) ===============
+## Map units from the design sheet: 3 px to a metre, the sheet's centre at the origin, north = -z.
+func S(x: float, y: float, h := 0.0) -> Vector3:
+	return Vector3((x - 500.0) / 3.0, h, (y - 350.0) / 3.0)
+
+
+var city
+## A block of the design sheet (x, y, w, h in px) filled with buildings side by side along its long side; rows of
+## two when it is deep. shops: faces with shop fronts; floors: [min, max].
+func _block_of(r: Array, shops := [], floors := [4, 7], towers := 0) -> void:
+	var a := S(r[0], r[1])
+	var b := S(r[0] + r[2], r[1] + r[3])
+	var along_x := (b.x - a.x) >= (b.z - a.z)
+	var length: float = (b.x - a.x) if along_x else (b.z - a.z)
+	var depth: float = (b.z - a.z) if along_x else (b.x - a.x)
+	var rows := 2 if depth > 24.0 else 1
+	var n_tower := towers
+	for row in rows:
+		var d0: float = depth * row / rows
+		var d1: float = depth * (row + 1) / rows
+		var s0 := 0.0
+		while s0 < length - 0.5:
+			var wdt: float = min(length - s0, city.rng.randf_range(10.0, 17.0))
+			if length - s0 - wdt < 7.0:
+				wdt = length - s0
+			var my_shops := []
+			for sh in shops:
+				if rows == 2 and ((row == 0 and sh in ["s", "e"]) or (row == 1 and sh in ["n", "w"])) and ((along_x and sh in ["n", "s"]) or (not along_x and sh in ["e", "w"])):
+					continue
+				my_shops.append(sh)
+			var q: Array = [a.x + s0, a.z + d0, a.x + s0 + wdt, a.z + d1] if along_x else [a.x + d0, a.z + s0, a.x + d1, a.z + s0 + wdt]
+			# sides against the neighbours (along the row, and the other row behind) stay plain
+			var first := s0 < 0.1
+			var last := wdt >= length - s0 - 0.01
+			var blank := []
+			if not first:
+				blank.append("w" if along_x else "n")
+			if not last:
+				blank.append("e" if along_x else "s")
+			if rows == 2:
+				blank.append(("s" if row == 0 else "n") if along_x else ("e" if row == 0 else "w"))
+			if n_tower > 0 and wdt > 11.0 and depth / rows > 11.0:
+				city.office_tower(q[0] + 0.8, q[1] + 0.8, q[2] - 0.8, q[3] - 0.8, city.rng.randi_range(9, 14))
+				n_tower -= 1
+			else:
+				city.apartment(q[0], q[1], q[2], q[3], city.rng.randi_range(floors[0], floors[1]), my_shops, blank)
+			s0 += wdt
+	city.commit_kit()
+	city.commit()
+
+
+func _road(r: Array, _col := Color()) -> void:
+	var a := S(r[0], r[1])
+	var b := S(r[0] + r[2], r[1] + r[3])
+	city.face("g_asphalt", Vector3((a.x + b.x) * 0.5, 0.03, (a.z + b.z) * 0.5), Vector3((b.x - a.x) * 0.5, 0, 0), Vector3(0, 0, -(b.z - a.z) * 0.5))
+
+
+func _car(kind: String, p: Vector3, yaw: float) -> void:
+	# parked cars under the curfew: the scanned covered car (Poly Haven, CC0)
+	var path := "res://assets/city/%s.glb" % kind
+	if kind.begins_with("sedan") or kind.begins_with("suv"):
+		path = "res://assets/city/props/covered_car/covered_car_game.gltf"
+		kind = "sedan"
+	var cb: StaticBody3D = main._prop(path, p, yaw, Vector3.ZERO, "metal")
+	var big := kind.begins_with("bus")
+	var size := Vector3(2.5, 3.0, 10.1) if big else (Vector3(1.9, 2.2, 5.1) if kind == "pickup" else Vector3(1.8, 1.45, 4.6))
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = size
+	cs.shape = sh
+	cs.position.y = size.y * 0.5
+	cb.add_child(cs)
+	cb.set_meta("pierce", "sheet")
+	main.extra_cover.append([p, 0.9])
+
+
+func _m2() -> Vector3:
+	title = "SHEHAR 2026"
+	briefing = "The relay codes name the man who gives the militia its orders: the Courier. He runs them from a hotel tower in " + \
+		"the centre of a border city under curfew.\n\nGet in from the dry riverbed, collect the informant's message on the market " + \
+		"street, cut the power at the clock tower square, deal with the Courier, take his laptop and get out to the helicopter " + \
+		"in the rail yard."
+	main.flat_c = Vector2(0, 0)
+	main.flat_r = 205.0
+	main.area = Rect2(-160, -126, 330, 244)
+	main._build_ground()
+	main._build_mountains()
+	main.apply_night()
+	# a city at night: a faint orange glow of street lighting on the haze at the horizon
+	var sm: ProceduralSkyMaterial = main.world_env.sky.sky_material
+	sm.sky_horizon_color = Color(0.17, 0.14, 0.15)
+	main.extra_cover = []
+	city = load("res://scripts/city.gd").new(main, 26)
+	# the whole town paved
+	var ta := S(0, 0)
+	var tb := S(1000, 652)
+	city.face("g_worn", Vector3((ta.x + tb.x) * 0.5, 0.012, (ta.z + tb.z) * 0.5), Vector3((tb.x - ta.x) * 0.5, 0, 0), Vector3(0, 0, -(tb.z - ta.z) * 0.5))
+	city.commit(false)
+	# ---- the town round about: blocks of flats, a few office towers ----
+	for r in [[20, 20, 90, 70, 0], [120, 20, 110, 90, 1], [20, 104, 90, 128, 0], [120, 124, 110, 104, 1], [20, 246, 66, 160, 0], [96, 244, 134, 76, 0],
+			[96, 332, 134, 74, 0], [250, 76, 130, 90, 1], [392, 76, 64, 90, 0], [250, 178, 100, 62, 0], [362, 178, 94, 62, 0], [468, 76, 90, 164, 1],
+			[250, 252, 150, 70, 0], [410, 252, 148, 70, 0]]:
+		_block_of([r[0], r[1], r[2], r[3]], [], [4, 8], r[4])
+	# ---- the market street: shops behind glass, LED signs ----
+	for r in [[280, 338, 60, 76], [346, 338, 60, 76], [412, 338, 60, 76], [478, 338, 60, 76], [544, 338, 52, 76]]:
+		_block_of(r, ["s"], [4, 6])
+	for r in [[280, 448, 70, 72], [356, 448, 70, 72], [432, 448, 80, 72], [518, 448, 78, 72]]:
+		_block_of(r, ["n"], [4, 6])
+	for r in [[290, 540, 92, 82], [392, 540, 100, 92], [502, 530, 94, 102]]:
+		_block_of(r, [], [3, 5])
+	_avenue(S(261, 700), S(261, 431), 26.0 / 3.0)
+	_avenue(S(248, 431), S(608, 431), 26.0 / 3.0)
+	for i in 7:
+		var x := 285 + i * 50
+		city.led_lamp(S(x, 418 if i % 2 == 0 else 444), Vector3(0, 0, 1) if i % 2 == 0 else Vector3(0, 0, -1))
+		_planter(S(x + 25, 416.5 if i % 2 == 0 else 445.5), 0.0)
+	for i in 4:
+		city.led_lamp(S(250 if i % 2 == 0 else 272, 470 + i * 55), Vector3(1, 0, 0) if i % 2 == 0 else Vector3(-1, 0, 0))
+	city.shelter(S(420, 446.5), PI)
+	city.crossing(S(261, 437), Vector3(1, 0, 0), 26.0 / 3.0, 3.0)
+	city.commit()
+	_car("sedan_white", S(312, 439), PI * 0.5)
+	_car("suv_black", S(352, 439), PI * 0.5)
+	_car("car_burnt", S(468, 426), PI * 0.5 + 0.25)
+	_car("sedan_silver", S(520, 424), -PI * 0.5)
+	_car("sedan_red", S(395, 424), -PI * 0.5)
+	_car("suv_white", S(575, 439), PI * 0.5)
+	# ---- the clock tower square: an old tower kept among the new, a video wall, trees ----
+	var a := S(600, 340)
+	var b := S(772, 512)
+	city.box("g_pavers", Vector3((a.x + b.x) * 0.5, 0.04, (a.z + b.z) * 0.5), Vector3(b.x - a.x, 0.06, b.z - a.z))
+	city.commit(false)
+	for r in [[610, 522, 80, 70], [700, 522, 90, 70]]:
+		_block_of(r, ["n"], [5, 7])
+	for r in [[786, 290, 92, 100], [786, 402, 92, 110]]:
+		_block_of(r, ["w"], [5, 8])
+	_block_of([890, 290, 96, 222], [], [6, 9], 2)
+	_clock_tower(S(686, 426))
+	city.cyl("trim", S(632, 382), 3.2, 0.6, 24, Color(0.75, 0.74, 0.72))
+	city.cyl("glass", S(632, 382, 0.45), 2.9, 0.02, 24)
+	city.cyl("trim", S(632, 382), 0.5, 1.6, 10, Color(0.75, 0.74, 0.72))
+	city.pool(S(632, 382), Color(0.15, 0.25, 0.35, 1), 3.5)
+	for c in [[612, 352], [760, 352], [612, 500], [760, 500], [686, 352], [612, 426]]:
+		_planter(S(c[0], c[1]), 0.0)
+	for c in [[604, 344, 1, 1], [768, 344, -1, 1], [604, 508, 1, -1], [768, 508, -1, -1]]:
+		city.led_lamp(S(c[0], c[1]), Vector3(c[2], 0, c[3]).normalized())
+	city.traffic_light(S(598, 422), Vector3(-1, 0, 0), true)
+	city.traffic_light(S(598, 440), Vector3(-1, 0, 0), false)
+	var tp := S(751, 487)
+	city.box("trim", tp + Vector3(0, 0.15, 0), Vector3(4, 0.3, 4), 0.0, Color(0.55, 0.55, 0.52))
+	city.box("steel", tp + Vector3(0, 1.3, 0), Vector3(1.8, 2.0, 1.2), 0.0, Color(0.42, 0.48, 0.44))
+	for k in 3:
+		city.cyl("trim", tp + Vector3(-0.5 + k * 0.5, 2.3, 0), 0.08, 0.6, 8, Color(0.75, 0.72, 0.65))
+	city.collider(tp + Vector3(0, 1.2, 0), Vector3(1.8, 2.4, 1.2), 0.0, "metal")
+	city.commit()
+	city.screen(S(786, 360, 14.0), Vector3(-1, 0, 0), 16.0, 9.0, city.ad_image(1))
+	city.screen(S(650, 522, 13.0), Vector3(0, 0, -1), 12.0, 6.75, city.ad_image(2))
+	_car("bus_burnt", S(669, 365), -0.25 + PI * 0.5)
+	_car("sedan_grey", S(720, 470), PI * 0.5 + 0.1)
+	_car("car_burnt", S(735, 410), 1.1)
+	_sandbags(S(646, 466), 4)
+	_sandbags(S(646, 466) + Vector3(-1.5, 0, -1.2), 2)
+	for k in 4:
+		_barrier(S(604 + k * 8, 520), 0.0)
+	# ---- the residential lanes: blocks of flats close together ----
+	for r in [[566, 270, 96, 62], [694, 270, 60, 62], [566, 200, 66, 40], [694, 200, 58, 40], [566, 72, 66, 118], [662, 72, 90, 118]]:
+		_block_of(r, [], [4, 6])
+	for r in [[670, 196, 15, 146], [566, 248, 206, 13], [640, 58, 13, 140]]:
+		_road(r, Color(0.3, 0.3, 0.31))
+	city.led_lamp(S(668, 258), Vector3(1, 0, 0))
+	city.led_lamp(S(644, 150), Vector3(1, 0, 0))
+	city.led_lamp(S(686, 300), Vector3(-1, 0, 0))
+	city.rubble(S(676, 300), 1.0)
+	city.commit()
+	_car("sedan_black", S(610, 254), 0.0 + PI * 0.5)
+	_car("suv_grey", S(677, 230), 0.0)
+	# ---- the hotel tower: a walled forecourt, its gate, ten storeys and its name in lights ----
+	var ha := S(800, 70)
+	var hb := S(986, 244)
+	for wseg in [[Vector2(ha.x, hb.z), Vector2(S(845, 0).x, hb.z)], [Vector2(S(875, 0).x, hb.z), Vector2(hb.x, hb.z)],
+			[Vector2(ha.x, ha.z), Vector2(S(896, 0).x, ha.z)], [Vector2(S(911, 0).x, ha.z), Vector2(hb.x, ha.z)],
+			[Vector2(ha.x, ha.z), Vector2(ha.x, hb.z)], [Vector2(hb.x, ha.z), Vector2(hb.x, hb.z)]]:
+		_wall(wseg[0], wseg[1], 2.6, 0.35, "cwall")
+	var h0 := S(818, 84)
+	var h1 := S(968, 142)
+	city.lit_share = 0.45
+	city.apartment(h0.x, h0.z, h1.x, h1.z, 10, [], [], {"tone": 6, "wins": ["centered_double"], "row": 2})
+	city.lit_share = 0.3
+	var w0 := S(818, 142)
+	var w1 := S(862, 188)
+	city.apartment(w0.x, w0.z, w1.x, w1.z, 3, ["s", "e"])
+	city.commit_kit()
+	_hotel_sign(Vector3((h0.x + h1.x) * 0.5, 10 * 3.0 + 1.7, h1.z - 0.5))
+	_avenue(S(760, 263), S(1000, 263), 26.0 / 3.0)
+	city.led_lamp(S(840, 250), Vector3(0, 0, 1))
+	city.led_lamp(S(900, 250), Vector3(0, 0, 1))
+	city.led_lamp(S(960, 250), Vector3(0, 0, 1))
+	for x in [815, 835, 955, 975]:
+		_planter(S(x, 236), 0.0)
+	for k in 3:
+		_barrier(S(850 + k * 8, 252), 0.0)
+	city.commit()
+	_car("pickup", S(917, 204), PI * 0.6)
+	_car("pickup", S(885, 218), PI * 0.45)
+	_car("suv_black", S(842, 210), PI * 0.5)
+	# ---- the bus terminal, the checkpoint, the water tower ----
+	var da := S(112, 468)
+	var db := S(236, 610)
+	for wseg in [[Vector2(da.x, da.z), Vector2(db.x, da.z)], [Vector2(da.x, db.z), Vector2(db.x, db.z)], [Vector2(da.x, da.z), Vector2(da.x, db.z)],
+			[Vector2(db.x, da.z), Vector2(db.x, S(0, 520).z)], [Vector2(db.x, S(0, 560).z), Vector2(db.x, db.z)]]:
+		_wall(wseg[0], wseg[1], 2.0, 0.3, "cwall")
+	# the terminal canopy: a long flat roof on slim columns, lit underneath
+	var ca := S(118, 520)
+	var cb := S(230, 600)
+	city.box("frame", Vector3((ca.x + cb.x) * 0.5, 5.2, (ca.z + cb.z) * 0.5), Vector3(cb.x - ca.x, 0.4, cb.z - ca.z), 0.0, Color(0.85, 0.85, 0.85))
+	city.box("led", Vector3((ca.x + cb.x) * 0.5, 4.98, (ca.z + cb.z) * 0.5), Vector3(cb.x - ca.x - 2.0, 0.02, 0.3), 0.0, Color(0.9, 0.95, 1.0))
+	for px in [ca.x + 1.0, (ca.x + cb.x) * 0.5, cb.x - 1.0]:
+		for pz in [ca.z + 1.0, cb.z - 1.0]:
+			city.cyl("frame", Vector3(px, 0, pz), 0.18, 5.0, 10, Color(0.8, 0.8, 0.8))
+	city.pool(Vector3((ca.x + cb.x) * 0.5, 0, (ca.z + cb.z) * 0.5), Color(0.22, 0.25, 0.3, 1), 14.0)
+	var tl := OmniLight3D.new()
+	tl.light_color = Color(0.88, 0.93, 1.0)
+	tl.light_energy = 3.0
+	tl.omni_range = 22.0
+	main.add_child(tl)
+	tl.global_position = Vector3((ca.x + cb.x) * 0.5, 4.6, (ca.z + cb.z) * 0.5)
+	var wt := S(214, 492)
+	for dx in [-1.2, 1.2]:
+		for dz in [-1.2, 1.2]:
+			city.box("steel", wt + Vector3(dx, 5.0, dz), Vector3(0.15, 10.0, 0.15), 0.0, Color(0.55, 0.55, 0.55))
+	city.box("steel", wt + Vector3(0, 10.0, 0), Vector3(3.2, 0.2, 3.2), 0.0, Color(0.55, 0.55, 0.55))
+	city.cyl("dark", wt + Vector3(0, 10.1, 0), 1.3, 2.6, 16, Color(0.85, 0.85, 0.82))
+	city.collider(wt + Vector3(0, 5.0, 0), Vector3(2.6, 10.0, 2.6), 0.0, "metal")
+	city.glow(wt + Vector3(0, 12.9, 0), Color(1, 0.1, 0.05, 0.9), 0.9)
+	for k in 4:
+		_barrier(S(250, 500) + Vector3(k * 1.7 - 2.5, 0, 0), 0.0)
+	city.commit()
+	for k in 4:
+		_car("sedan_white", S(130 + k * 9, 600), 0.05 * k)
+	_car("bus_burnt", S(206, 565), 0.05)
+	_car("pickup", S(286, 520), PI)
+	_sandbags(S(282, 504), 3)
+	# ---- the start: the dry riverbed outside the town ----
+	_car("car_burnt", S(108, 606), 0.5)
+	city.rubble(S(80, 622), 1.5)
+	city.commit()
+	# ---- the rail yard and the landing zone ----
+	_railway()
+	main.scatter(900, 140, 200.0)
+	main._restore_breakables()
+	posts = []
+	for q in [[250, 512], [272, 512], [168, 600], [330, 428], [342, 436], [440, 436], [560, 452], [634, 478], [650, 482], [726, 374], [616, 380],
+			[752, 452], [620, 255], [706, 252], [677, 214], [646, 120], [760, 262], [852, 268], [878, 268], [876, 176], [926, 170], [950, 230],
+			[842, 110], [900, 128], [560, 34], [800, 30]]:
+		posts.append([S(q[0], q[1]), city.rng.randf() * TAU, ["olive", "blue", "gasmask"][posts.size() % 3], "ak", []])
+	posts.append([S(686, 426, 15.1) + Vector3(2.2, 0, 2.2), PI * 0.25, "gasmask", "svd", []])
+	posts.append([S(214, 492, 10.1) + Vector3(1.0, 0, 1.0), PI * 0.3, "olive", "svd", []])
+	lz = S(720, -22)
+	objectives = [
+		{"text": "Take the informant's message from the shut shop on the market street", "done": false, "pos": S(442, 398, 1.0)},
+		{"text": "Blow the transformer at the clock tower square", "done": false, "pos": S(751, 487, 1.5)},
+		{"text": "Deal with the Courier in the hotel", "done": false, "pos": S(888, 104, 1.0)},
+		{"text": "Take the Courier's laptop", "done": false, "pos": S(914, 104, 1.0)},
+		{"text": "Get to the helicopter in the rail yard", "done": false, "pos": lz + Vector3(0, 1, 0), "needs": [0, 1, 2, 3], "lz": true}]
+	start_yaw = -PI * 0.25
+	return S(96, 616, 0.05)
+
+
+## A city street from a to b (straight, along x or z): asphalt, kerbed pavements both sides, a dashed centre line.
+func _avenue(a: Vector3, b: Vector3, width: float) -> void:
+	var d := b - a
+	var L := d.length()
+	var u := d / L
+	var side := Vector3(u.z, 0, -u.x)
+	var mid := (a + b) * 0.5
+	var yaw := atan2(u.x, u.z)
+	city.face("g_asphalt", mid + Vector3(0, 0.03, 0), u * (L * 0.5), side * ((width - 3.0) * 0.5))
+	for sg in [-1.0, 1.0]:
+		# pavement of square pavers behind a kerb stone
+		city.box("g_pavers", mid + side * sg * (width * 0.5 - 0.7) + Vector3(0, 0.08, 0), Vector3(1.4, 0.16, L), yaw)
+		city.box("g_kerb", mid + side * sg * (width * 0.5 - 1.5) + Vector3(0, 0.09, 0), Vector3(0.2, 0.18, L), yaw)
+	city.dashes(a, b)
+
+
+## The clock tower: a sandstone shaft of the scanned kit (small windows, a door each side, moulded crown), the clock
+## stage on its roof with a lit face on every side, a pyramid roof; the sniper's parapet round it.
+func _clock_tower(c: Vector3) -> void:
+	city.lit_share = 0.0
+	city.ac_share = 0.0
+	city.apartment(c.x - 3.0, c.z - 3.0, c.x + 3.0, c.z + 3.0, 5, [], [], {"tone": 7, "wins": ["centered_small"], "row": 3, "bare_roof": true})
+	city.commit_kit()
+	city.lit_share = 0.3
+	city.ac_share = 0.14
+	var top := 15.0
+	city.box("kq_plaster7", c + Vector3(0, top + 1.9, 0), Vector3(3.6, 3.8, 3.6))
+	for y in [top + 0.1, top + 3.85]:
+		city.box("g_kerb", c + Vector3(0, y, 0), Vector3(3.9, 0.22, 3.9))
+	var cm := StandardMaterial3D.new()
+	cm.albedo_texture = _clock_face()
+	cm.emission_enabled = true
+	cm.emission_texture = cm.albedo_texture
+	cm.emission_energy_multiplier = 0.7
+	cm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	for k in 4:
+		var n := Vector3(sin(k * PI * 0.5), 0, cos(k * PI * 0.5))
+		var q := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(2.6, 2.6)
+		q.mesh = qm
+		q.material_override = cm
+		main.add_child(q)
+		q.global_position = c + Vector3(0, top + 2.0, 0) + n * 1.82
+		q.look_at(q.global_position - n, Vector3.UP)
+	# pyramid roof
+	var st: SurfaceTool = city._st("dark")
+	var apex := c + Vector3(0, top + 6.6, 0)
+	var cs := [c + Vector3(-2.1, top + 3.95, -2.1), c + Vector3(2.1, top + 3.95, -2.1), c + Vector3(2.1, top + 3.95, 2.1), c + Vector3(-2.1, top + 3.95, 2.1)]
+	for i in 4:
+		var p0: Vector3 = cs[i]
+		var p1: Vector3 = cs[(i + 1) % 4]
+		var nn := (p1 - p0).cross(apex - p0).normalized()
+		if nn.dot(p0 - c) < 0:
+			nn = -nn
+		for v in [p0, apex, p1]:
+			st.set_color(Color(0.22, 0.2, 0.19))
+			st.set_normal(nn)
+			st.set_uv(Vector2.ZERO)
+			st.add_vertex(v)
+	city.collider(c + Vector3(0, top + 1.9, 0), Vector3(3.6, 3.8, 3.6))
+
+
+## A clock face: cream dial, a dark ring, hour marks, hands at ten past ten (transparent round it).
+func _clock_face() -> ImageTexture:
+	var N := 128
+	var img := Image.create(N, N, true, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var ctr := Vector2(N * 0.5, N * 0.5)
+	for y in N:
+		for x in N:
+			var d := Vector2(x + 0.5, y + 0.5).distance_to(ctr)
+			if d < N * 0.5 - 1:
+				img.set_pixel(x, y, Color(0.93, 0.9, 0.8) if d < N * 0.44 else Color(0.18, 0.16, 0.14))
+	for hr in 12:
+		var a := TAU * hr / 12.0
+		var dir := Vector2(sin(a), -cos(a))
+		for t in range(int(N * 0.34), int(N * 0.42)):
+			var p := ctr + dir * t
+			img.fill_rect(Rect2i(int(p.x) - 1, int(p.y) - 1, 3 if hr % 3 == 0 else 2, 3 if hr % 3 == 0 else 2), Color(0.1, 0.1, 0.1))
+	for hand in [[TAU * (10.17 / 12.0), N * 0.24, 3], [TAU * (10.0 / 60.0), N * 0.36, 2]]:
+		var dir2 := Vector2(sin(hand[0]), -cos(hand[0]))
+		for t in int(hand[1]):
+			var p2 := ctr + dir2 * t
+			img.fill_rect(Rect2i(int(p2.x) - 1, int(p2.y) - 1, hand[2], hand[2]), Color(0.08, 0.08, 0.08))
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+
+## HOTEL in tall lit letters on the roof edge, facing south.
+func _hotel_sign(c: Vector3) -> void:
+	var strokes := {"H": [[0, 0, 0.12, 1], [0.48, 0, 0.12, 1], [0, 0.44, 0.6, 0.12]],
+		"O": [[0, 0, 0.12, 1], [0.48, 0, 0.12, 1], [0, 0, 0.6, 0.12], [0, 0.88, 0.6, 0.12]],
+		"T": [[0.24, 0, 0.12, 1], [0, 0.88, 0.6, 0.12]],
+		"E": [[0, 0, 0.12, 1], [0, 0, 0.6, 0.12], [0, 0.44, 0.48, 0.12], [0, 0.88, 0.6, 0.12]],
+		"L": [[0, 0, 0.12, 1], [0, 0, 0.6, 0.12]]}
+	var size := 1.4
+	var x := c.x - 2.5 * 0.85 * size
+	for ch in "HOTEL":
+		for s_ in strokes[ch]:
+			city.box("sign", Vector3(x + (s_[0] + s_[2] * 0.5) * size, c.y + (s_[1] + s_[3] * 0.5) * size, c.z), Vector3(s_[2] * size, s_[3] * size, 0.12), 0.0, Color(0.95, 0.35, 0.2) if ch != "T" else Color(0.4, 0.15, 0.1))
+		x += 0.85 * size
+	city.box("steel", Vector3(c.x, c.y - 0.2, c.z + 0.1), Vector3(5.0 * 0.85 * size, 0.08, 0.08), 0.0, Color(0.3, 0.3, 0.3))
+
+
+## Two tracks of rails on sleepers across the north, goods wagons (containers on flat cars), the helicopter pad.
+func _railway() -> void:
+	for tz in [S(0, 20).z, S(0, 44).z]:
+		for rx in [-0.72, 0.72]:
+			city.box("steel", Vector3(S(735, 0).x, 0.12, tz + rx), Vector3(S(1000, 0).x - S(470, 0).x, 0.12, 0.08), 0.0, Color(0.45, 0.42, 0.38))
+		var x := S(470, 0).x
+		while x < S(1000, 0).x:
+			city.box("wood", Vector3(x, 0.05, tz), Vector3(0.24, 0.1, 2.5), 0.0, Color(0.3, 0.25, 0.2))
+			x += 0.65
+		city.box("trim", Vector3(S(735, 0).x, 0.02, tz), Vector3(S(1000, 0).x - S(470, 0).x, 0.04, 3.4), 0.0, Color(0.42, 0.4, 0.37))
+	# the helicopter pad
+	var lzp := S(720, -22)
+	city.box("trim", lzp + Vector3(0, 0.03, 0), Vector3(14, 0.06, 14), 0.0, Color(0.5, 0.5, 0.48))
+	for s_ in [[Vector3(-1.6, 0.07, 0), Vector3(0.5, 0.02, 4.0)], [Vector3(1.6, 0.07, 0), Vector3(0.5, 0.02, 4.0)], [Vector3(0, 0.07, 0), Vector3(3.2, 0.02, 0.5)]]:
+		city.box("cloth", lzp + s_[0], s_[1], 0.0, Color(0.9, 0.9, 0.85))
+	city.led_lamp(S(700, 60), Vector3(0, 0, -1))
+	city.led_lamp(S(900, 60), Vector3(0, 0, -1))
+	city.commit()
+	var colors := ["red", "blue", "green"]
+	var i := 0
+	for wg in [[S(532, 20), 0], [S(602, 20), 0], [S(825, 44), 0], [S(898, 44), 0], [S(980, 20), 0]]:
+		var p: Vector3 = wg[0]
+		_block(p + Vector3(0, 0.75, 0), Vector3(13.0, 0.3, 2.6), "dark", "metal", 0.0, true)
+		for bx in [-4.5, 4.5]:
+			_block(p + Vector3(bx, 0.35, 0), Vector3(2.2, 0.5, 2.0), "dark", "metal", 0.0, false)
+		var cb: StaticBody3D = main._prop("res://assets/env/container_%s.glb" % colors[i % 3], p + Vector3(-3.05, 0.9, 0), PI * 0.5, Vector3(2.44, 2.59, 6.06), "metal")
+		cb.set_meta("pierce", "sheet")
+		var cb2: StaticBody3D = main._prop("res://assets/env/container_%s.glb" % colors[(i + 1) % 3], p + Vector3(3.05, 0.9, 0), PI * 0.5, Vector3(2.44, 2.59, 6.06), "metal")
+		cb2.set_meta("pierce", "sheet")
+		i += 1
+
+
 func _sandbags(c: Vector3, n_bags: int) -> void:
 	var bag_scene: Node3D = load("res://assets/env/sandbag.glb").instantiate()
 	var bag_mesh: Mesh = bag_scene.find_children("*", "MeshInstance3D", true, false)[0].mesh
@@ -660,3 +1070,15 @@ func _sandbags(c: Vector3, n_bags: int) -> void:
 	var sb := _block(c + Vector3(0, 0.4, 0), Vector3(w, 0.8, 0.55), "plaster", "sandbag")
 	sb.get_child(0).visible = false
 	main.extra_cover.append([c, 0.3])
+
+
+## A concrete planter of shrubs on the pavement (Poly Haven planter box, CC0).
+func _planter(p: Vector3, yaw: float) -> void:
+	main._prop("res://assets/city/props/planter_box_01/planter_box_01_game.gltf", p, yaw, Vector3(0.9, 0.42, 0.42), "concrete").scale = Vector3(1.6, 1.6, 1.6)
+
+
+## A concrete road barrier (Poly Haven, CC0), solid cover.
+func _barrier(p: Vector3, yaw: float) -> void:
+	var b: StaticBody3D = main._prop("res://assets/city/props/concrete_road_barrier/concrete_road_barrier_game.gltf", p, yaw, Vector3(1.55, 0.82, 0.6), "concrete")
+	b.scale = Vector3(1.0, 1.0, 1.0)
+	main.extra_cover.append([p, 0.6])

@@ -238,6 +238,27 @@ func apply_dusk() -> void:
 	sun.shadow_opacity = 0.6
 
 
+## Night: a dark blue sky, a cool moon low in the east (soft shadows), dark haze; the lamps light the streets.
+func apply_night() -> void:
+	var sm: ProceduralSkyMaterial = world_env.sky.sky_material
+	sm.sky_top_color = Color(0.012, 0.018, 0.04)
+	sm.sky_horizon_color = Color(0.08, 0.085, 0.12)
+	sm.ground_horizon_color = Color(0.04, 0.04, 0.05)
+	sm.ground_bottom_color = Color(0.015, 0.015, 0.02)
+	sm.sun_angle_max = 2.0
+	sm.sun_curve = 0.3
+	world_env.ambient_light_color = Color(0.32, 0.38, 0.52)
+	world_env.ambient_light_energy = 0.2
+	world_env.fog_light_color = Color(0.05, 0.055, 0.075)
+	world_env.fog_density = 0.006
+	world_env.tonemap_exposure = 1.2
+	world_env.adjustment_saturation = 0.92
+	sun.rotation_degrees = Vector3(-38, 70, 0)
+	sun.light_color = Color(0.55, 0.63, 0.85)
+	sun.light_energy = 0.2
+	sun.shadow_opacity = 0.75
+
+
 ## Small stones, partly sunk in the sand, and dry desert scrub (kept outside `clear_r` of the flat centre).
 func scatter(stones: int, scrub: int, clear_r: float) -> void:
 	if rock_meshes.is_empty():
