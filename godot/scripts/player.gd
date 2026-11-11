@@ -281,13 +281,22 @@ func _cut_clip(src: String, dst: String, from: float, k: float) -> void:
 ## arms, which also leave out whatever is within a hand's breadth of the eye (head, helmet) with a clean cut.
 func _skin(sc: Node3D, tint: Color, fade_near := false) -> void:
 	for m in sc.find_children("*", "MeshInstance3D", true, false):
-		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF      # no shadows from people
+		# (no shadows from people in the missions; on the training ground, drawn in full, they cast them)
+		var full: bool = Engine.get_meta("hd_people", false) and not fade_near
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if full else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var mat = m.get_active_material(0)
 		if mat is StandardMaterial3D:
 			var mm: StandardMaterial3D = mat.duplicate()
 			mm.albedo_color = tint
 			mm.roughness = 0.85
 			mm.metallic = 0.0
+			if full:
+				# cloth and webbing: deeper relief from the normal map, a soft sheen at grazing angles
+				mm.roughness = 0.78
+				mm.normal_scale = 1.35
+				mm.rim_enabled = true
+				mm.rim = 0.22
+				mm.rim_tint = 0.6
 			mm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 			if fade_near:
 				mm.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
@@ -693,6 +702,72 @@ func place_left_target(sk: Skeleton3D, tgt: Node3D, gun: String, d := {}, slide 
 	tgt.global_transform = hand * Transform3D(dd["holder"][gun]) * Transform3D(Basis(), Vector3(0, 0, -slide)) * Transform3D(dd["left"][gun])
 
 
+## Walking and running forward or back are one movement whose pace follows the speed: the clips of each (a slow walk,
+## a brisk walk, a run) are blended by speed. For that they must step in time: each is copied to a cycle of one second
+## starting on the same foot, and played at the pace the speed asks for.
+const GAIT_F := [["walk", 0.8, 0.0], ["walk2", 1.35, 0.0], ["run", 2.45, 0.16]]      # clip, its own ground speed, shift of its cycle
+const GAIT_B := [["walkBack", 0.95, 0.0], ["runBack", 1.8, 0.09]]
+var gait_v := 1.0                 # the speed the gait is blended for (eased, so a change of pace is not a jump)
+var gait_len := {}                # clip -> its real length (s)
+var cycle_rate := 1.0             # cycles a second of the gait playing now
+
+
+func _cycle_clip(src: String, shift: float) -> String:
+	var dst := "cyc_" + src
+	var lib: AnimationLibrary = ap.get_animation_library("")
+	if lib.has_animation(dst):
+		return dst
+	var a: Animation = lib.get_animation(src)
+	gait_len[src] = a.length
+	var b := Animation.new()
+	b.length = 1.0
+	b.loop_mode = Animation.LOOP_LINEAR
+	var n := 32
+	for i in a.get_track_count():
+		var ty := a.track_get_type(i)
+		if ty != Animation.TYPE_POSITION_3D and ty != Animation.TYPE_ROTATION_3D and ty != Animation.TYPE_SCALE_3D:
+			continue
+		var ti := b.add_track(ty)
+		b.track_set_path(ti, a.track_get_path(i))
+		for k in n + 1:
+			var ts: float = fposmod(float(k) / n - shift, 1.0) * a.length
+			if ty == Animation.TYPE_POSITION_3D:
+				b.position_track_insert_key(ti, float(k) / n, a.position_track_interpolate(i, ts))
+			elif ty == Animation.TYPE_ROTATION_3D:
+				b.rotation_track_insert_key(ti, float(k) / n, a.rotation_track_interpolate(i, ts))
+			else:
+				b.scale_track_insert_key(ti, float(k) / n, a.scale_track_interpolate(i, ts))
+	lib.add_animation(dst, b)
+	return dst
+
+
+func _gait_node(gait: Array) -> AnimationNodeBlendSpace1D:
+	var bs := AnimationNodeBlendSpace1D.new()
+	bs.min_space = gait[0][1]
+	bs.max_space = gait[gait.size() - 1][1]
+	bs.sync = true
+	for g in gait:
+		var an := AnimationNodeAnimation.new()
+		an.animation = _cycle_clip(g[0], g[2])
+		bs.add_blend_point(an, g[1])
+	return bs
+
+
+## The pace (cycles a second) at which a gait's feet keep up with `v` m/s without sliding.
+func _gait_rate(gait: Array, v: float) -> float:
+	var lo: Array = gait[0]
+	var hi: Array = gait[gait.size() - 1]
+	if v <= lo[1]:
+		return v / lo[1] / gait_len[lo[0]]
+	if v >= hi[1]:
+		return v / hi[1] / gait_len[hi[0]]
+	for k in gait.size() - 1:
+		if v <= gait[k + 1][1]:
+			var u: float = (v - gait[k][1]) / (gait[k + 1][1] - gait[k][1])
+			return lerp(1.0 / gait_len[gait[k][0]], 1.0 / gait_len[gait[k + 1][0]], u)
+	return 1.0
+
+
 func _build_tree() -> void:
 	tree = AnimationTree.new()
 	model.add_child(tree)
@@ -700,6 +775,9 @@ func _build_tree() -> void:
 	var bt := AnimationNodeBlendTree.new()
 	var sm := AnimationNodeStateMachine.new()
 	for st in STATES:
+		if st == "walk" or st == "walk_b":
+			sm.add_node(st, _gait_node(GAIT_F if st == "walk" else GAIT_B))
+			continue
 		var an := AnimationNodeAnimation.new()
 		an.animation = STATES[st]
 		sm.add_node(st, an)
@@ -1555,7 +1633,7 @@ func _animate(dt: float) -> void:
 		if crouch:
 			st = {"F": "c_run" if run else "c_walk", "B": "c_back", "R": "c_r", "L": "c_l"}[dir]
 		else:
-			st = {"F": "run" if run else "walk", "B": "run_b" if run else "walk_b", "R": "run_r" if run else "walk_r", "L": "run_l" if run else "walk_l"}[dir]
+			st = {"F": "walk", "B": "walk_b", "R": "run_r" if run else "walk_r", "L": "run_l" if run else "walk_l"}[dir]
 		nat = NAT.get(STATES[st], 1.0)
 	elif crouch:
 		st = "kneel_aim" if aim_now else "kneel"
@@ -1565,8 +1643,16 @@ func _animate(dt: float) -> void:
 		playback.travel(st)
 		state = st
 	var scale := 1.0
-	if nat > 0:
+	if st == "walk" or st == "walk_b":
+		# forward and back: the gait blended for this speed, at the pace that keeps the feet from sliding
+		var gait: Array = GAIT_F if st == "walk" else GAIT_B
+		gait_v = lerp(gait_v, speed, min(1.0, dt * 8.0))
+		tree.set("parameters/loco/%s/blend_position" % st, gait_v)
+		cycle_rate = clamp(_gait_rate(gait, gait_v), 0.45, 2.2)
+		scale = cycle_rate
+	elif nat > 0:
 		scale = clamp(speed / nat, 0.5, 1.6)
+		cycle_rate = scale / max(0.3, ap.get_animation(STATES[st]).length)
 	elif st == "kneel_aim":
 		scale = 1.0 if (firing or t - last_shot < 0.3) else 0.0
 	tree.set("parameters/speed/scale", scale)
@@ -1720,12 +1806,7 @@ func _footsteps(dt: float) -> void:
 	if not is_on_floor() or speed < 0.3:
 		return
 	# two footfalls per clip cycle, at the speed the clip is playing
-	var clip: String = STATES.get(state, "walk")
-	var nat: float = NAT.get(clip, 1.0)
-	var length := 1.0
-	if ap.has_animation(clip):
-		length = max(0.3, ap.get_animation(clip).length)
-	stride_t += dt * 2.0 * clamp(speed / nat, 0.5, 1.6) / length
+	stride_t += dt * 2.0 * cycle_rate
 	if stride_t >= 1.0:
 		stride_t -= 1.0
 		snd.step(speed > 2.4, crouch)

@@ -56,6 +56,7 @@ func _ready() -> void:
 	add_child(snd)
 	var spawn := Vector3(0, 0.05, 6)
 	hd = RenderingServer.get_rendering_device() != null
+	Engine.set_meta("hd_people", level == "")
 	if level == "":
 		spawn = _build_airfield()
 	else:
