@@ -1308,14 +1308,13 @@ func _physics_process(dt: float) -> void:
 				if holstered:
 					top *= 1.2    # nothing in the hands: a little quicker
 			var spd: float = lerp(0.55, top, pow(push, 2.0))     # most of the stick is walking; the run is at its edge
-			if leg_t > 0.0:
-				spd = min(spd, 1.9)      # a leg wound: no sprinting
+			pass
 			if act_t >= 0.0:
 				spd = 0.0
 			target = md * spd
 			# walking into a wall (or something solid and low) for a moment: take cover against it
 			var ch := {}
-			if cover_cool <= 0.0 and is_on_floor() and not (aiming or firing) and act_t < 0.0 and not busy():
+			if false:     # (cover is taken only with the COVER button now, not by walking into a wall)
 				var cq := PhysicsRayQueryParameters3D.create(global_position + Vector3(0, 0.55, 0), global_position + Vector3(0, 0.55, 0) + md * 0.85)
 				cq.collision_mask = 1
 				cq.exclude = [get_rid()]

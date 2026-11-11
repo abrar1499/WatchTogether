@@ -133,7 +133,7 @@ func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasma
 	yaw = face
 	home_yaw = face
 	rotation.y = yaw
-	kneels = randf() < 0.4
+	kneels = false        # (always on his feet: kneeling and standing again looked odd)
 	perch = pos.y > 1.5
 	if perch:
 		kneels = true
@@ -301,12 +301,9 @@ func _physics_process(dt: float) -> void:
 			else:
 				face = atan2(-to_p.x, -to_p.z)
 				hold_t -= dt
-				if spot_cover:
-					peek_t -= dt
-					if peek_t <= 0.0 and shots_left == 0:
-						peek_up = not peek_up
-						peek_t = randf_range(2.5, 4.0) if peek_up else randf_range(1.2, 2.2)
-				want_aim = peek_up or not spot_cover
+				# (no ducking behind the cover and popping up: it looked restless. He stands and fires.)
+				peek_up = true
+				want_aim = true
 				if hold_t <= 0.0 and shots_left == 0:
 					_relocate()
 		else:
@@ -419,7 +416,7 @@ func _physics_process(dt: float) -> void:
 		st = "crawl" if hs > 0.1 else "prone"
 	elif nade_t >= 0.0:
 		st = "nade"
-	elif react_t > 0.0:
+	elif false and react_t > 0.0:
 		st = "react"
 	elif hit_t > 0.0 and hs < 0.5:
 		st = "hit"
@@ -691,9 +688,7 @@ func take_hit(dmg: float, pos: Vector3, dir: Vector3, power := 1.0, part := "tor
 	if part.begins_with("leg"):
 		leg_hits += 1
 		# (he no longer drops to the ground to fight on lying down: it looked odd. A leg hit makes him limp and kneel.)
-		limp = 1.0
-		kneels = true
-		react_t = max(react_t, 0.45 if leg_hits < 2 else 0.8)    # the leg gives: a stagger
+		pass                  # (a leg hit no longer makes him limp, kneel or stagger)
 	elif part.begins_with("arm"):
 		arm_hit = true
 	if force > 0.9 and nade_t < 0.0 and not down:
@@ -825,7 +820,7 @@ func _die(headshot: bool, blasted := false, push := Vector3.ZERO, force := 0.0, 
 	var fwd_clip: String = "dieBackHS" if headshot else ["die", "dieFront", "dieBackHS"][randi() % 3]
 	var clip: String = fwd_clip
 	var best := []
-	if blasted or knock:
+	if false and (blasted or knock):      # (no more being thrown off his feet: an ordinary fall)
 		var back: String = "dieBlast" if blasted else "dieKnock"
 		# [clip, yaw offset from the fall direction, where the body faces at the start relative to that yaw, distance]
 		var opts := [[fwd_clip, 0.0, 0.0, 1.3], ["dieLeft", -PI * 0.5, 0.0, 1.3], [back, 0.0, -2.02, 3.0 if blasted else 1.3]]
