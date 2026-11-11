@@ -1395,11 +1395,14 @@ func _prop(path: String, pos: Vector3, rot := 0.0, col := Vector3.ZERO, surf := 
 
 
 ## Missions progress: how many are open (the first always is).
+const OPEN_FOR_TESTING := 3               # missions open whatever the progress (1: only what has been earned)
+
+
 func unlocked() -> int:
 	var cf := ConfigFile.new()
 	if cf.load("user://progress.cfg") != OK:
-		return 1
-	return int(cf.get_value("progress", "unlocked", 1))
+		return OPEN_FOR_TESTING
+	return maxi(int(cf.get_value("progress", "unlocked", 1)), OPEN_FOR_TESTING)
 
 
 func unlock(n: int) -> void:
