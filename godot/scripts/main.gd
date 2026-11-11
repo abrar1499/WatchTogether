@@ -57,6 +57,10 @@ func _ready() -> void:
 	add_child(snd)
 	var spawn := Vector3(0, 0.05, 6)
 	hd = RenderingServer.get_rendering_device() != null
+	if test_mode == "" or OS.get_environment("WARM") != "":
+		warm_up(int(level.substr(1)) if level != "" else 0)
+		if level == "":
+			warm_up(mini(unlocked(), MISSIONS_BUILT))
 	Engine.set_meta("hd_people", level == "")
 	if level == "":
 		spawn = _build_airfield()
@@ -1540,6 +1544,74 @@ func go_level(l: String) -> void:
 	get_tree().reload_current_scene()
 
 
+# ---------------- loading ahead ----------------
+## A mission's files (its scripts, building pieces, textures, models, sounds) are read by worker threads in the
+## background as soon as the game starts, while the menu is up; they are kept for the rest of the run, so pressing PLAY
+## only has to put the level together (and a mission played again loads at once).
+const WARM_COMMON := ["res://scripts/missions.gd", "res://scripts/enemy.gd", "res://assets/soldier.glb", "res://assets/chars",
+	"res://assets/guns2", "res://assets/guns", "res://assets/sfx", "res://assets/env", "res://assets/fx"]
+const WARM_EXT := ["res", "glb", "gltf", "jpg", "png", "wav", "mp3", "hdr", "tres", "scn"]
+var warm_pending := []
+
+
+func _warm_store() -> Dictionary:
+	if not Engine.has_meta("warm"):
+		Engine.set_meta("warm", {})
+	return Engine.get_meta("warm")
+
+
+func _warm_files(dir: String, out: Array) -> void:
+	var d := DirAccess.open(dir)
+	if d == null:
+		return
+	for f in d.get_files():
+		var name := f.trim_suffix(".import").trim_suffix(".remap")
+		if name != f or name.get_extension() in WARM_EXT:
+			if name.get_extension() in WARM_EXT:
+				var path := dir.path_join(name)
+				if not out.has(path):
+					out.append(path)
+	for sub in d.get_directories():
+		_warm_files(dir.path_join(sub), out)
+
+
+## Start loading what mission n needs (0: the training ground) in the background.
+func warm_up(n: int) -> void:
+	var paths := []
+	var roots: Array = WARM_COMMON.duplicate()
+	if n >= 2:
+		roots += ["res://scripts/city.gd", "res://assets/city"]
+	if n >= 3:
+		roots += ["res://scripts/deadcity.gd"]
+	if n == 0:
+		roots += ["res://scripts/airfield.gd", "res://scripts/deadcity.gd", "res://scripts/city.gd", "res://assets/hd"]
+	for r in roots:
+		if str(r).get_extension() != "":
+			paths.append(r)
+		else:
+			_warm_files(r, paths)
+	var store := _warm_store()
+	for p in paths:
+		if store.has(p) or warm_pending.has(p) or not ResourceLoader.exists(p):
+			continue
+		if ResourceLoader.load_threaded_request(p, "", false) == OK:
+			warm_pending.append(p)
+
+
+func _warm_poll() -> void:
+	if warm_pending.is_empty():
+		return
+	var store := _warm_store()
+	for i in range(warm_pending.size() - 1, -1, -1):
+		var p: String = warm_pending[i]
+		var st := ResourceLoader.load_threaded_get_status(p)
+		if st == ResourceLoader.THREAD_LOAD_LOADED:
+			store[p] = ResourceLoader.load_threaded_get(p)
+			warm_pending.remove_at(i)
+		elif st != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			warm_pending.remove_at(i)
+
+
 var hd := false                            # the full renderer (Vulkan): glow and the rest are there to use
 var yard_posts: Array = POSTS              # where the training ground's soldiers stand: [pos, face, the other end of his beat]
 
@@ -1806,6 +1878,7 @@ func on_player_respawn() -> void:
 
 
 func _process(dt: float) -> void:
+	_warm_poll()
 	if wave_t > 0.0:
 		wave_t -= dt
 		if wave_t <= 0.0:
