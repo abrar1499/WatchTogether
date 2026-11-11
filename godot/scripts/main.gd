@@ -57,8 +57,9 @@ func _ready() -> void:
 	add_child(snd)
 	var spawn := Vector3(0, 0.05, 6)
 	hd = RenderingServer.get_rendering_device() != null
-	if test_mode == "" or OS.get_environment("WARM") != "":
-		# the menu reads only what every level uses; a mission reads its own files first (see warm_wait)
+	# (reading ahead on worker threads is off: on a phone one of those reads never finished and a mission's loading
+	# stopped at 1 %. Every file is read the plain way, as the level is built.)
+	if WARM_AHEAD and (test_mode == "" or OS.get_environment("WARM") != ""):
 		warm_up(int(level.substr(1)) if level != "" else 0)
 	Engine.set_meta("hd_people", level == "")
 	if level == "":
@@ -74,7 +75,8 @@ func _ready() -> void:
 			add_child(loader)
 			await get_tree().process_frame
 			await get_tree().process_frame
-		await warm_wait()
+		if WARM_AHEAD:
+			await warm_wait()
 		spawn = await mission.build(int(level.substr(1)))
 	music.main = self
 	add_child(music)
@@ -1656,6 +1658,7 @@ func go_level(l: String) -> void:
 ## only has to put the level together (and a mission played again loads at once).
 const WARM_COMMON := ["res://scripts/missions.gd", "res://scripts/enemy.gd", "res://assets/soldier.glb", "res://assets/chars",
 	"res://assets/guns2", "res://assets/guns", "res://assets/sfx", "res://assets/fx"]
+const WARM_AHEAD := false
 const WARM_EXT := ["res", "glb", "gltf", "jpg", "png", "wav", "mp3", "hdr", "tres", "scn"]
 var warm_pending := []
 
