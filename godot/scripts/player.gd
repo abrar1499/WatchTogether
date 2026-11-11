@@ -1000,6 +1000,46 @@ func _aim_assist(dt: float) -> void:
 		pitch = clamp(pitch + (asin(clamp(tt.y, -1.0, 1.0)) - asin(clamp(fwd.y, -1.0, 1.0))) * k, -1.2, 1.1)
 
 
+## The soldier under the crosshair, if its centre lies on his body (head, chest, arms, legs): the crosshair turns
+## red, and a round fired then goes exactly there (no spread), so what is red is what is hit.
+var on_target: Node = null
+
+
+func _check_target() -> void:
+	on_target = null
+	if dead or holstered:
+		return
+	var from: Vector3 = cam.global_position
+	var d: Vector3 = -cam.global_transform.basis.z
+	var space := get_world_3d().direct_space_state
+	var exclude := [get_rid()]
+	var start := from
+	for i in 4:
+		var q := PhysicsRayQueryParameters3D.create(start, from + d * 150.0)
+		q.exclude = exclude
+		q.collision_mask = 1 | 8
+		var h := space.intersect_ray(q)
+		if h.is_empty():
+			return
+		var col = h.collider
+		if col.has_meta("owner"):
+			col = col.get_meta("owner")
+			exclude.append(h.collider.get_rid())
+		if col.has_method("take_hit") and col != self:
+			if col.dead:
+				exclude.append(col.get_rid())
+				start = h.position
+				continue
+			if hit_part(col.skel, h.position, d) != "":
+				on_target = col
+				return
+			# the space round him, not his body: look on past it
+			exclude.append(col.get_rid())
+			start = h.position
+			continue
+		return
+
+
 func look(dx: float, dy: float) -> void:
 	var s := 0.0042 * (0.55 if aiming else 1.0)
 	if assist != null and assist_ang < ASSIST_SLOW:
@@ -1405,6 +1445,7 @@ func _physics_process(dt: float) -> void:
 	_parts()
 
 	_aim_assist(dt)
+	_check_target()
 	_animate(dt)
 	tree.advance(dt)
 	_pose_hands()
@@ -1679,6 +1720,8 @@ func _fire() -> void:
 		return
 	var n: int = w.get("pellets", 1)
 	var cone: float = w.get("cone", 0.0)
+	if on_target != null and n == 1:
+		sp = 0.0           # red crosshair: the round goes where it shows
 	for i in n:
 		var d := (d0 + Vector3(randf_range(-sp, sp), randf_range(-sp, sp), randf_range(-sp, sp))).normalized()
 		if cone > 0.0:

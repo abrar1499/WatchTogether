@@ -510,6 +510,7 @@ func _m1() -> Vector3:
 	main._build_rocks(main._tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true), 70.0, false)
 	main.scatter(1200, 260, 44.0)
 	main.apply_dusk()
+	main.photo_sky("res://assets/sky/dusk.hdr", 0.55, 152.0)
 	main.extra_cover = []
 	# the fence: west gate (the way in), east gate (the way out), a torn stretch in the south side
 	_fence(Vector2(-34, 5), Vector2(34, 5), [[54.0, 57.0]])
@@ -778,11 +779,9 @@ func _m2() -> Vector3:
 	main._build_ground()
 	main._build_mountains()
 	main.apply_night()
+	main.photo_sky("res://assets/sky/night.hdr", 0.08, 0.0, 0.0, false)
 	# no moon shadows in the town: at night they barely show, and they cost as much as the town itself
 	main.sun.shadow_enabled = false
-	# a city at night: a faint orange glow of street lighting on the haze at the horizon
-	var sm: ProceduralSkyMaterial = main.world_env.sky.sky_material
-	sm.sky_horizon_color = Color(0.17, 0.14, 0.15)
 	main.extra_cover = []
 	city = load("res://scripts/city.gd").new(main, 26)
 	# the whole town paved
@@ -1313,6 +1312,7 @@ func _m3() -> Vector3:
 	main._build_ground()
 	main._build_mountains()
 	main.apply_war_day()
+	main.photo_sky("res://assets/sky/overcast.hdr", 0.9, 76.0)
 	main.extra_cover = []
 	city = load("res://scripts/city.gd").new(main, 33)
 	dead.main = main

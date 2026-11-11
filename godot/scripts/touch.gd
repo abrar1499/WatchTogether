@@ -257,10 +257,13 @@ func _draw() -> void:
 	elif player.holstered or player.throw_t >= 0.0 or player.hol_t >= 0.0:
 		pass
 	elif player.aiming:
-		draw_circle(c, 3.0 * s, Color(1, 0.25, 0.15))
+		# (red on a soldier: the round will hit him)
+		draw_circle(c, 3.0 * s, Color(1, 0.12, 0.08) if player.on_target != null else Color(1, 1, 1, 0.9))
 	else:
 		var g = (7.0 + player.recoil * 6.0 + (4.0 if player.speed > 0.5 else 0.0)) * s
-		var col := Color(1, 1, 1, 0.85)
+		if player.on_target != null:
+			g = 5.0 * s           # on a soldier the crosshair closes up: no spread
+		var col := Color(1, 0.12, 0.08, 0.95) if player.on_target != null else Color(1, 1, 1, 0.85)
 		draw_line(c + Vector2(-g - 9 * s, 0), c + Vector2(-g, 0), col, 2.0 * s)
 		draw_line(c + Vector2(g, 0), c + Vector2(g + 9 * s, 0), col, 2.0 * s)
 		draw_line(c + Vector2(0, -g - 9 * s), c + Vector2(0, -g), col, 2.0 * s)

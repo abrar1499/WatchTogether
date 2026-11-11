@@ -83,7 +83,7 @@ func light() -> void:
 	sun.light_color = Color(1.0, 0.9, 0.76)
 	sun.light_energy = 2.6
 	sun.light_angular_distance = 1.2
-	sun.shadow_enabled = true
+	sun.shadow_enabled = false     # (no shadows anywhere)
 	sun.shadow_opacity = 1.0
 	sun.shadow_blur = 1.4
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
@@ -101,7 +101,7 @@ func build_airfield() -> Vector3:
 	city.make_mats3()
 	city.night = false
 	prop_path = "res://assets/hd/props/%s/%s_game.gltf"
-	prop_shadows = true
+	prop_shadows = false
 	prop_body = StaticBody3D.new()
 	prop_body.set_meta("surf", "metal")
 	main.add_child(prop_body)

@@ -77,6 +77,8 @@ var shade_mat: StandardMaterial3D
 
 
 func shade(c: Vector3, size: Vector3, yaw := 0.0) -> void:
+	if not main.sun.shadow_enabled:
+		return            # (no shadows in the game now: nothing to cast them)
 	if shade_st == null:
 		shade_st = SurfaceTool.new()
 		shade_st.begin(Mesh.PRIMITIVE_TRIANGLES)

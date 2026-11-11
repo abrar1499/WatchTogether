@@ -227,7 +227,7 @@ func _build_environment() -> void:
 	sun.rotation_degrees = Vector3(-32, -135, 0)
 	sun.light_color = Color(1.0, 0.98, 0.95)
 	sun.light_energy = 1.15
-	sun.shadow_enabled = true
+	sun.shadow_enabled = false         # (no shadows anywhere: they cost a phone the most and add little here)
 	sun.shadow_opacity = 0.78          # soft, not black
 	sun.shadow_blur = 1.6
 	sun.directional_shadow_max_distance = 45.0
@@ -236,6 +236,28 @@ func _build_environment() -> void:
 
 var world_env: Environment
 var sun: DirectionalLight3D
+
+
+## The training ground's way of lighting a mission: a photographed sky (Poly Haven, CC0) for the background and the
+## light that comes from it, the filmic ACES tone curve. energy: how bright the photograph is taken to be (a night
+## sky photographed with a long exposure is shown far darker than it was taken). yaw: turns it to put its sun or
+## moon where the scene's own is. ambient: how much of the fill light comes from the sky (the rest from the colour set).
+func photo_sky(path: String, energy: float, yaw_deg: float, ambient := 0.6, aces := true) -> void:
+	var pm := PanoramaSkyMaterial.new()
+	pm.panorama = load(path)
+	pm.energy_multiplier = energy
+	var sky := Sky.new()
+	sky.sky_material = pm
+	sky.radiance_size = Sky.RADIANCE_SIZE_64
+	world_env.sky = sky
+	world_env.sky_rotation = Vector3(0, deg_to_rad(yaw_deg), 0)
+	world_env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	world_env.ambient_light_sky_contribution = ambient
+	world_env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	if aces:
+		world_env.tonemap_mode = Environment.TONE_MAPPER_ACES
+		world_env.tonemap_white = 6.0
+	world_env.fog_sky_affect = 0.35
 
 
 ## Late evening (a mission): the sun low and dim, a deep blue sky going grey at the horizon, cool fill light, more
@@ -293,7 +315,7 @@ func apply_night() -> void:
 	sm.sun_angle_max = 2.0
 	sm.sun_curve = 0.3
 	world_env.ambient_light_color = Color(0.32, 0.38, 0.52)
-	world_env.ambient_light_energy = 0.26
+	world_env.ambient_light_energy = 0.38      # (a little more than before: the night was too dark to play)
 	world_env.fog_light_color = Color(0.05, 0.055, 0.075)
 	world_env.fog_density = 0.006
 	world_env.tonemap_exposure = 1.2
