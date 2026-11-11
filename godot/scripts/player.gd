@@ -713,6 +713,23 @@ func _select_gun() -> void:
 	ik.target_node = ik.get_path_to(ik_tgt)
 
 
+var ready_k := 0.0             # 1: standing with the gun lowered, 0: up in the aim
+var ready_want := 0.0
+
+
+## Standing at ease: the aim's grip kept, both arms swung down so the muzzle points at the ground ahead (the left hand
+## follows on the handguard), the head left level.
+func _low_ready(dt: float) -> void:
+	ready_k = lerp(ready_k, ready_want, min(1.0, dt * 7.0))
+	if ready_k < 0.01:
+		return
+	var side: Vector3 = (skel.global_transform.basis.orthonormalized().inverse() * global_transform.basis.x).normalized()
+	for n in ["mixamorigRightArm", "mixamorigLeftArm"]:
+		var b := skel.find_bone(n)
+		var pg: Basis = skel.get_bone_global_pose(skel.get_bone_parent(b)).basis.orthonormalized()
+		skel.set_bone_pose_rotation(b, Quaternion((pg.inverse() * side).normalized(), -0.62 * ready_k) * skel.get_bone_pose_rotation(b))
+
+
 ## Where the left hand goes this frame: the gun's handguard as the right hand holds it now. (The gun's own
 ## marker only moves after the skeleton has been drawn, a frame late, which made the left hand shake.)
 func place_left_target(sk: Skeleton3D, tgt: Node3D, gun: String, d := {}, slide := 0.0) -> void:
@@ -1325,6 +1342,7 @@ func _physics_process(dt: float) -> void:
 	tree.advance(dt)
 	_pose_hands()
 	_bend_spine(dt)
+	_low_ready(dt)
 	place_left_target(skel, ik_tgt, weapons[wi]["gun"], {}, pump_slide())
 	_update_camera(dt)
 	_footsteps(dt)
@@ -1660,7 +1678,14 @@ func _animate(dt: float) -> void:
 	elif crouch:
 		st = "kneel_aim" if aim_now else "kneel"
 	else:
-		st = "aim" if aim_now else "idle"
+		# standing: the rifle in both hands as when aiming, lowered when not (see _low_ready). The old standing clip
+		# put the stock through the forearm and the left hand off the handguard.
+		st = "aim" if (aim_now or wi != 0) else "idle"
+		ready_want = 0.0 if aim_now else 1.0
+		if wi != 0:
+			st = "aim"
+	if st != "aim":
+		ready_want = 0.0
 	if st != state:
 		playback.travel(st)
 		state = st
