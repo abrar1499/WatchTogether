@@ -946,8 +946,64 @@ func _build_camera() -> void:
 	vm.visible = false
 
 
+## Help with aiming on a touch screen (a thumb is not a mouse): near a soldier in view the sights turn slower, so they
+## do not sweep past him, and while aiming or firing they drift gently onto him. Nothing is aimed for the player: from
+## more than a few degrees off there is no pull at all.
+var assist: Node = null           # the soldier nearest the sights (in view, within reach)
+var assist_ang := 9.0             # how far off the sights he is (radians)
+var assist_scan := 0.0
+const ASSIST_SLOW := 0.075        # inside this the sights turn slower
+const ASSIST_PULL := 0.05         # inside this they drift onto him
+
+
+func _aim_assist(dt: float) -> void:
+	var m = fx.get_parent()
+	if not m.ui.is_touch and not Engine.get_meta("assist_always", false):
+		assist = null
+		return
+	assist_scan -= dt
+	var from: Vector3 = cam.global_position
+	var fwd: Vector3 = -cam.global_transform.basis.z
+	if assist_scan <= 0.0:
+		assist_scan = 0.1
+		assist = null
+		var best := ASSIST_SLOW
+		var space := get_world_3d().direct_space_state
+		for e in m.enemies:
+			if e.dead:
+				continue
+			var c: Vector3 = e.global_position + Vector3(0, 1.15, 0)
+			var to := c - from
+			var d := to.length()
+			if d > 55.0 or d < 1.5:
+				continue
+			var a := fwd.angle_to(to)
+			if a < best:
+				var q := PhysicsRayQueryParameters3D.create(from, c)
+				q.exclude = [get_rid(), e.get_rid()]
+				q.collision_mask = 1
+				if space.intersect_ray(q).is_empty():
+					best = a
+					assist = e
+	if assist == null or not is_instance_valid(assist) or assist.dead:
+		assist = null
+		assist_ang = 9.0
+		return
+	var tc: Vector3 = assist.global_position + Vector3(0, 1.15, 0)
+	var tt := (tc - from).normalized()
+	assist_ang = fwd.angle_to(tt)
+	if (aiming or firing) and assist_ang < ASSIST_PULL and assist_ang > 0.004 and scope_k < 0.5:
+		var want_yaw := atan2(-tt.x, -tt.z)
+		var cur_yaw := atan2(-fwd.x, -fwd.z)
+		var k: float = min(1.0, dt * 6.0) * (0.35 + 0.65 * (1.0 - assist_ang / ASSIST_PULL))
+		yaw += wrapf(want_yaw - cur_yaw, -PI, PI) * k
+		pitch = clamp(pitch + (asin(clamp(tt.y, -1.0, 1.0)) - asin(clamp(fwd.y, -1.0, 1.0))) * k, -1.2, 1.1)
+
+
 func look(dx: float, dy: float) -> void:
 	var s := 0.0042 * (0.55 if aiming else 1.0)
+	if assist != null and assist_ang < ASSIST_SLOW:
+		s *= lerp(0.5, 1.0, assist_ang / ASSIST_SLOW)
 	if scope_k > 0.5:
 		s *= cam.fov / 50.0    # through a scope the view turns no faster on screen than without
 	yaw -= dx * s
@@ -1349,6 +1405,7 @@ func _physics_process(dt: float) -> void:
 	shake = max(0.0, shake - dt * 0.8)
 	_parts()
 
+	_aim_assist(dt)
 	_animate(dt)
 	tree.advance(dt)
 	_pose_hands()

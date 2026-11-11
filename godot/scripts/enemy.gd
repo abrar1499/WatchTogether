@@ -32,6 +32,7 @@ var dead := false
 var dead_t := 0.0
 var home := Vector3.ZERO
 var lod_n := randi() % 6
+var ik_off := false
 var beat := Vector3.ZERO       # the other end of his beat (same as home: stands guard)
 var to_beat := true
 var wait_t := 2.0
@@ -204,11 +205,22 @@ func _physics_process(dt: float) -> void:
 			skel.set_bone_pose_rotation(hips_b, Quaternion(axis, roll) * hips_base)
 		return
 	# far from the player and not fighting: think and move at a sixth of the rate (nobody can see the difference)
-	if mode != "combat" and global_position.distance_squared_to(player.global_position) > 70.0 * 70.0:
+	# (a phone's processor is the limit in a big map: beyond 40 m a third of the rate, beyond 70 m a sixth)
+	var far2: float = global_position.distance_squared_to(player.global_position)
+	# beyond 85 m he is not drawn at all: his hands stop following the gun, and he thinks twice a second
+	var asleep: bool = mode != "combat" and far2 > 85.0 * 85.0
+	if asleep != ik_off:
+		ik_off = asleep
+		if asleep:
+			rig["ik"].stop()
+		else:
+			rig["ik"].start()
+	if mode != "combat" and far2 > 40.0 * 40.0:
+		var every: int = 30 if asleep else (6 if far2 > 70.0 * 70.0 else 3)
 		lod_n += 1
-		if lod_n % 6 != 0:
+		if lod_n % every != 0:
 			return
-		dt *= 6.0
+		dt *= every
 	grace = max(0.0, grace - dt)
 	t_life += dt
 	hit_t = max(0.0, hit_t - dt)
