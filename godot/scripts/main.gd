@@ -58,9 +58,8 @@ func _ready() -> void:
 	var spawn := Vector3(0, 0.05, 6)
 	hd = RenderingServer.get_rendering_device() != null
 	if test_mode == "" or OS.get_environment("WARM") != "":
+		# the menu reads only what every level uses; a mission reads its own files first (see warm_wait)
 		warm_up(int(level.substr(1)) if level != "" else 0)
-		if level == "":
-			warm_up(mini(unlocked(), MISSIONS_BUILT))
 	Engine.set_meta("hd_people", level == "")
 	if level == "":
 		spawn = _build_airfield()
@@ -75,6 +74,7 @@ func _ready() -> void:
 			add_child(loader)
 			await get_tree().process_frame
 			await get_tree().process_frame
+		await warm_wait()
 		spawn = await mission.build(int(level.substr(1)))
 	music.main = self
 	add_child(music)
@@ -1655,7 +1655,7 @@ func go_level(l: String) -> void:
 ## background as soon as the game starts, while the menu is up; they are kept for the rest of the run, so pressing PLAY
 ## only has to put the level together (and a mission played again loads at once).
 const WARM_COMMON := ["res://scripts/missions.gd", "res://scripts/enemy.gd", "res://assets/soldier.glb", "res://assets/chars",
-	"res://assets/guns2", "res://assets/guns", "res://assets/sfx", "res://assets/env", "res://assets/fx"]
+	"res://assets/guns2", "res://assets/guns", "res://assets/sfx", "res://assets/fx"]
 const WARM_EXT := ["res", "glb", "gltf", "jpg", "png", "wav", "mp3", "hdr", "tres", "scn"]
 var warm_pending := []
 
@@ -1681,27 +1681,45 @@ func _warm_files(dir: String, out: Array) -> void:
 		_warm_files(dir.path_join(sub), out)
 
 
-## Start loading what mission n needs (0: the training ground) in the background.
-func warm_up(n: int) -> void:
-	var paths := []
+## What mission n needs read (0: only what every level uses: the soldiers, guns and sounds).
+func _warm_roots(n: int) -> Array:
+	# (scripts and building pieces only, no pictures: a level's textures are read as it is built, so only those it
+	# really uses are ever in memory)
 	var roots: Array = WARM_COMMON.duplicate()
 	if n >= 2:
-		roots += ["res://scripts/city.gd", "res://assets/city"]
+		roots += ["res://scripts/city.gd", "res://assets/city/kit"]
 	if n >= 3:
 		roots += ["res://scripts/deadcity.gd"]
-	if n == 0:
-		roots += ["res://scripts/airfield.gd", "res://scripts/deadcity.gd", "res://scripts/city.gd", "res://assets/hd"]
-	for r in roots:
+	return roots
+
+
+## Start reading mission n's files on worker threads. Files another level needed and this one does not are let go
+## first (holding every level's pictures at once took 400 MB of a phone's graphics memory and stalled it).
+func warm_up(n: int) -> void:
+	var paths := []
+	for r in _warm_roots(n):
 		if str(r).get_extension() != "":
 			paths.append(r)
 		else:
 			_warm_files(r, paths)
 	var store := _warm_store()
+	for k in store.keys():
+		if not paths.has(k):
+			store.erase(k)
 	for p in paths:
 		if store.has(p) or warm_pending.has(p) or not ResourceLoader.exists(p):
 			continue
 		if ResourceLoader.load_threaded_request(p, "", false) == OK:
 			warm_pending.append(p)
+
+
+## Wait (the loading screen turning) until the files asked for are all read: the level is then built from memory,
+## never reading a file at the same moment as a worker thread.
+func warm_wait() -> void:
+	var t0 := Time.get_ticks_msec()
+	while not warm_pending.is_empty() and Time.get_ticks_msec() - t0 < 60000:
+		_warm_poll()
+		await get_tree().process_frame
 
 
 func _warm_poll() -> void:
