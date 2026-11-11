@@ -690,12 +690,10 @@ func take_hit(dmg: float, pos: Vector3, dir: Vector3, power := 1.0, part := "tor
 	wounded = true
 	if part.begins_with("leg"):
 		leg_hits += 1
-		if (leg_hits >= 2 or dmg >= 70.0) and not perch:
-			_go_down()
-		else:
-			limp = 1.0
-			kneels = true
-			react_t = max(react_t, 0.45)    # the leg gives: a stagger
+		# (he no longer drops to the ground to fight on lying down: it looked odd. A leg hit makes him limp and kneel.)
+		limp = 1.0
+		kneels = true
+		react_t = max(react_t, 0.45 if leg_hits < 2 else 0.8)    # the leg gives: a stagger
 	elif part.begins_with("arm"):
 		arm_hit = true
 	if force > 0.9 and nade_t < 0.0 and not down:

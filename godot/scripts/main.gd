@@ -100,7 +100,9 @@ func _ready() -> void:
 		else:
 			_run_test()
 		return
+	fx.prewarm(get_viewport().get_camera_3d())
 	if loader:
+		await get_tree().create_timer(0.25).timeout
 		loader.finish()
 		loader = null
 	if mission:
@@ -2138,6 +2140,27 @@ class FX extends Node3D:
 		b["c0"] = c0
 		b["c1"] = c1
 
+	## Every effect once, under the ground in front of the camera, while the screen is still covered: a phone builds an
+	## effect's shader the first time it is drawn, and that pause used to come with the first shot and the first blast.
+	func prewarm(cam: Camera3D) -> void:
+		if cam == null:
+			return
+		var f: Vector3 = -cam.global_transform.basis.z
+		f.y = 0.0
+		var p: Vector3 = cam.global_position + f.normalized() * 22.0
+		p.y = -2.5
+		for g in ["ak", "pistol", "shotgun"]:
+			muzzle_flash(p, f, g)
+		explosion(p)
+		boom_t = 0.05
+		dust(p, 1.0)
+		chips(p, Vector3.UP, "dark", 4, 2.0)
+		chips(p, Vector3.UP, "wood", 4, 2.0)
+		blood(p, Vector3.UP)
+		tracer(p, p + f * 6.0, true)
+		tracer(p, p + f * 6.0)
+		casing(p, Vector3.UP, "ak")
+
 	func dust(p: Vector3, size: float) -> void:
 		for i in 3:
 			_big(p + Vector3(randf_range(-0.4, 0.4), randf_range(-0.2, 0.3), randf_range(-0.4, 0.4)), size, size * 0.8, 1.4,
@@ -2146,20 +2169,20 @@ class FX extends Node3D:
 	func explosion(p: Vector3) -> void:
 		# flash and fireball, then a column of dark smoke
 		_big(p, 5.0, 8.0, 0.3, Vector3.ZERO, Color(1.0, 0.97, 0.8, 1.0), Color(1.0, 0.6, 0.15, 0.0), true)
-		for i in 12:
+		for i in 6:
 			var off := Vector3(randf_range(-0.9, 0.9), randf_range(0.0, 1.4), randf_range(-0.9, 0.9))
-			_big(p + off, randf_range(2.0, 3.4), randf_range(3.5, 5.5), randf_range(0.8, 1.3), off * 1.8 + Vector3(0, 2.0, 0),
+			_big(p + off, randf_range(2.0, 3.4), randf_range(3.0, 4.5), randf_range(0.7, 1.1), off * 1.8 + Vector3(0, 2.0, 0),
 				Color(1.0, randf_range(0.42, 0.7), randf_range(0.05, 0.18), 1.0), Color(0.3, 0.1, 0.03, 0.0), i % 2 == 0)
-		for i in 12:
+		for i in 5:
 			var off2 := Vector3(randf_range(-0.8, 0.8), randf_range(0.3, 1.8), randf_range(-0.8, 0.8))
-			_big(p + off2, randf_range(1.8, 2.8), randf_range(4.0, 7.0), randf_range(3.0, 5.5), Vector3(randf_range(-0.4, 0.4), randf_range(1.4, 2.8), randf_range(-0.4, 0.4)),
+			_big(p + off2, randf_range(1.8, 2.8), randf_range(2.5, 4.0), randf_range(2.0, 3.2), Vector3(randf_range(-0.4, 0.4), randf_range(1.4, 2.8), randf_range(-0.4, 0.4)),
 				Color(0.16, 0.14, 0.12, 0.85), Color(0.32, 0.3, 0.28, 0.0))
 		chips(p, Vector3.UP, "dark", 12, 9.0)
 		# the blast wave kicking up a ring of dust along the ground
 		var gy: float = get_parent().ground_height(p.x, p.z)
 		if abs(p.y - gy) < 1.5:
-			for i in 12:
-				var a := i * TAU / 12.0 + randf_range(-0.1, 0.1)
+			for i in 6:
+				var a := i * TAU / 6.0 + randf_range(-0.3, 0.3)
 				var out := Vector3(cos(a), 0, sin(a))
 				_big(Vector3(p.x, gy + 0.3, p.z) + out * 0.8, 1.2, 4.0, randf_range(1.2, 1.8), out * randf_range(7.0, 10.0),
 					Color(0.72, 0.62, 0.48, 0.65), Color(0.75, 0.66, 0.52, 0.0))
@@ -2524,7 +2547,10 @@ class Snd extends Node:
 	func _ready() -> void:
 		for k in ["ak", "m4", "pistol", "reload_rifle", "reload_pistol", "steps_sand", "steps_run",
 				"enemy_ak", "die_male", "die_collapse", "die_fall", "die_breath", "grunts", "rpg", "blast"]:
-			streams[k] = load("res://assets/sfx/%s.mp3" % k)
+			# (the same recordings unpacked to WAV: starting an MP3 part-way through, as every shot and footstep does,
+			# makes a phone decode its way there, which stalled the game in a fight)
+			var wav := "res://assets/sfx/%s.wav" % k
+			streams[k] = load(wav if ResourceLoader.exists(wav) else "res://assets/sfx/%s.mp3" % k)
 		streams["whoosh"] = load("res://assets/music/whoosh.mp3")
 		streams["boom"] = load("res://assets/music/escape.mp3")   # the impact hit near the end of "Action trailer"
 		# only the player's own recordings, played as they are: no sounds made here, no added echo
@@ -2697,7 +2723,8 @@ class Snd extends Node:
 
 	func step(run: bool, crouch: bool) -> void:
 		# boots on hard ground at every pace (the wet sand recording sounded like water): softer for a walk
-		_play("steps_run", RUN_STEPS[randi() % RUN_STEPS.size()], 0.28 if run else 0.24, -3.0 if run else (-17.0 if crouch else -10.0))
+		# (one footfall only: a longer slice ran into the next step of the recording and was heard double)
+		_play("steps_run", RUN_STEPS[randi() % RUN_STEPS.size()], 0.2, -3.0 if run else (-17.0 if crouch else -10.0), 1.0, 0.05)
 
 	func _process(_dt: float) -> void:
 		if auto.playing and auto.get_playback_position() >= auto_loop[1]:
