@@ -8,7 +8,7 @@ extends CharacterBody3D
 ## from a grenade that lands near him, and some carry one to throw where they last saw the player hiding.
 
 const STATES := {"idle": "idle", "walk": "walk", "run": "run", "aim": "aim", "kneel_aim": "crouchFire", "kneel": "kneel", "hit": "hit",
-	"react": "reactBig", "nade": "grenade", "prone": "proneFire", "crawl": "proneFwd",
+	"react": "hit", "nade": "grenade", "prone": "proneFire", "crawl": "proneFwd",
 	"die": "die", "dieFront": "dieFront", "dieLeft": "dieLeft", "dieBackHS": "dieBackHS", "dieKnock": "knockback", "dieBlast": "blastback",
 	"dieFall": "fallback"}
 const WALK := 1.15

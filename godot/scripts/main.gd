@@ -1920,7 +1920,7 @@ class FX extends Node3D:
 			s.set_meta("t", 0.0)
 			add_child(s)
 			puffs.append(s)
-		for i in 150:
+		for i in 24:      # bullet holes (the oldest goes when a new one is made)
 			var mi := MeshInstance3D.new()
 			var q := QuadMesh.new()
 			q.size = Vector2(0.11, 0.11)
@@ -2075,14 +2075,14 @@ class FX extends Node3D:
 			chip_mats[k] = m
 		var bm := BoxMesh.new()
 		bm.size = Vector3(0.05, 0.012, 0.03)
-		for i in 120:
+		for i in 40:      # chips and sparks
 			var mi := MeshInstance3D.new()
 			mi.mesh = bm
 			mi.visible = false
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(mi)
 			chip_list.append({"m": mi, "v": Vector3.ZERO, "t": 0.0, "spin": Vector3.ZERO})
-		for i in 110:
+		for i in 48:      # fire and smoke sheets
 			var s := Sprite3D.new()
 			s.texture = soft_tex
 			s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -2225,7 +2225,7 @@ class FX extends Node3D:
 			cm.height = 0.039
 			cm.radial_segments = 6
 			cm.rings = 0
-			for i in 24:
+			for i in 10:      # spent cases
 				var mi := MeshInstance3D.new()
 				mi.mesh = cm
 				mi.material_override = brass
@@ -2243,7 +2243,7 @@ class FX extends Node3D:
 		mi.visible = true
 		c["v"] = v
 		c["spin"] = Vector3(randf_range(-25, 25), randf_range(-25, 25), randf_range(-25, 25))
-		c["t"] = 6.0
+		c["t"] = 2.5
 
 	func _cases(dt: float) -> void:
 		for c in cases:
@@ -2531,7 +2531,8 @@ class Snd extends Node:
 	const M4_LOOP := [0.695, 2.42]
 	const PISTOL_ON := [0.04, 0.77, 1.515, 2.435, 3.025, 3.67]
 	const SAND_STEPS := [1.34, 1.925, 2.605, 3.845, 4.435, 9.555, 11.485, 12.185, 13.62, 16.51, 17.37, 23.095]
-	const RUN_STEPS := [0.1, 0.4, 0.665, 1.21, 1.515, 1.82, 2.11, 2.42, 3.04, 3.36, 3.685, 4.01]
+	# footfalls in the recording with no second knock after them (heel and toe heard apart sounded like two steps)
+	const RUN_STEPS := [0.402, 0.666, 0.961, 1.21, 2.108, 2.417, 3.355, 3.68]
 	const AK_SINGLE := [0.4, 1.31, 2.19, 3.41]      # the four single shots at the start of the AK recording
 	# the ElevenLabs grunts: ten short ones (start, end)
 	const GRUNTS := [[0.1, 0.58], [0.92, 1.46], [1.74, 2.47], [2.81, 3.21], [3.5, 4.04], [4.36, 4.59], [5.03, 5.49],
@@ -2724,7 +2725,7 @@ class Snd extends Node:
 	func step(run: bool, crouch: bool) -> void:
 		# boots on hard ground at every pace (the wet sand recording sounded like water): softer for a walk
 		# (one footfall only: a longer slice ran into the next step of the recording and was heard double)
-		_play("steps_run", RUN_STEPS[randi() % RUN_STEPS.size()], 0.2, -3.0 if run else (-17.0 if crouch else -10.0), 1.0, 0.05)
+		_play("steps_run", RUN_STEPS[randi() % RUN_STEPS.size()], 0.11, -3.0 if run else (-17.0 if crouch else -10.0), 1.0, 0.04)
 
 	func _process(_dt: float) -> void:
 		if auto.playing and auto.get_playback_position() >= auto_loop[1]:

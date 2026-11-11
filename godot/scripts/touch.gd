@@ -287,6 +287,10 @@ func _draw() -> void:
 	var state_s := "  RELOADING" if player.reloading > 0 else ("  ON BACK" if player.holstered else "")
 	draw_string(font, ap + Vector2(0, -16 * s), w["name"] + state_s, HORIZONTAL_ALIGNMENT_LEFT, -1, int(13 * s), Color(0.85, 0.82, 0.72))
 	draw_string(font, ap + Vector2(0, 14 * s), ammo, HORIZONTAL_ALIGNMENT_LEFT, -1, int(28 * s), Color(1, 1, 1))
+	# frames a second, small at the top: so the player can say how smooth it really runs
+	var fps := Engine.get_frames_per_second()
+	draw_string(font, Vector2(vs.x * 0.5 - 22 * s, 18 * s), "%d FPS" % fps, HORIZONTAL_ALIGNMENT_LEFT, -1, int(12 * s),
+		Color(0.6, 1.0, 0.6, 0.75) if fps >= 45 else (Color(1.0, 0.85, 0.4, 0.8) if fps >= 28 else Color(1.0, 0.45, 0.35, 0.85)))
 	draw_string(font, ap + Vector2(128 * s, 14 * s), "GRENADES %d" % player.grenades, HORIZONTAL_ALIGNMENT_LEFT, -1, int(12 * s), Color(0.8, 0.85, 0.6))
 	# health
 	var hp_k: float = clamp(player.hp / 100.0, 0.0, 1.0)
