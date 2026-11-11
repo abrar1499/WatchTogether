@@ -18,7 +18,7 @@ dest_files=["res://.godot/imported/container_blue_0.jpg-0732f8b82e44f21220784a87
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

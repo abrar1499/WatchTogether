@@ -109,7 +109,9 @@ func _press(id: String, down: bool) -> void:
 
 
 func _input(e: InputEvent) -> void:
-	if not main.playing or pause_panel.visible:
+	# (with the result on screen the touches go to its buttons: they used to be taken for the joystick and fire,
+	# so its buttons could not be pressed)
+	if not main.playing or pause_panel.visible or result_panel.visible:
 		return
 	if e is InputEventScreenTouch:
 		is_touch = true
@@ -868,6 +870,10 @@ func show_result(win: bool, title: String, sub: String, n: int) -> void:
 		v.add_child(nx)
 	_button(v, "Play again" if win else "Try again", func(): main.go_level("m%d" % n), not win)
 	_button(v, "Mission list", func(): Engine.set_meta("show_missions", true); main.go_level(""))
+	_button(v, "Main menu", func(): main.go_level(""))
+	player.move_in = Vector2.ZERO
+	joy_id = -1
+	look_ids.clear()
 	result_panel.visible = true
 	_center(result_panel)
 
@@ -902,7 +908,7 @@ func show_pause() -> void:
 	get_tree().paused = true
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	pause_panel.get_child(0).get_node("Restart").visible = main.mission != null
-	pause_panel.get_child(0).get_node("Quit").visible = main.mission != null
+	pause_panel.get_child(0).get_node("Quit").visible = true
 	pause_panel.visible = true
 	_center(pause_panel)
 

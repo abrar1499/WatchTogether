@@ -2619,7 +2619,7 @@ class Snd extends Node:
 	var world_shots := []
 
 	func _ready() -> void:
-		for k in ["ak", "m4", "pistol", "reload_rifle", "reload_pistol", "steps_sand", "steps_run",
+		for k in ["ak", "m4", "pistol", "reload_rifle", "reload_pistol", "steps_run",
 				"enemy_ak", "die_male", "die_collapse", "die_fall", "die_breath", "grunts", "rpg", "blast"]:
 			# (the same recordings unpacked to WAV: starting an MP3 part-way through, as every shot and footstep does,
 			# makes a phone decode its way there, which stalled the game in a fight)
@@ -2779,8 +2779,13 @@ class Snd extends Node:
 		if auto.playing and auto_kind == kind:
 			return
 		auto_kind = kind
-		auto_loop = AK_LOOP if kind == "ak" else M4_LOOP
-		auto.stream = streams[kind]
+		# (guns with no recording of their own play the M4's: the machine pistol a little higher, the suppressed
+		# Honey Badger quieter and lower; they were silent)
+		var src := kind if streams.has(kind) else "m4"
+		auto_loop = AK_LOOP if src == "ak" else M4_LOOP
+		auto.stream = streams[src]
+		auto.pitch_scale = {"smg": 1.12, "badger": 0.92}.get(kind, 1.0)
+		auto.volume_db = -7.0 if kind == "badger" else 0.0
 		auto.play(auto_loop[0])
 
 	func stop_auto() -> void:

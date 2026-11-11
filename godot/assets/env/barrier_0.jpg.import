@@ -18,7 +18,7 @@ dest_files=["res://.godot/imported/barrier_0.jpg-c41904bf8c2a24dba17073d619fec71
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

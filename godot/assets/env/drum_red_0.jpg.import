@@ -18,7 +18,7 @@ dest_files=["res://.godot/imported/drum_red_0.jpg-3fecb28b53575bb661d68ed52976c2
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

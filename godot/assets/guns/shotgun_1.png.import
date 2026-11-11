@@ -18,7 +18,7 @@ dest_files=["res://.godot/imported/shotgun_1.png-90079c302365eb845540c57fcd0764a
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

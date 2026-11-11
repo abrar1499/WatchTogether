@@ -18,7 +18,7 @@ dest_files=["res://.godot/imported/soldier_0.jpg-f9be6e8939ade71a4caf44b9b12f260
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
