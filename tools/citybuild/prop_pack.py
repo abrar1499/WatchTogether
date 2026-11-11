@@ -1,6 +1,6 @@
 """Pack a Poly Haven (CC0) prop for phones: every node's mesh baked with its transform into one mesh per material,
 simplified with meshoptimizer to about `tris` triangles in all, its colour and normal textures at `tex` pixels (the
-roughness/metal/AO map is dropped: the game sets a plain roughness). Writes <out>/<id>_game.gltf, its .bin and textures.
+roughness/metal/AO map is dropped: the game sets a plain roughness; with PACK_ARM=1 in the environment it is kept). Writes <out>/<id>_game.gltf, its .bin and textures.
 usage: python3 prop_pack.py <dir with id.gltf> <out dir> <tris> [tex=512]"""
 import json, os, sys
 import numpy as np
@@ -145,6 +145,13 @@ for mi, d in per.items():
         m["pbrMetallicRoughness"]["baseColorFactor"] = pm["baseColorFactor"]
     if "normalTexture" in src_m:
         m["normalTexture"] = {"index": image(src_m["normalTexture"]["index"])}
+    if os.environ.get("PACK_ARM") and "metallicRoughnessTexture" in pm:
+        # the full set: occlusion (red), roughness (green) and metal (blue) in one image
+        ti = image(pm["metallicRoughnessTexture"]["index"])
+        m["pbrMetallicRoughness"]["metallicRoughnessTexture"] = {"index": ti}
+        m["pbrMetallicRoughness"]["metallicFactor"] = 1.0
+        m["pbrMetallicRoughness"]["roughnessFactor"] = 1.0
+        m["occlusionTexture"] = {"index": ti}
     for k in ("alphaMode", "alphaCutoff", "doubleSided"):
         if k in src_m:
             m[k] = src_m[k]

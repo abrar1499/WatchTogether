@@ -55,8 +55,9 @@ func _ready() -> void:
 	add_child(fx)
 	add_child(snd)
 	var spawn := Vector3(0, 0.05, 6)
+	hd = RenderingServer.get_rendering_device() != null
 	if level == "":
-		_build_yard()
+		spawn = _build_airfield()
 	else:
 		mission = load("res://scripts/missions.gd").new()
 		mission.main = self
@@ -1535,6 +1536,24 @@ func go_level(l: String) -> void:
 	get_tree().reload_current_scene()
 
 
+var hd := false                            # the full renderer (Vulkan): glow and the rest are there to use
+var yard_posts: Array = POSTS              # where the training ground's soldiers stand: [pos, face, the other end of his beat]
+
+
+## The training ground: the disused airfield (scripts/airfield.gd).
+func _build_airfield() -> Vector3:
+	extra_cover = []
+	var af = load("res://scripts/airfield.gd").new()
+	af.main = self
+	af.mis = load("res://scripts/missions.gd").new()     # (only for its sandbags and fence wire: never added to the scene)
+	af.mis.main = self
+	af.city = load("res://scripts/city.gd").new(self, 7)
+	af.mis.city = af.city
+	af.name = "Airfield"
+	add_child(af)
+	return af.build_airfield()
+
+
 func _build_yard() -> void:
 	extra_cover = SANDBAG_COVER
 	_build_ground()
@@ -1718,7 +1737,7 @@ func _spawn_wave() -> void:
 		_restore_breakables()
 		player.grenades = min(5, player.grenades + 2)
 	wave += 1
-	for p in POSTS:
+	for p in yard_posts:
 		var e = load("res://scripts/enemy.gd").new()
 		e.name = "Enemy%d" % enemies.size()
 		add_child(e)
@@ -1807,7 +1826,7 @@ func _check_update() -> void:
 				continue
 			var n := int(tag.substr(1))
 			for asset in rel.get("assets", []):
-				if str(asset.get("name", "")) == "DustSignal.apk" and n > best:
+				if str(asset.get("name", "")) == ("DustSignalHD.apk" if OS.has_feature("hd") else "DustSignal.apk") and n > best:
 					best = n
 					url = str(asset.get("browser_download_url", ""))
 		if best > version and url != "":

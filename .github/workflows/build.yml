@@ -44,11 +44,16 @@ jobs:
           godot --headless --path . --export-release "Android" "$GITHUB_WORKSPACE/DustSignal.apk" 2>&1 | tee export.log
           test -s "$GITHUB_WORKSPACE/DustSignal.apk" || { grep -E "ERROR|error" export.log | head -30 | while IFS= read -r l; do echo "::error::$l"; done; exit 1; }
           ls -la "$GITHUB_WORKSPACE/DustSignal.apk"
+          # the same game on the Vulkan renderer, as a second app beside the first ("Dust Signal HD")
+          godot --headless --path . --export-release "Android HD" "$GITHUB_WORKSPACE/DustSignalHD.apk" 2>&1 | tee export_hd.log || true
+          ls -la "$GITHUB_WORKSPACE/DustSignalHD.apk" || true
 
       - uses: actions/upload-artifact@v4
         with:
           name: DustSignal-${{ github.run_number }}
-          path: DustSignal.apk
+          path: |
+            DustSignal.apk
+            DustSignalHD.apk
 
   publish:
     needs: build
@@ -62,7 +67,7 @@ jobs:
       # the Godot app's own updater sees them.
       - name: Publish release
         run: |
-          gh release create "v${{ github.run_number }}" DustSignal.apk \
+          gh release create "v${{ github.run_number }}" DustSignal.apk $(ls DustSignalHD.apk 2>/dev/null) \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
             --title "Dust Signal v${{ github.run_number }} (Godot)" \

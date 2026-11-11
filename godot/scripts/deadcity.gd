@@ -25,7 +25,8 @@ const AV := 8.0            # half an avenue (road 5 + pavement 3)
 const ST := 5.0            # half a side street (road 3 + pavement 2)
 const SX := 78.0           # side streets at +-78
 const EDGE := 148.0
-const PROPS := "res://assets/city/props/%s/%s_game.gltf"
+var prop_path := "res://assets/city/props/%s/%s_game.gltf"   # where the scanned props are (id, id)
+var prop_shadows := false  # whether the props cast shadows (not in the big city)
 
 
 func _process(dt: float) -> void:
@@ -175,7 +176,7 @@ func commit_props(gone := 130.0) -> void:
 	commit_shade()
 	for key in props:
 		var id: String = (key as String).trim_suffix("#d")
-		var scene: Node = load(PROPS % [id, id]).instantiate()
+		var scene: Node = load(prop_path % [id, id]).instantiate()
 		var mesh: Mesh = (scene.find_children("*", "MeshInstance3D", true, false)[0] as MeshInstance3D).mesh
 		scene.free()
 		var arr: Array = props[key]
@@ -187,7 +188,7 @@ func commit_props(gone := 130.0) -> void:
 			mm.set_instance_transform(i, arr[i])
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if prop_shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if (key as String).ends_with("#d"):
 			mi.layers = 2
 		mi.visibility_range_end = gone
@@ -1581,10 +1582,10 @@ func _hq() -> void:
 	radio_set.set_meta("surf", "metal")
 	radio_set.set_meta("kind", "machine")
 	radio_set.set_meta("hp", 520.0)
-	var desk: Node3D = load(PROPS % ["metal_office_desk", "metal_office_desk"]).instantiate()
+	var desk: Node3D = load(prop_path % ["metal_office_desk", "metal_office_desk"]).instantiate()
 	radio_set.add_child(desk)
 	for k in 5:
-		var rs2: Node3D = load(PROPS % ["vintage_radio_transceiver", "vintage_radio_transceiver"]).instantiate()
+		var rs2: Node3D = load(prop_path % ["vintage_radio_transceiver", "vintage_radio_transceiver"]).instantiate()
 		radio_set.add_child(rs2)
 		rs2.position = Vector3(-0.66 + (k % 3) * 0.62, 0.79 + (k / 3) * 0.34, 0.0)
 		rs2.scale = Vector3(1.15, 1.0, 1.15)
