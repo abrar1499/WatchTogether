@@ -13,7 +13,6 @@ var buttons := [
 	{"id": "jump", "label": "JUMP", "c": Vector2(0.86, 0.9), "r": 38.0},
 	{"id": "reload", "label": "RELOAD", "c": Vector2(0.955, 0.48), "r": 40.0},
 	{"id": "swap", "label": "SWAP", "c": Vector2(0.955, 0.3), "r": 38.0},
-	{"id": "view", "label": "VIEW", "c": Vector2(0.88, 0.17), "r": 34.0},
 	{"id": "menu", "label": "MENU", "c": Vector2(0.955, 0.07), "r": 32.0},
 	{"id": "nade", "label": "GRENADE", "c": Vector2(0.955, 0.66), "r": 38.0},
 	{"id": "holster", "label": "HOLSTER", "c": Vector2(0.065, 0.2), "r": 34.0},

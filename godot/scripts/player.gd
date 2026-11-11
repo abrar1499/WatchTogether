@@ -30,16 +30,18 @@ const UPPER := ["mixamorigSpine", "mixamorigSpine1", "mixamorigSpine2", "mixamor
 	"mixamorigRightShoulder", "mixamorigRightArm", "mixamorigRightForeArm", "mixamorigRightHand"]
 
 # the gun models are built to real size (metres)
-const GUN_SCALE := {"pistol": 1.0, "m4": 1.0, "ak": 1.0, "svd": 1.0, "shotgun": 1.0, "rpg": 1.0}
-const GUNS := ["pistol", "m4", "ak", "svd", "shotgun", "rpg"]
+const GUN_SCALE := {"pistol": 1.0, "m4": 1.0, "ak": 1.0, "svd": 1.0, "shotgun": 1.0, "rpg": 1.0, "badger": 1.0, "smg": 1.0}
+const GUNS := ["pistol", "m4", "ak", "svd", "shotgun", "rpg", "badger", "smg"]
 # left hand, in the gun's own units (x left, y up, z along the barrel): the way the palm faces (n), the way the
 # fingers point (d), and either the knuckle joints (k) or where the palm presses (p). Rifles: palm up under the
 # handguard, knuckles under its middle so the fingers wrap up round the far side. Pistol: palm over the right
 # hand's fingers from the left, fingers forward and down.
 const LEFT_HOLD := {
 	"pistol": {"p": Vector3(0.04, -0.05, -0.005), "n": Vector3(-1.0, 0.35, 0.0), "d": Vector3(0.0, -0.5, 0.85)},
-	"m4": {"k": Vector3(-0.006, 0.008, 0.24), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.86},
-	"ak": {"k": Vector3(-0.01, -0.034, 0.26), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.7},
+	"m4": {"k": Vector3(-0.006, -0.012, 0.26), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.7},
+	"ak": {"k": Vector3(-0.01, -0.022, 0.26), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.7},
+	"badger": {"k": Vector3(-0.006, -0.008, 0.28), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.7},
+	"smg": {"k": Vector3(-0.006, -0.018, 0.2), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.7},
 	"svd": {"k": Vector3(-0.01, -0.024, 0.3), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.9},
 	"shotgun": {"k": Vector3(-0.008, -0.016, 0.35), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.84},
 	"rpg": {"k": Vector3(-0.008, 0.038, 0.25), "n": Vector3(-0.15, 1.0, 0.0), "d": Vector3(-1.0, 0.0, 0.3), "c": 0.84}}
@@ -47,8 +49,9 @@ const GRIP_DOWN := Vector3(0, -0.94, -0.34)   # down the pistol grip (same rake 
 # first person, aiming: eye on the sight line (AK irons, M4 through the red dot, pistol irons)
 # first person: the point on each gun the eye looks along (gun units), and how far behind it the eye sits
 const SIGHT := {"pistol": Vector3(0, 0.066, 0.0), "m4": Vector3(0, 0.127, 0.0), "ak": Vector3(0, 0.077, 0.19),
-	"svd": Vector3(0.018, 0.112, 0.0), "shotgun": Vector3(0, 0.074, 0.0), "rpg": Vector3(0.046, 0.13, 0.0)}
-const EYE_BACK := {"pistol": 0.24, "m4": 0.14, "ak": 0.4, "svd": 0.24, "shotgun": 0.32, "rpg": 0.2}
+	"svd": Vector3(0.018, 0.112, 0.0), "shotgun": Vector3(0, 0.074, 0.0), "rpg": Vector3(0.046, 0.13, 0.0),
+	"badger": Vector3(0, 0.11, 0.0), "smg": Vector3(0, 0.07, 0.0)}
+const EYE_BACK := {"pistol": 0.24, "m4": 0.14, "ak": 0.4, "svd": 0.24, "shotgun": 0.32, "rpg": 0.2, "badger": 0.16, "smg": 0.3}
 # finger curl (degrees) of segments 1..3: right hand round the pistol grip with the index on the trigger,
 # left hand round the handguard
 # (spread over the three joints: the glove mesh creases into spikes if one joint bends too far)
@@ -66,6 +69,10 @@ var weapons := [
 	{"name": "PUMP SHOTGUN", "gun": "shotgun", "res0": 28, "mag": 7, "size": 7, "res": 28, "dmg": 20, "rate": 0.85, "spread": 0.01, "auto": false, "kick": 2.8, "pellets": 9, "cone": 0.055, "power": 2.2, "reload": 2.3},
 	# RPG-7: a rocket that flies and blows up on whatever it hits
 	{"name": "RPG-7", "gun": "rpg", "res0": 4, "mag": 1, "size": 1, "res": 4, "dmg": 0, "rate": 1.0, "spread": 0.002, "auto": false, "kick": 3.2, "rocket": true, "scope": 34.0, "reload": 2.6},
+	# Honey Badger: a short suppressed carbine, heavy slow rounds
+	{"name": "HONEY BADGER", "gun": "badger", "res0": 90, "mag": 30, "size": 30, "res": 90, "dmg": 38, "rate": 0.09, "spread": 0.013, "auto": true, "kick": 1.1},
+	# a machine pistol: fast, loose, a long magazine
+	{"name": "TK-9 SMG", "gun": "smg", "res0": 96, "mag": 32, "size": 32, "res": 96, "dmg": 26, "rate": 0.065, "spread": 0.026, "auto": true, "kick": 0.8},
 ]
 var wi := 2
 
@@ -492,7 +499,11 @@ func _frame(d: Vector3, n: Vector3) -> Basis:
 
 
 func _load_gun(k: String, shadows := false) -> Node3D:
-	var g: Node3D = load("res://assets/guns/%s.glb" % k).instantiate()
+	# (the downloaded models, converted by tools/gunbuild/gun_convert.py, where there is one; else this project's own)
+	var path := "res://assets/guns2/%s/%s.gltf" % [k, k]
+	if not ResourceLoader.exists(path):
+		path = "res://assets/guns/%s.glb" % k
+	var g: Node3D = load(path).instantiate()
 	g.scale = Vector3.ONE * GUN_SCALE[k]
 	for m in g.find_children("*", "MeshInstance3D", true, false):
 		var mi: MeshInstance3D = m
@@ -635,7 +646,7 @@ func _build_back_guns() -> void:
 	skel.add_child(leg)
 	var w_back: Transform3D = skel.global_transform * skel.get_bone_global_rest(skel.find_bone("mixamorigSpine2"))
 	var w_leg: Transform3D = skel.global_transform * skel.get_bone_global_rest(skel.find_bone("mixamorigRightUpLeg"))
-	var mid := {"m4": 0.07, "ak": 0.02, "svd": 0.22, "shotgun": 0.15, "rpg": 0.12}
+	var mid := {"m4": 0.07, "ak": 0.02, "svd": 0.22, "shotgun": 0.15, "rpg": 0.12, "badger": 0.06, "smg": 0.1}
 	for k in GUNS:
 		var d: Transform3D
 		var att: Node3D = back
@@ -1193,7 +1204,7 @@ func _climb_step(dt: float) -> void:
 
 
 func cycle_view() -> void:
-	view = (view + 1) % 3
+	view = 0        # one view only: close behind the shoulder
 
 
 func _physics_process(dt: float) -> void:
