@@ -77,12 +77,16 @@ func _make_mats() -> void:
 	mats["bulb"] = bulb
 
 
+var chunk := ""        # what is drawn goes into the mesh of this name (a mesh takes few lights: big interiors are cut up)
+
+
 func _st(key: String) -> SurfaceTool:
-	if not sts.has(key):
+	var k := key if chunk == "" else chunk + "|" + key
+	if not sts.has(k):
 		var st := SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		sts[key] = st
-	return sts[key]
+		sts[k] = st
+	return sts[k]
 
 
 ## One flat rectangle: centre c, half extents along u and v, facing n.
@@ -137,21 +141,34 @@ func cyl(key: String, base: Vector3, r: float, h: float, seg := 10, col := Color
 
 
 ## Put everything added since the last commit into one mesh (one surface per material) in the world.
-func commit(shadows := true, gone := 0.0) -> MeshInstance3D:
-	var am := ArrayMesh.new()
-	for key in sts:
-		var st: SurfaceTool = sts[key]
+func commit(shadows := true, gone := 0.0, layer := 1) -> MeshInstance3D:
+	var groups := {"": ArrayMesh.new()}
+	for k in sts:
+		var parts: PackedStringArray = (k as String).split("|")
+		var ch: String = parts[0] if parts.size() > 1 else ""
+		var key: String = parts[parts.size() - 1]
+		if not groups.has(ch):
+			groups[ch] = ArrayMesh.new()
+		var am: ArrayMesh = groups[ch]
+		var st: SurfaceTool = sts[k]
 		if key != "curtain" and key != "k_sign":
 			st.generate_tangents()
 		st.commit(am)
 		am.surface_set_material(am.get_surface_count() - 1, mats[key])
 	sts.clear()
-	var mi := MeshInstance3D.new()
-	mi.mesh = am
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mi.visibility_range_end = gone
-	main.add_child(mi)
-	return mi
+	var first: MeshInstance3D = null
+	for ch in groups:
+		if ch != "" and (groups[ch] as ArrayMesh).get_surface_count() == 0:
+			continue
+		var mi := MeshInstance3D.new()
+		mi.mesh = groups[ch]
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.visibility_range_end = gone
+		mi.layers = layer
+		main.add_child(mi)
+		if first == null:
+			first = mi
+	return first
 
 
 func collider(c: Vector3, s: Vector3, yaw := 0.0, surf := "concrete") -> StaticBody3D:
@@ -501,6 +518,9 @@ var kit := {}
 var near := {}          # material key -> SurfaceTool: near pieces of the building being made
 var far := {}
 var vfar := {}
+var dmg := []             # shell holes in the building being made: [centre, radius]
+var broken_share := 0.0  # share of windows with their glass gone
+var soot_share := 0.0    # share of windows with smoke stains above them
 var block_tones := []   # the plaster colours of the block being built (a few, so a block needs few materials)
 var prop_meshes := {}
 var kit_ready := false
@@ -677,11 +697,13 @@ func _kst(d: Dictionary, key: String) -> SurfaceTool:
 
 ## Put kit piece `name` at xf into the building being made, near and far. Plaster takes the building's tone; panes
 ## are dark, or lit with colour `lit`.
-func piece(name: String, xf: Transform3D, tone: int, lit := Color(0, 0, 0)) -> void:
+func piece(name: String, xf: Transform3D, tone: int, lit := Color(0, 0, 0), glass := true) -> void:
 	for lo in [false, true]:
 		var m := _kit_mesh(name, lo)
 		for s in m.get_surface_count():
 			var sn := m.surface_get_name(s)
+			if sn == "glass" and not glass:
+				continue           # the pane is gone: an empty frame
 			if sn == "glass":
 				_kst(far if lo else near, "k_glass").append_from(_glass_mesh(m, s, lit), 0, xf)
 				continue
@@ -695,7 +717,7 @@ func piece(name: String, xf: Transform3D, tone: int, lit := Color(0, 0, 0)) -> v
 	elif name.begins_with("window_") or name.begins_with("door_"):
 		var m2 := _kit_mesh(name, true)
 		for s in m2.get_surface_count():
-			if m2.surface_get_name(s) == "glass":
+			if m2.surface_get_name(s) == "glass" and glass:
 				_kst(vfar, "k_glass").append_from(_glass_mesh(m2, s, lit), 0, Transform3D(xf.basis, xf.origin + xf.basis.z.normalized() * 0.26))
 
 
@@ -741,7 +763,8 @@ func prop_piece(scene: String, node: String, xf: Transform3D, far_too := true) -
 
 
 ## The buildings made so far, as a near mesh, a far one and a very far one that take turns by distance.
-func commit_kit(shadows := true) -> void:
+func commit_kit(shadows := true, far_shadows := false, reach := 0.0) -> void:
+	# reach: half the size of a big building (the distances are measured from its middle)
 	for level in [near, far, vfar]:
 		if level.is_empty():
 			continue
@@ -753,17 +776,17 @@ func commit_kit(shadows := true) -> void:
 		var mi := MeshInstance3D.new()
 		mi.mesh = am
 		if level == near:
-			mi.visibility_range_end = KIT_SWAP
+			mi.visibility_range_end = (KIT_SWAP + reach)
 			mi.visibility_range_end_margin = 3.0
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		elif level == far:
-			mi.visibility_range_begin = KIT_SWAP
+			mi.visibility_range_begin = (KIT_SWAP + reach)
 			mi.visibility_range_begin_margin = 3.0
-			mi.visibility_range_end = KIT_FAR
+			mi.visibility_range_end = (KIT_FAR + reach)
 			mi.visibility_range_end_margin = 5.0
-			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if far_shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		else:
-			mi.visibility_range_begin = KIT_FAR
+			mi.visibility_range_begin = (KIT_FAR + reach)
 			mi.visibility_range_begin_margin = 5.0
 			mi.visibility_range_end = KIT_GONE
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -808,6 +831,17 @@ func apartment(x0: float, z0: float, x1: float, z1: float, floors: int, shops :=
 	var wins: Array = opts.get("wins", WINDOW_SETS[rng.randi() % WINDOW_SETS.size()])
 	var row: int = opts.get("row", [2, 2, 3, 1][rng.randi() % 4])
 	var h := floors * 3.0
+	dmg = opts.get("damage", [])
+	if not dmg.is_empty():
+		# shell holes: what shows through them: the floor slabs' edges and a dark inner wall a room's depth in
+		var low := h
+		for dm in dmg:
+			low = min(low, (dm[0] as Vector3).y - float(dm[1]))
+		var inset := 2.6
+		if x1 - x0 > inset * 2.0 + 1.0 and z1 - z0 > inset * 2.0 + 1.0:
+			box("m3_inner", Vector3((x0 + x1) * 0.5, h * 0.5 - 0.2, (z0 + z1) * 0.5), Vector3(x1 - x0 - inset * 2.0, h - 0.4, z1 - z0 - inset * 2.0), 0.0, Color(0.5, 0.48, 0.46))
+		for f in range(maxi(1, int(floor(low / 3.0))), floors + 1):
+			box("m3_slab", Vector3((x0 + x1) * 0.5, f * 3.0 - 0.14, (z0 + z1) * 0.5), Vector3(x1 - x0 - 0.12, 0.26, z1 - z0 - 0.12), 0.0, Color(0.72, 0.72, 0.72))
 	var sides := {"s": [Vector3(0, 0, 1), Vector3(x0, 0, z1), x1 - x0], "n": [Vector3(0, 0, -1), Vector3(x1, 0, z0), x1 - x0],
 		"e": [Vector3(1, 0, 0), Vector3(x1, 0, z1), z1 - z0], "w": [Vector3(-1, 0, 0), Vector3(x0, 0, z0), z1 - z0]}
 	for side in sides:
@@ -843,10 +877,17 @@ func _kit_side(A: Vector3, X: Vector3, n: Vector3, L: float, floors: int, wins: 
 	var b := Basis(X * (w / 3.0), Vector3.UP, n)
 	var b1 := Basis(X, Vector3.UP, n)
 	var door := -1 if shops else k / 2
+	var gone := {}          # bays shot away: Vector2i(bay, floor)
 	for f in floors:
 		for i in k:
 			var o: Vector3 = A + X * (w * (i + 1)) + Vector3(0, f * 3.0, 0)
 			var xf := Transform3D(b, o)
+			var mid: Vector3 = o - X * (w * 0.5) + Vector3(0, 1.5, 0)
+			for dm in dmg:
+				if mid.distance_to(dm[0]) < float(dm[1]) * (0.85 + 0.3 * rng.randf()):
+					gone[Vector2i(i, f)] = true
+			if gone.has(Vector2i(i, f)):
+				continue
 			if f == 0:
 				if shops:
 					_shop_bay(o, X, n, w, tone)
@@ -862,22 +903,29 @@ func _kit_side(A: Vector3, X: Vector3, n: Vector3, L: float, floors: int, wins: 
 				continue
 			var g: String = _wname(wins[i % wins.size()], row, i)
 			piece("wall_window_" + g, xf, tone)
-			piece("window_" + g, xf, tone, _lit())
+			piece("window_" + g, xf, tone, _lit(), rng.randf() >= broken_share)
+			if soot_share > 0.0 and rng.randf() < soot_share:
+				soot(mid + Vector3(0, 1.6, 0), X, n, w * 0.8, 2.6)
 			# an air conditioner hung under some windows
 			if rng.randf() < ac_share:
 				prop_piece(AIRCON_SCENE, "exterior_aircon_unit",
 					Transform3D(b1, o - X * (w * 0.5 + (0.9 if row != 1 else 0.0)) + Vector3(0, 0.35 if row != 1 else 2.75, 0) + n * 0.22))
 	for i in k:
 		var o2: Vector3 = A + X * (w * (i + 1))
-		piece("cornice_standard_standard_01", Transform3D(b, o2 + Vector3(0, 2.92, 0)), tone)
-		piece("crown_standard_standard_01", Transform3D(b, o2 + Vector3(0, floors * 3.0, 0)), tone)
+		if not gone.has(Vector2i(i, 0)):
+			piece("cornice_standard_standard_01", Transform3D(b, o2 + Vector3(0, 2.92, 0)), tone)
+		if not gone.has(Vector2i(i, floors - 1)):
+			piece("crown_standard_standard_01", Transform3D(b, o2 + Vector3(0, floors * 3.0, 0)), tone)
 	# the corner where this side ends: a pilaster up every storey, capped
 	var B := A + X * L
 	for f in floors:
-		piece("wall_pier_corner_01", Transform3D(b1, B + Vector3(0, f * 3.0, 0)), tone)
-	piece("dado_pier_corner_01", Transform3D(b1, B), tone)
-	piece("cornice_pier_corner_01", Transform3D(b1, B + Vector3(0, 2.92, 0)), tone)
-	piece("crown_pier_corner_01", Transform3D(b1, B + Vector3(0, floors * 3.0, 0)), tone)
+		if not gone.has(Vector2i(k - 1, f)):
+			piece("wall_pier_corner_01", Transform3D(b1, B + Vector3(0, f * 3.0, 0)), tone)
+	if not gone.has(Vector2i(k - 1, 0)):
+		piece("dado_pier_corner_01", Transform3D(b1, B), tone)
+		piece("cornice_pier_corner_01", Transform3D(b1, B + Vector3(0, 2.92, 0)), tone)
+	if not gone.has(Vector2i(k - 1, floors - 1)):
+		piece("crown_pier_corner_01", Transform3D(b1, B + Vector3(0, floors * 3.0, 0)), tone)
 
 
 ## One ground floor shop bay ending at o (it runs back along X for w): a pilaster, the name board, and the roller
@@ -919,3 +967,126 @@ func _shop_bay(o: Vector3, X: Vector3, n: Vector3, w: float, tone: int) -> void:
 		pool(c + n * 2.0, Color(0.3, 0.26, 0.2, 1), 3.0)
 	else:
 		prop_piece(SHUTTER_SCENE, node, Transform3D(Basis(X * sw, Vector3.UP * (2.45 / 2.4), n), c))
+
+
+# =============== mission 3: a city after the fighting ===============
+const TEX3 := "res://assets/city/tex3/"
+
+
+## A scanned surface (Poly Haven, CC0) as a material: key, texture id, tint, how many times it repeats per metre,
+## roughness. Faces drawn with it are shaded by their colour too (dark for indoors).
+## glow: a share of the surface's own colour given off as light: daylight bounced round a room, which this renderer
+## cannot work out (without it a room with no lamp is black).
+func mat3(key: String, id: String, tint := Color(1, 1, 1), per_m := 0.5, rough := 0.9, glow := 0.0) -> void:
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load(TEX3 + id + "_diff.jpg")
+	if glow > 0.0:
+		m.emission_enabled = true
+		m.emission = tint
+		m.emission_texture = m.albedo_texture
+		m.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+		m.emission_energy_multiplier = glow
+	m.albedo_color = tint
+	m.normal_enabled = true
+	m.normal_texture = load(TEX3 + id + "_nor.jpg")
+	m.roughness = rough
+	m.uv1_scale = Vector3(per_m, per_m, per_m)
+	m.vertex_color_use_as_albedo = true
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	mats[key] = m
+
+
+func make_mats3() -> void:
+	if mats.has("m3_slab"):
+		return
+	mat3("m3_slab", "concrete_wall_008", Color(0.8, 0.8, 0.8), 0.4)
+	mat3("m3_inner", "damaged_plaster", Color(0.55, 0.55, 0.55), 0.3)
+	mat3("m3_tiles", "floor_tiles_06", Color(1, 1, 1), 0.5, 0.55, 0.16)
+	mat3("m3_brown_tiles", "tiled_floor_001", Color(1, 1, 1), 0.5, 0.6, 0.16)
+	mat3("m3_white_tiles", "long_white_tiles", Color(0.95, 0.97, 0.95), 0.6, 0.45, 0.2)
+	mat3("m3_paint", "pale_paint", Color(1, 1, 1), 0.35, 0.9, 0.16)
+	mat3("m3_salmon", "peeling_painted_wall", Color(1, 1, 1), 0.35, 0.9, 0.2)
+	mat3("m3_green", "pale_paint", Color(0.74, 0.78, 0.66), 0.35, 0.9, 0.14)
+	mat3("m3_plaster", "damaged_plaster", Color(1, 1, 1), 0.3, 0.9, 0.16)
+	mat3("m3_ceiling", "white_ceiling", Color(1, 1, 1), 0.5, 1.0, 0.2)
+	(mats["m3_ceiling"] as StandardMaterial3D).normal_scale = 0.35
+	mat3("m3_floor", "concrete_floor_worn_001", Color(1, 1, 1), 0.3, 0.75, 0.16)
+	mat3("m3_stair", "concrete_wall_008", Color(0.9, 0.9, 0.9), 0.4, 0.9, 0.2)
+	mat3("m3_linen", "rough_linen", Color(1, 1, 1), 1.2, 1.0, 0.2)
+	mat3("m3_dark_floor", "concrete_floor_worn_001", Color(0.8, 0.8, 0.8), 0.3, 0.8, 0.05)
+	mat3("m3_dark_wall", "concrete_wall_008", Color(0.75, 0.75, 0.75), 0.33, 0.9, 0.05)
+	mat3("m3_concrete", "concrete_wall_008", Color(1, 1, 1), 0.33)
+	mat3("m3_iron", "corrugated_iron_02", Color(1, 1, 1), 0.5, 0.6, 0.1)
+	mat3("m3_rusty", "rusty_corrugated_iron", Color(1, 1, 1), 0.5, 0.75, 0.08)
+	mat3("m3_brick", "factory_brick", Color(1, 1, 1), 0.5, 0.9, 0.1)
+	mat3("m3_rubble", "rubble", Color(0.9, 0.88, 0.85), 0.4, 1.0)
+	mat3("m3_debris", "concrete_debris", Color(0.8, 0.82, 0.86), 0.5, 1.0)
+	mat3("m3_cracked", "cracked_concrete", Color(0.8, 0.8, 0.8), 0.33, 0.95)
+	mat3("m3_road", "road_damaged", Color(0.75, 0.75, 0.75), 0.2, 0.9)
+	mat3("m3_burnt", "burned_ground_01", Color(0.5, 0.48, 0.46), 0.3, 1.0)
+	mat3("m3_plate", "metal_plate", Color(1, 1, 1), 0.8, 0.5)
+	mat3("m3_rust", "rusty_metal_02", Color(0.8, 0.8, 0.8), 0.5, 0.8)
+	(mats["m3_plate"] as StandardMaterial3D).metallic = 0.5
+	(mats["m3_iron"] as StandardMaterial3D).metallic = 0.4
+	# smoke stains and scorch marks: a soft dark blot laid over a surface
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	for y in 64:
+		for x in 64:
+			var dx := (x - 31.5) / 32.0
+			var t := y / 63.0                      # 0 at the top (thin), 1 at the bottom (the window's head)
+			var wd: float = lerp(0.35, 1.0, t)
+			var a: float = clamp(1.0 - abs(dx) / wd, 0.0, 1.0) * pow(t, 1.4)
+			img.set_pixel(x, y, Color(0.03, 0.03, 0.03, a * 0.85))
+	var so := StandardMaterial3D.new()
+	so.albedo_texture = ImageTexture.create_from_image(img)
+	so.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	so.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	so.uv1_scale = Vector3(1, 1, 1)
+	mats["m3_soot"] = so
+	var img2 := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	for y in 64:
+		for x in 64:
+			var d := Vector2(x - 31.5, y - 31.5).length() / 32.0
+			img2.set_pixel(x, y, Color(0.02, 0.02, 0.02, clamp(1.0 - d, 0.0, 1.0) * 0.9))
+	var sc := StandardMaterial3D.new()
+	sc.albedo_texture = ImageTexture.create_from_image(img2)
+	sc.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mats["m3_scorch"] = sc
+	# daylight in a window seen from indoors, and the cold tube of a strip light
+	var day := StandardMaterial3D.new()
+	day.albedo_color = Color(0.75, 0.8, 0.82)
+	day.emission_enabled = true
+	day.emission = Color(0.8, 0.86, 0.9)
+	day.emission_energy_multiplier = 1.3
+	mats["m3_daylight"] = day
+	var white := StandardMaterial3D.new()
+	white.vertex_color_use_as_albedo = true
+	white.roughness = 0.7
+	mats["m3_paintwork"] = white
+
+
+## A stain of smoke up a wall from the head of a window: centre c, on the face looking along n.
+func soot(c: Vector3, X: Vector3, n: Vector3, w: float, h: float) -> void:
+	var st := _st("m3_soot")
+	var p := [c - X * (w * 0.5) - Vector3.UP * (h * 0.5), c + X * (w * 0.5) - Vector3.UP * (h * 0.5), c + X * (w * 0.5) + Vector3.UP * (h * 0.5), c - X * (w * 0.5) + Vector3.UP * (h * 0.5)]
+	var uv := [Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]
+	for i in [0, 2, 1, 0, 3, 2]:
+		st.set_color(Color(1, 1, 1))
+		st.set_normal(n)
+		st.set_uv(uv[i])
+		st.add_vertex(p[i] + n * 0.03)
+
+
+## A flat mark on the ground (a scorch, an oil stain): the whole texture once over a square of side `size`.
+func decal(key: String, c: Vector3, size: float, yaw := 0.0) -> void:
+	var st := _st(key)
+	var b := Basis(Vector3.UP, yaw)
+	var hx: Vector3 = b.x * size * 0.5
+	var hz: Vector3 = b.z * size * 0.5
+	var p := [c - hx + hz, c + hx + hz, c + hx - hz, c - hx - hz]
+	var uv := [Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]
+	for i in [0, 2, 1, 0, 3, 2]:
+		st.set_color(Color(1, 1, 1))
+		st.set_normal(Vector3.UP)
+		st.set_uv(uv[i])
+		st.add_vertex(p[i])

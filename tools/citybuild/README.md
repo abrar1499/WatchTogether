@@ -22,3 +22,17 @@ Needs Python 3 with numpy, Pillow and `meshoptimizer` (`pip install meshoptimize
 
 `build_city.py` builds the simple vehicles still used (burnt car, burnt bus, militia pickup):
 `python3 build_city.py ../../godot/assets/city` (uses `tools/gunbuild/meshlib.py`).
+
+## Mission 3
+
+- Props: `python3 phget.py model <id> 1k <dir>/<id>` then `python3 prop_pack.py <dir>/<id> ../../godot/assets/city/props/<id> <triangles> 512`:
+  every node of the model baked into one mesh per material, simplified with meshoptimizer, colour and normal textures at
+  512 px (`<id>_game.gltf`, its `.bin`, `textures/`). The ids are listed in the main README's credits.
+- Textures: `python3 phget.py tex <id> 1k <dir>`; the colour map goes in at 1k and the normal map at 512 px as
+  `godot/assets/city/tex3/<id>_diff.jpg` and `<id>_nor.jpg`. `pale_paint` and `white_ceiling` are recoloured copies of
+  `peeling_painted_wall` and `ceiling_interior`.
+- Vehicles: `build_city.py` also writes `police.glb`, `ambulance.glb`, `van_burnt.glb`, `truck_mil.glb`, `apc.glb` and
+  `forklift.glb`.
+- In the `.import` file of every texture: `compress/mode=2`, `mipmaps/generate=true`, and `compress/normal_map=1` for
+  normal maps (compressed on the phone's graphics chip, a third of the memory).
+

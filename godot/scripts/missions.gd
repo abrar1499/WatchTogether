@@ -40,6 +40,8 @@ func build(num: int) -> Vector3:
 			return await _m1()
 		2:
 			return await _m2()
+		3:
+			return await _m3()
 	return Vector3(0, 0.05, 6)
 
 
@@ -173,9 +175,12 @@ func _process(dt: float) -> void:
 
 
 ## A soldier is not drawn beyond 150 m (far past where he can see or hit anyone).
+var far_cull := 150.0
+
+
 func _far_cull(e: Node) -> void:
 	for g in e.find_children("*", "GeometryInstance3D", true, false):
-		g.visibility_range_end = 150.0
+		g.visibility_range_end = far_cull
 
 
 func _raise_alarm() -> void:
@@ -1283,3 +1288,59 @@ func _merged_prop(path: String, p: Vector3, yaw: float, surf: String) -> StaticB
 	b.add_child(m)
 	main.add_child(b)
 	return b
+
+
+# =============== MISSION 3: DEAD CITY (a modern city after the fighting, by day) ===============
+var dead
+func _m3() -> Vector3:
+	title = "DEAD CITY"
+	briefing = "The Courier's laptop names the militia's headquarters: an office block behind a wall in the north-east of " + \
+		"a city the war has emptied. Its people are gone; its streets belong to the militia now.\n\nYou come in from the " + \
+		"south. The avenue ahead is blocked and watched, and a checkpoint holds the crossroads in the middle of the city. " + \
+		"The car park under the mall plaza on your left is a way past it out of sight.\n\nA wounded officer was treated " + \
+		"in the city hospital and left his codebook in the operating room: take it. In the headquarters, destroy the " + \
+		"radio set in the signals room upstairs and take the war plans from the commander's office beside it. Then get " + \
+		"to the pickup point among the containers in the industrial yard, south-east of the crossroads.\n\nYou carry an " + \
+		"AK-47, an SD-9 pistol, a knife and three grenades. Snipers watch from the headquarters' tower and a warehouse roof."
+	main.flat_c = Vector2(0, 0)
+	main.flat_r = 230.0
+	main.area = Rect2(-146, -146, 292, 292)
+	dead = load("res://scripts/deadcity.gd").new()
+	main.ground_collide = false
+	main.ground_holes.clear()
+	for h in dead.HOLES:
+		main.ground_holes.append(h)
+	main._build_ground()
+	main._build_mountains()
+	main.apply_war_day()
+	main.extra_cover = []
+	city = load("res://scripts/city.gd").new(main, 33)
+	dead.main = main
+	dead.mis = self
+	dead.city = city
+	dead.name = "DeadCity"
+	main.add_child(dead)
+	var spawn: Vector3 = await dead.build()
+	main._restore_breakables()
+	posts = dead.posts
+	far_cull = 80.0
+	lz = Vector3(26, 0, 60)
+	var book := _block(dead.codes_at, Vector3(0.22, 0.04, 0.3), "red", "wood", 0.4, false)
+	book.set_meta("label", "TAKE CODEBOOK")
+	book.set_meta("obj", 0)
+	items.append(book)
+	dead.radio_set.set_meta("obj", 1)
+	var plans := _block(dead.plans_at, Vector3(0.34, 0.03, 0.26), "wood", "wood", -0.3, false)
+	plans.set_meta("label", "TAKE PLANS")
+	plans.set_meta("obj", 2)
+	items.append(plans)
+	objectives = [
+		{"text": "Take the codebook from the hospital's operating room", "done": false, "pos": dead.codes_at},
+		{"text": "Destroy the radio set in the headquarters", "done": false, "pos": dead.radio_set.global_position + Vector3(0, 1, 0)},
+		{"text": "Take the war plans from the commander's office", "done": false, "pos": dead.plans_at},
+		{"text": "Reach the pickup point in the industrial yard", "done": false, "pos": lz + Vector3(0, 1, 0), "needs": [0, 1, 2], "lz": true}]
+	reinf_spots = [Vector3(39, 0, -6), Vector3(43, 0, -6), Vector3(39, 0, -3), Vector3(43, 0, -3)]
+	alarm_text = "The headquarters knows you are in the city. More soldiers are coming."
+	siren_pos = Vector3(42, 9.5, -50)
+	start_yaw = 0.0
+	return spawn

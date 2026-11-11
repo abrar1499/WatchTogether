@@ -35,7 +35,7 @@ var flat_c := Vector2(0, -8)               # the ground is flat round here, dune
 var flat_r := 58.0
 var extra_cover := []                      # low cover besides crates and drums: [position, half size]
 var doors := []
-const MISSIONS_BUILT := 2                  # missions that exist so far (of 30)
+const MISSIONS_BUILT := 3                  # missions that exist so far (of 30)
 
 
 func _ready() -> void:
@@ -250,6 +250,30 @@ func apply_dusk() -> void:
 	sun.shadow_opacity = 0.6
 
 
+## A hazy afternoon over a city after the fighting: pale sky, dust in the air, a warm sun from the south-west.
+func apply_war_day() -> void:
+	var sm: ProceduralSkyMaterial = world_env.sky.sky_material
+	sm.sky_top_color = Color(0.3, 0.4, 0.55)
+	sm.sky_horizon_color = Color(0.68, 0.66, 0.62)
+	sm.ground_horizon_color = Color(0.5, 0.48, 0.45)
+	sm.ground_bottom_color = Color(0.3, 0.29, 0.28)
+	sm.sun_angle_max = 14.0
+	world_env.ambient_light_color = Color(0.58, 0.6, 0.64)
+	world_env.ambient_light_energy = 0.5
+	world_env.fog_light_color = Color(0.62, 0.6, 0.56)
+	world_env.fog_density = 0.003
+	world_env.tonemap_exposure = 0.95
+	world_env.adjustment_saturation = 0.8
+	world_env.adjustment_contrast = 1.08
+	sun.rotation_degrees = Vector3(-38, -140, 0)
+	sun.light_color = Color(1.0, 0.93, 0.82)
+	sun.light_energy = 1.05
+	sun.shadow_opacity = 0.82
+	sun.directional_shadow_max_distance = 60.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.light_cull_mask = 1          # (what lies under the ground is drawn on layer 2: the sun does not reach it)
+
+
 ## Night: a dark blue sky, a cool moon low in the east (soft shadows), dark haze; the lamps light the streets.
 func apply_night() -> void:
 	var sm: ProceduralSkyMaterial = world_env.sky.sky_material
@@ -430,7 +454,12 @@ const GROUND_CELL := 5.0
 
 
 ## Height of the ground at (x, z): flat in the yard, dunes beyond it.
+var ground_holes: Array[Rect2] = []     # (x, z) where the ground is open to something built below it
+var ground_collide := true              # false: the level lays its own floor (with the holes in it)
 func ground_height(x: float, z: float) -> float:
+	for hr in ground_holes:
+		if hr.has_point(Vector2(x, z)):
+			return -30.0
 	var half := GROUND_N * GROUND_CELL * 0.5
 	var fx: float = clamp((x + half) / GROUND_CELL, 0.0, GROUND_N - 0.001)
 	var fz: float = clamp((z + half) / GROUND_CELL, 0.0, GROUND_N - 0.001)
@@ -497,6 +526,12 @@ func _build_ground() -> void:
 	for j in n:
 		for i in n:
 			var a := j * w + i
+			var holed := false
+			for hr in ground_holes:
+				if hr.has_point(Vector2(-half + (i + 0.5) * cell, -half + (j + 0.5) * cell)):
+					holed = true
+			if holed:
+				continue
 			st.add_index(a)
 			st.add_index(a + 1)
 			st.add_index(a + w)
@@ -515,14 +550,35 @@ func _build_ground() -> void:
 	var ground := StaticBody3D.new()
 	ground.set_meta("surf", "sand")
 	ground.add_child(gm)
-	var hs := HeightMapShape3D.new()
-	hs.map_width = w
-	hs.map_depth = w
-	hs.map_data = ground_h
-	var cs := CollisionShape3D.new()
-	cs.shape = hs
-	cs.scale = Vector3(cell, 1.0, cell)
-	ground.add_child(cs)
+	if ground_collide:
+		var hs := HeightMapShape3D.new()
+		hs.map_width = w
+		hs.map_depth = w
+		hs.map_data = ground_h
+		var cs := CollisionShape3D.new()
+		cs.shape = hs
+		cs.scale = Vector3(cell, 1.0, cell)
+		ground.add_child(cs)
+	else:
+		# a floor of slabs (top at 0), one run of cells at a time, leaving the holes open
+		for j in n:
+			var i0 := -1
+			for i in n + 1:
+				var open_ := i == n
+				if not open_:
+					for hr in ground_holes:
+						if hr.has_point(Vector2(-half + (i + 0.5) * cell, -half + (j + 0.5) * cell)):
+							open_ = true
+				if not open_ and i0 < 0:
+					i0 = i
+				if open_ and i0 >= 0:
+					var bs := BoxShape3D.new()
+					bs.size = Vector3((i - i0) * cell, 0.4, cell)
+					var bc := CollisionShape3D.new()
+					bc.shape = bs
+					bc.position = Vector3(-half + (i0 + i) * 0.5 * cell, -0.2, -half + (j + 0.5) * cell)
+					ground.add_child(bc)
+					i0 = -1
 	add_child(ground)
 
 
@@ -1149,7 +1205,7 @@ func _physics_process(dt: float) -> void:
 		var q := PhysicsRayQueryParameters3D.create(a, b)
 		q.exclude = [r["owner"].get_rid()]
 		var h := space.intersect_ray(q)
-		if not h.is_empty() or r["t"] > 6.0 or b.y < ground_height(b.x, b.z) - 0.2:
+		if not h.is_empty() or r["t"] > 6.0 or (ground_collide and b.y < ground_height(b.x, b.z) - 0.2):
 			var at: Vector3 = (h.position - v.normalized() * 0.15) if not h.is_empty() else b
 			n.queue_free()
 			rockets.remove_at(i)
@@ -2077,7 +2133,7 @@ class FX extends Node3D:
 		chips(p, Vector3.UP, "dark", 12, 9.0)
 		# the blast wave kicking up a ring of dust along the ground
 		var gy: float = get_parent().ground_height(p.x, p.z)
-		if p.y - gy < 1.5:
+		if abs(p.y - gy) < 1.5:
 			for i in 12:
 				var a := i * TAU / 12.0 + randf_range(-0.1, 0.1)
 				var out := Vector3(cos(a), 0, sin(a))
@@ -2153,7 +2209,7 @@ class FX extends Node3D:
 				mi.global_position += c["v"] * dt
 				mi.rotation += c["spin"] * dt
 				var gy: float = get_parent().ground_height(mi.global_position.x, mi.global_position.z) + 0.006
-				if mi.global_position.y < gy:
+				if mi.global_position.y < gy and mi.global_position.y > gy - 0.6:
 					mi.global_position.y = gy
 					if c["v"].length() > 1.5:
 						c["v"] = Vector3(c["v"].x * 0.3, -c["v"].y * 0.25, c["v"].z * 0.3)
@@ -2299,7 +2355,7 @@ class FX extends Node3D:
 		hole_i += 1
 		h.visible = true
 		var gy: float = get_parent().ground_height(p.x, p.z)
-		if p.y > gy + 0.5:
+		if abs(p.y - gy) > 0.5:
 			gy = p.y
 		h.global_position = Vector3(p.x, gy + 0.012, p.z)
 		h.rotation = Vector3(-PI * 0.5, randf() * TAU, 0)
@@ -2374,7 +2430,7 @@ class FX extends Node3D:
 				mi.global_position += c["v"] * dt
 				mi.rotation += c["spin"] * dt
 				var gy: float = get_parent().ground_height(mi.global_position.x, mi.global_position.z) + 0.01
-				if mi.global_position.y < gy:
+				if mi.global_position.y < gy and mi.global_position.y > gy - 0.6:
 					mi.global_position.y = gy
 					c["v"] = Vector3.ZERO
 					c["spin"] = Vector3.ZERO
