@@ -51,7 +51,8 @@ func _ready() -> void:
 			level = a.substr(8)
 	_build_environment()
 	if OS.has_feature("mobile"):
-		get_viewport().scaling_3d_scale = 0.8        # a phone's screen is dense: fewer pixels to shade, the same picture
+		# a phone's screen is dense: fewer pixels to shade, the same picture; the HD app draws every pixel
+		get_viewport().scaling_3d_scale = 1.0 if OS.has_feature("hd") else 0.8
 	add_child(fx)
 	add_child(snd)
 	var spawn := Vector3(0, 0.05, 6)

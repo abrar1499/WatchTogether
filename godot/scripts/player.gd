@@ -707,6 +707,9 @@ func place_left_target(sk: Skeleton3D, tgt: Node3D, gun: String, d := {}, slide 
 ## starting on the same foot, and played at the pace the speed asks for.
 const GAIT_F := [["walk", 0.8, 0.0], ["walk2", 1.35, 0.0], ["run", 2.45, 0.16]]      # clip, its own ground speed, shift of its cycle
 const GAIT_B := [["walkBack", 0.95, 0.0], ["runBack", 1.8, 0.09]]
+const GAIT_R := [["strafeR", 0.6, 0.0], ["walkR", 1.75, 0.09], ["runStrafeR", 2.2, 0.19]]
+const GAIT_L := [["strafeL", 1.1, 0.0], ["walkL", 1.78, 0.91]]
+const GAITS := {"walk": GAIT_F, "walk_b": GAIT_B, "walk_r": GAIT_R, "walk_l": GAIT_L}
 var gait_v := 1.0                 # the speed the gait is blended for (eased, so a change of pace is not a jump)
 var gait_len := {}                # clip -> its real length (s)
 var cycle_rate := 1.0             # cycles a second of the gait playing now
@@ -775,8 +778,8 @@ func _build_tree() -> void:
 	var bt := AnimationNodeBlendTree.new()
 	var sm := AnimationNodeStateMachine.new()
 	for st in STATES:
-		if st == "walk" or st == "walk_b":
-			sm.add_node(st, _gait_node(GAIT_F if st == "walk" else GAIT_B))
+		if GAITS.has(st):
+			sm.add_node(st, _gait_node(GAITS[st]))
 			continue
 		var an := AnimationNodeAnimation.new()
 		an.animation = STATES[st]
@@ -1633,7 +1636,7 @@ func _animate(dt: float) -> void:
 		if crouch:
 			st = {"F": "c_run" if run else "c_walk", "B": "c_back", "R": "c_r", "L": "c_l"}[dir]
 		else:
-			st = {"F": "walk", "B": "walk_b", "R": "run_r" if run else "walk_r", "L": "run_l" if run else "walk_l"}[dir]
+			st = {"F": "walk", "B": "walk_b", "R": "walk_r", "L": "walk_l"}[dir]
 		nat = NAT.get(STATES[st], 1.0)
 	elif crouch:
 		st = "kneel_aim" if aim_now else "kneel"
@@ -1643,9 +1646,9 @@ func _animate(dt: float) -> void:
 		playback.travel(st)
 		state = st
 	var scale := 1.0
-	if st == "walk" or st == "walk_b":
-		# forward and back: the gait blended for this speed, at the pace that keeps the feet from sliding
-		var gait: Array = GAIT_F if st == "walk" else GAIT_B
+	if GAITS.has(st):
+		# standing up, every way: the gait blended for this speed, at the pace that keeps the feet from sliding
+		var gait: Array = GAITS[st]
 		gait_v = lerp(gait_v, speed, min(1.0, dt * 8.0))
 		tree.set("parameters/loco/%s/blend_position" % st, gait_v)
 		cycle_rate = clamp(_gait_rate(gait, gait_v), 0.45, 2.2)
