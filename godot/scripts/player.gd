@@ -298,6 +298,25 @@ func _skin(sc: Node3D, tint: Color, fade_near := false) -> void:
 				mm.rim = 0.22
 				mm.rim_tint = 0.6
 			mm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+			# the hero's own skin at 2k: sharpened, with the cloth's weave, and maps for creases and for how dull each part is
+			var hn: String = str(mat.resource_name)
+			if ResourceLoader.exists("res://assets/hd/hero/%s_diff.jpg" % hn):
+				Engine.set_meta("hero_tex", hn)
+				mm.albedo_texture = load("res://assets/hd/hero/%s_diff.jpg" % hn)
+				mm.normal_enabled = true
+				mm.normal_texture = load("res://assets/hd/hero/%s_nor.jpg" % hn)
+				var orm: Texture2D = load("res://assets/hd/hero/%s_orm.jpg" % hn)
+				mm.roughness = 1.0
+				mm.roughness_texture = orm
+				mm.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
+				mm.ao_enabled = true
+				mm.ao_texture = orm
+				mm.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+				mm.ao_light_affect = 0.5
+				mm.normal_scale = 1.2
+				mm.rim_enabled = true
+				mm.rim = 0.18
+				mm.rim_tint = 0.6
 			if fade_near:
 				mm.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
 				mm.distance_fade_min_distance = 0.2
