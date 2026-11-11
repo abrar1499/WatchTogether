@@ -539,9 +539,15 @@ func _pbr(diff: String, nor: String, arm: String, tint: Color, uv := 1.0) -> Sta
 	m.normal_texture = load(nor)
 	m.roughness = 0.88
 	if arm != "":
-		m.roughness_texture = load(arm)
+		# the scan's occlusion (red) and roughness (green): the training ground's way
+		var a: Texture2D = load(arm)
+		m.roughness_texture = a
 		m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
 		m.roughness = 1.0
+		m.ao_enabled = true
+		m.ao_texture = a
+		m.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+		m.ao_light_affect = 0.3
 	m.uv1_scale = Vector3(uv, uv, uv)
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return m
@@ -553,14 +559,14 @@ func _kit_mats() -> void:
 	kit_ready = true
 	var t := "res://assets/city/facade/textures/modular_urban_apartments_facade_"
 	for i in PLASTER.size():
-		mats["k_plaster%d" % i] = _pbr("res://assets/city/tex/plaster_grey_diff.jpg", t + "plaster_nor_gl_1k.jpg", "", PLASTER[i])
+		mats["k_plaster%d" % i] = _pbr("res://assets/city/tex/plaster_grey_diff.jpg", t + "plaster_nor_gl_1k.jpg", t + "plaster_arm_1k.jpg", PLASTER[i])
 		# the same plaster on plain walls drawn here (uv in metres, the scan's bays are 3 m)
 		mats["kq_plaster%d" % i] = _pbr("res://assets/city/tex/plaster_grey_diff.jpg", t + "plaster_nor_gl_1k.jpg", "", PLASTER[i], 1.0 / 3.0)
-	mats["k_trim_01"] = _pbr("res://assets/city/tex/trim_01_grey_diff.jpg", t + "trim_01_nor_gl_1k.jpg", "", Color(0.92, 0.91, 0.88))
-	var crown := _pbr("res://assets/city/tex/trim_02_grey_diff.jpg", t + "trim_02_nor_gl_1k.jpg", "", Color(0.9, 0.89, 0.86))
+	mats["k_trim_01"] = _pbr("res://assets/city/tex/trim_01_grey_diff.jpg", t + "trim_01_nor_gl_1k.jpg", t + "trim_01_arm_1k.jpg", Color(0.92, 0.91, 0.88))
+	var crown := _pbr("res://assets/city/tex/trim_02_grey_diff.jpg", t + "trim_02_nor_gl_1k.jpg", t + "trim_02_arm_1k.jpg", Color(0.9, 0.89, 0.86))
 	crown.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mats["k_trim_02"] = crown
-	mats["k_objects"] = _pbr(t + "objects_diff_1k.jpg", t + "objects_nor_gl_1k.jpg", "", Color(1, 1, 1))
+	mats["k_objects"] = _pbr(t + "objects_diff_1k.jpg", t + "objects_nor_gl_1k.jpg", t + "objects_arm_1k.jpg", Color(1, 1, 1))
 	# every pane in one surface: dark reflecting glass, or a lit room (the vertex colour, set per window)
 	var gs := Shader.new()
 	gs.code = """shader_type spatial;
@@ -595,14 +601,14 @@ void fragment() {
 	sg.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	mats["k_sign"] = sg
 	# streets: worn asphalt, pavers, kerb stone, concrete walls
-	mats["g_asphalt"] = _pbr("res://assets/city/tex/asphalt_02_diff.jpg", "res://assets/city/tex/asphalt_02_nor.jpg", "", Color(0.78, 0.78, 0.78), 0.2)
+	mats["g_asphalt"] = _pbr("res://assets/city/tex/asphalt_02_diff.jpg", "res://assets/city/tex/asphalt_02_nor.jpg", "res://assets/city/tex/asphalt_02_arm.jpg", Color(0.78, 0.78, 0.78), 0.2)
 	# a road worn smooth by tyres: the lamps shine along it
 	mats["g_asphalt"].roughness = 0.62
 	mats["g_asphalt"].metallic_specular = 0.7
-	mats["g_worn"] = _pbr("res://assets/city/tex/worn_asphalt_diff.jpg", "res://assets/city/tex/worn_asphalt_nor.jpg", "", Color(0.8, 0.8, 0.8), 0.2)
-	mats["g_pavers"] = _pbr("res://assets/city/tex/square_concrete_pavers_diff.jpg", "res://assets/city/tex/square_concrete_pavers_nor.jpg", "", Color(0.72, 0.72, 0.74), 0.4)
+	mats["g_worn"] = _pbr("res://assets/city/tex/worn_asphalt_diff.jpg", "res://assets/city/tex/worn_asphalt_nor.jpg", "res://assets/city/tex/worn_asphalt_arm.jpg", Color(0.8, 0.8, 0.8), 0.2)
+	mats["g_pavers"] = _pbr("res://assets/city/tex/square_concrete_pavers_diff.jpg", "res://assets/city/tex/square_concrete_pavers_nor.jpg", "res://assets/city/tex/square_concrete_pavers_arm.jpg", Color(0.72, 0.72, 0.74), 0.4)
 	mats["g_kerb"] = _pbr("res://assets/city/tex/concrete_pavement_diff.jpg", "res://assets/city/tex/concrete_pavement_nor.jpg", "", Color(0.85, 0.85, 0.83), 0.5)
-	mats["g_wall"] = _pbr("res://assets/city/tex/concrete_wall_006_diff.jpg", "res://assets/city/tex/concrete_wall_006_nor.jpg", "", Color(0.85, 0.85, 0.83), 0.33)
+	mats["g_wall"] = _pbr("res://assets/city/tex/concrete_wall_006_diff.jpg", "res://assets/city/tex/concrete_wall_006_nor.jpg", "res://assets/city/tex/concrete_wall_006_arm.jpg", Color(0.85, 0.85, 0.83), 0.33)
 
 
 const FONT := {"A": "01110100011000111111100011000110001", "B": "11110100011000111110100011000111110",

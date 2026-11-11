@@ -251,7 +251,8 @@ func photo_sky(path: String, energy: float, yaw_deg: float, ambient := 0.6, aces
 	sky.radiance_size = Sky.RADIANCE_SIZE_64
 	world_env.sky = sky
 	world_env.sky_rotation = Vector3(0, deg_to_rad(yaw_deg), 0)
-	world_env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	# (the OpenGL renderer takes no fill light from a sky picture: there it is a colour)
+	world_env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY if (ambient > 0.0 and hd) else Environment.AMBIENT_SOURCE_COLOR
 	world_env.ambient_light_sky_contribution = ambient
 	world_env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	if aces:
@@ -1408,6 +1409,8 @@ func _prop(path: String, pos: Vector3, rot := 0.0, col := Vector3.ZERO, surf := 
 	b.set_meta("surf", surf)
 	var n: Node3D = load(path).instantiate()
 	b.add_child(n)
+	if path.begins_with("res://assets/env/"):
+		_real_surfaces(n, path)
 	if col != Vector3.ZERO:
 		var cs := CollisionShape3D.new()
 		if cylinder:
@@ -1423,6 +1426,87 @@ func _prop(path: String, pos: Vector3, rot := 0.0, col := Vector3.ZERO, surf := 
 		b.add_child(cs)
 	add_child(b)
 	return b
+
+
+# ---------------- real surfaces ----------------
+## The training ground's surfaces (Poly Haven scans, CC0, with colour, normal and occlusion/roughness/metal maps)
+## for everything else built here: the yard's walls, huts, containers and barriers keep their shapes and take these.
+## Mapped by position in the world (triplanar), so a wall's texture is never stretched however the model was cut.
+var pbr_cache := {}
+
+
+func pbr(id: String, tint := Color(1, 1, 1), per_m := 0.5, metal_scale := 1.0) -> BaseMaterial3D:
+	var key := "%s|%s|%s|%s" % [id, tint.to_html(), per_m, metal_scale]
+	if pbr_cache.has(key):
+		return pbr_cache[key]
+	# (a standard material with the occlusion/roughness/metal picture read channel by channel: the one-texture
+	# "ORM" material drew the sides away from the sun almost black on the OpenGL renderer)
+	var m := StandardMaterial3D.new()
+	var orm: Texture2D = load("res://assets/hd/tex/%s_orm.jpg" % id)
+	m.albedo_texture = load("res://assets/hd/tex/%s_diff.jpg" % id)
+	m.albedo_color = tint
+	m.normal_enabled = true
+	m.normal_texture = load("res://assets/hd/tex/%s_nor.jpg" % id)
+	m.roughness = 1.0
+	m.roughness_texture = orm
+	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
+	m.metallic = metal_scale
+	m.metallic_texture = orm
+	m.metallic_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_BLUE
+	m.ao_enabled = true
+	m.ao_texture = orm
+	m.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	m.ao_light_affect = 0.35
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_triplanar_sharpness = 4.0
+	m.uv1_scale = Vector3.ONE * per_m
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	pbr_cache[key] = m
+	return m
+
+
+func _real_surfaces(n: Node, path: String) -> void:
+	var file := path.get_file()
+	var paint := Color(0.72, 0.2, 0.15) if "red" in file else (Color(0.2, 0.36, 0.55) if "blue" in file else Color(0.3, 0.45, 0.28))
+	for mi in n.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (mi as MeshInstance3D).mesh
+		for si in mesh.get_surface_count():
+			var mat := mesh.surface_get_material(si)
+			var nm := str(mat.resource_name) if mat else ""
+			var rep_m: Material = null
+			match nm:
+				"plaster":
+					rep_m = pbr("brushed_concrete", Color(0.95, 0.88, 0.76), 0.45, 0.0)
+				"concrete":
+					rep_m = pbr("brushed_concrete", Color(0.86, 0.84, 0.8), 0.5, 0.0)
+				"paint":
+					rep_m = pbr("worn_corrugated_iron", paint * 1.5, 0.5)
+				"door":
+					rep_m = pbr("painted_metal_shutter", Color(0.75, 0.72, 0.66), 0.6)
+				"steel", "trim", "tank":
+					rep_m = pbr("rusty_painted_metal", Color(0.62, 0.62, 0.6), 0.8)
+			if rep_m:
+				(mi as MeshInstance3D).set_surface_override_material(si, rep_m)
+
+
+## Late afternoon, low warm sun: mission 1 lit as the training ground is (a photographed sunset sky, the light from
+## it, the ACES curve, a strong sun).
+func apply_golden() -> void:
+	# (the phone renderer takes little fill light from a sky picture: most of it is set as a colour, the sky's own)
+	photo_sky("res://assets/sky/sunset.hdr", 0.9, 240.0, 0.25)
+	world_env.ambient_light_color = Color(0.74, 0.74, 0.76)
+	world_env.ambient_light_energy = 1.7        # (no shadows: the sides away from the sun live on this)
+	world_env.tonemap_exposure = 0.95
+	world_env.fog_enabled = true
+	world_env.fog_light_color = Color(0.86, 0.74, 0.6)
+	world_env.fog_density = 0.0016
+	world_env.adjustment_enabled = true
+	world_env.adjustment_saturation = 1.0
+	world_env.adjustment_contrast = 1.05
+	sun.rotation_degrees = Vector3(-17, -60, 0)
+	sun.light_color = Color(1.0, 0.82, 0.62)
+	sun.light_energy = 1.9
 
 
 ## Missions progress: how many are open (the first always is).

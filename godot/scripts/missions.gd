@@ -214,23 +214,21 @@ func _reinforce() -> void:
 
 
 # ---------------- building blocks ----------------
-func _m(key: String) -> StandardMaterial3D:
+func _m(key: String) -> BaseMaterial3D:
 	if mats.has(key):
 		return mats[key]
 	var m: StandardMaterial3D
 	match key:
 		"plaster":
-			m = main._tex_mat("res://assets/env/building_0.jpg", "res://assets/env/building_1.png", 0.31, 0.95, true)
-			m.albedo_color = Color(0.92, 0.88, 0.8)
+			return main.pbr("brushed_concrete", Color(0.95, 0.88, 0.76), 0.45, 0.0)
 		"concrete":
-			m = main._tex_mat("res://assets/env/stairs_0.jpg", "res://assets/env/stairs_1.png", 0.5, 0.92, true)
+			return main.pbr("brushed_concrete", Color(0.86, 0.84, 0.8), 0.5, 0.0)
 		"cwall":
-			m = city.mats["g_wall"].duplicate()
-			m.uv1_triplanar = true
+			return main.pbr("brushed_concrete", Color(0.9, 0.86, 0.8), 0.4, 0.0)
 		"steel":
-			m = main._mat(Color(0.32, 0.33, 0.31), Color(0.45, 0.46, 0.43), 0.6, 0.55, 0.5)
+			return main.pbr("rusty_painted_metal", Color(0.62, 0.62, 0.6), 0.8)
 		"green":
-			m = main._mat(Color(0.2, 0.27, 0.17), Color(0.26, 0.33, 0.21), 0.8, 0.6, 0.3)
+			return main.pbr("green_metal_rust", Color(1, 1, 1), 0.6)
 		"dark":
 			m = StandardMaterial3D.new()
 			m.albedo_color = Color(0.08, 0.08, 0.08)
@@ -249,7 +247,7 @@ func _m(key: String) -> StandardMaterial3D:
 			m.metallic = 0.6
 			m.roughness = 0.12
 		"wood":
-			m = main._mat(Color(0.36, 0.25, 0.15), Color(0.48, 0.34, 0.2), 1.5, 0.85, 0.0)
+			return main.pbr("plywood", Color(0.7, 0.58, 0.45), 0.8, 0.0)
 		"fence":
 			m = StandardMaterial3D.new()
 			m.albedo_texture = _chainlink()
@@ -509,8 +507,7 @@ func _m1() -> Vector3:
 	await main.breathe(5)
 	main._build_rocks(main._tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true), 70.0, false)
 	main.scatter(1200, 260, 44.0)
-	main.apply_dusk()
-	main.photo_sky("res://assets/sky/dusk.hdr", 0.55, 152.0)
+	main.apply_golden()
 	main.extra_cover = []
 	# the fence: west gate (the way in), east gate (the way out), a torn stretch in the south side
 	_fence(Vector2(-34, 5), Vector2(34, 5), [[54.0, 57.0]])
