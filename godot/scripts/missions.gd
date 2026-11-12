@@ -48,9 +48,9 @@ func build(num: int) -> Vector3:
 func ready_player() -> void:
 	var p = main.player
 	p.infinite = false
-	# every gun is carried, each with a full magazine and its reserve
+	# he starts with three guns (pistol, AK-47, M4A1), full; the rest are taken from the soldiers he kills
 	for w in p.weapons:
-		w["own"] = true
+		w["own"] = w["gun"] in START_GUNS
 		w["mag"] = w["size"]
 		w["res"] = w["res0"]
 	p.wi = 2
@@ -61,11 +61,22 @@ func ready_player() -> void:
 var mustered := false
 
 
+const START_GUNS := ["pistol", "ak", "m4"]
+const ENEMY_GUNS := ["ak", "m4", "badger", "smg", "ak", "shotgun", "m4", "badger"]   # (snipers keep their Dragunov)
+
+
+## A rifleman's gun: every soldier carries one of the armoury's, taken in turn (the player can pick it up).
+func _enemy_gun(g: String) -> String:
+	if g != "ak":
+		return g
+	return ENEMY_GUNS[main.enemies.size() % ENEMY_GUNS.size()]
+
+
 func _post_soldier(ps: Array) -> void:
 	var e = load("res://scripts/enemy.gd").new()
 	e.name = "Enemy%d" % main.enemies.size()
 	main.add_child(e)
-	e.setup(main, ps[0] + Vector3(0, 0.05, 0), ps[1], ps[0], ps[2], ps[3], ps[4])
+	e.setup(main, ps[0] + Vector3(0, 0.05, 0), ps[1], ps[0], ps[2], _enemy_gun(ps[3]), ps[4])
 	main.enemies.append(e)
 	_far_cull(e)
 
@@ -235,7 +246,7 @@ func _reinforce() -> void:
 		var e = load("res://scripts/enemy.gd").new()
 		e.name = "Enemy%d" % main.enemies.size()
 		main.add_child(e)
-		e.setup(main, spots[i] + Vector3(0, 0.05, 0), 0.0, spots[i], kinds[i], "ak", [])
+		e.setup(main, spots[i] + Vector3(0, 0.05, 0), 0.0, spots[i], kinds[i], _enemy_gun("ak"), [])
 		e.grace = 0.0
 		main.enemies.append(e)
 		_far_cull(e)
@@ -525,7 +536,7 @@ func _m1() -> Vector3:
 	briefing = "A militia unit has taken a radio relay station on the old desert road and is using it to pass orders " + \
 		"to its fighters across the border.\n\nYou start behind a ruined wall west of the station. Get through the outer " + \
 		"yard and the inner wall, take the relay codes from the command hut, knock out the generator that powers the mast, " + \
-		"and get out through the east gate to the pickup point.\n\nYou carry every gun in the armoury, a knife and three " + \
+		"and get out through the east gate to the pickup point.\n\nYou carry a pistol, an AK-47, an M4A1, a knife and three " + \
 		"grenades. Take what you need from the guards. If a guard raises the alarm, more soldiers will come up the road."
 	main.flat_c = Vector2(0, -25)
 	main.flat_r = 80.0
@@ -797,7 +808,7 @@ func _m2() -> Vector3:
 		"of the town. On the market street one shop has its shutter up and its light on: the informant has left you a message " + \
 		"on its counter. Blow the transformer at the clock tower square: the streets round the hotel go dark and their alarm " + \
 		"loses its power. Kill the Courier in the hotel forecourt, take his laptop, and get out through the back of the hotel " + \
-		"to the helicopter in the rail yard.\n\nYou carry every gun in the armoury, a knife and three grenades. A sniper watches " + \
+		"to the helicopter in the rail yard.\n\nYou carry a pistol, an AK-47, an M4A1, a knife and three grenades. A sniper watches " + \
 		"from the clock tower, another from the water tower by the bus terminal, a third from the hotel roof."
 	main.flat_c = Vector2(0, 0)
 	main.flat_r = 205.0
@@ -1325,8 +1336,8 @@ func _m3() -> Vector3:
 		"The car park under the mall plaza on your left is a way past it out of sight.\n\nA wounded officer was treated " + \
 		"in the city hospital and left his codebook in the operating room: take it. In the headquarters, destroy the " + \
 		"radio set in the signals room upstairs and take the war plans from the commander's office beside it. Then get " + \
-		"to the pickup point among the containers in the industrial yard, south-east of the crossroads.\n\nYou carry every gun in the " + \
-		"armoury, a knife and three grenades. Snipers watch from the headquarters' tower and a warehouse roof."
+		"to the pickup point among the containers in the industrial yard, south-east of the crossroads.\n\nYou carry a pistol, an AK-47, " + \
+		"an M4A1, a knife and three grenades. Snipers watch from the headquarters' tower and a warehouse roof."
 	main.flat_c = Vector2(0, 0)
 	main.flat_r = 230.0
 	main.area = Rect2(-146, -146, 292, 292)
