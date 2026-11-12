@@ -1906,10 +1906,9 @@ func _update_camera(dt: float) -> void:
 	if crouch:
 		th -= 0.32
 	if aiming and view != 2:
-		# aiming, as in the well-known battle-royale shooters: a little closer, over the right shoulder, him on the left
-		tl = 1.3
-		ts = 0.68
-		th += 0.12
+		tl = 0.95
+		ts = 0.42
+		th += 0.02
 	if cover and cover_edge != 0:
 		# at the end of a wall the camera goes to the open side, so the corner is not in the way
 		var out_dir: Vector3 = Vector3(cover_n.z, 0, -cover_n.x) * cover_edge
