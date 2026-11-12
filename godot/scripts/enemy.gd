@@ -30,6 +30,7 @@ var head_b := -1
 var hp := 100.0
 var dead := false
 var dead_t := 0.0
+var blobs: Array = []        # soft shadow spots under him (see player.make_blobs)
 var wall_k := 0.0              # his rifle pointed down out of a wall in front of him
 var home := Vector3.ZERO
 var lod_n := randi() % 6
@@ -226,6 +227,8 @@ func _physics_process(dt: float) -> void:
 			skel.set_bone_pose_rotation(hips_b, Quaternion(axis, roll) * hips_base)
 		if dead_t < 9.0:
 			_keep_above_ground()
+			if not blobs.is_empty():
+				player.place_blobs(blobs, skel, global_position.y, true)
 		return
 	# far from the player and not fighting: think and move at a sixth of the rate (nobody can see the difference)
 	# (a phone's processor is the limit in a big map: beyond 40 m a third of the rate, beyond 70 m a sixth)
@@ -475,6 +478,9 @@ func _physics_process(dt: float) -> void:
 		scale *= 1.0 + 0.55 * sin(limp_ph)
 	tree.set("parameters/speed/scale", scale)
 	tree.advance(dt)
+	if blobs.is_empty():
+		blobs = player.make_blobs(self)
+	player.place_blobs(blobs, skel, global_position.y, false)
 	wall_k = player.wall_tuck(self, skel, yaw, wall_k, dt) if not (down or perch) else 0.0
 	if limping:
 		var dip: float = max(0.0, sin(limp_ph)) * 0.06 / skel.global_transform.basis.get_scale().x

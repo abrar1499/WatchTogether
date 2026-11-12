@@ -474,6 +474,85 @@ var show_k := 0.0
 const SHOW_TWIST := -0.62
 
 
+# ---- soft contact shadows ----
+## Nothing casts a real shadow (too dear on a phone), so people looked as if they floated. Each one gets three soft
+## dark spots on the ground: one under the body and one under each foot, following the feet as they step.
+static var blob_mat: StandardMaterial3D
+
+
+static func _blob_material() -> StandardMaterial3D:
+	if blob_mat == null:
+		var g := Gradient.new()
+		g.set_color(0, Color(0, 0, 0, 1))
+		g.set_color(1, Color(0, 0, 0, 0))
+		g.add_point(0.45, Color(0, 0, 0, 0.55))
+		var gt := GradientTexture2D.new()
+		gt.gradient = g
+		gt.fill = GradientTexture2D.FILL_RADIAL
+		gt.fill_from = Vector2(0.5, 0.5)
+		gt.fill_to = Vector2(1.0, 0.5)
+		gt.width = 64
+		gt.height = 64
+		blob_mat = StandardMaterial3D.new()
+		blob_mat.albedo_texture = gt
+		blob_mat.albedo_color = Color(1, 1, 1, 1)
+		blob_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		blob_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		blob_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+		blob_mat.render_priority = -1
+	return blob_mat
+
+
+func make_blobs(who: Node3D) -> Array:
+	var out := []
+	for k in [[1.0, 0.26], [0.34, 0.42], [0.34, 0.42]]:
+		var mi := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(k[0], k[0])
+		q.orientation = PlaneMesh.FACE_Y
+		mi.mesh = q
+		mi.material_override = _blob_material()
+		mi.transparency = 1.0 - k[1]
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.top_level = true
+		mi.visibility_range_end = 45.0
+		who.add_child(mi)
+		out.append(mi)
+	return out
+
+
+## Put the spots: the body's under the hips, each foot's under that foot, all on the ground at ground_y. dead: one
+## long spot under the whole body.
+func place_blobs(blobs: Array, sk: Skeleton3D, ground_y: float, dead := false) -> void:
+	if blobs.is_empty():
+		return
+	var xf := sk.global_transform
+	var hips: Vector3 = xf * sk.get_bone_global_pose(sk.find_bone("mixamorigHips")).origin
+	var lf: Vector3 = xf * sk.get_bone_global_pose(sk.find_bone("mixamorigLeftFoot")).origin
+	var rf: Vector3 = xf * sk.get_bone_global_pose(sk.find_bone("mixamorigRightFoot")).origin
+	var y := ground_y + 0.025
+	if dead:
+		var head: Vector3 = xf * sk.get_bone_global_pose(sk.find_bone("mixamorigHead")).origin
+		var mid := (head + (lf + rf) * 0.5) * 0.5
+		var along := Vector3(head.x - (lf.x + rf.x) * 0.5, 0, head.z - (lf.z + rf.z) * 0.5)
+		var len_: float = max(1.2, along.length() + 0.5)
+		(blobs[0] as MeshInstance3D).global_transform = Transform3D(Basis(Vector3.UP, atan2(along.x, along.z)).scaled(Vector3(1.0, 1.0, len_)), Vector3(mid.x, y, mid.z))
+		(blobs[1] as MeshInstance3D).visible = false
+		(blobs[2] as MeshInstance3D).visible = false
+		return
+	(blobs[0] as MeshInstance3D).global_position = Vector3(hips.x, y, hips.z)
+	var i := 1
+	for f in [lf, rf]:
+		var m: MeshInstance3D = blobs[i]
+		# darker and smaller the nearer the foot is to the ground
+		var h: float = clamp((f.y - ground_y) / 0.35, 0.0, 1.0)
+		m.visible = true
+		m.global_position = Vector3(f.x, y + 0.002 * i, f.z)
+		m.scale = Vector3.ONE * (1.0 + h * 0.6)
+		m.transparency = 0.58 + h * 0.4
+		i += 1
+
+
 ## A wall (or anything solid) right in front of the gun: the rifle is pointed down out of it, both arms turned
 ## down at the shoulder, eased in and out. Used for him and for every soldier. Returns the new amount (0..1).
 func wall_tuck(who: CharacterBody3D, sk: Skeleton3D, face_yaw: float, k: float, dt: float, reach := 1.05) -> float:
@@ -497,6 +576,16 @@ func wall_tuck(who: CharacterBody3D, sk: Skeleton3D, face_yaw: float, k: float, 
 
 
 var wall_k := 0.0
+var blobs: Array = []
+
+
+## The ground under him when he is in the air (a jump, a fall): what a ray straight down finds.
+func _ground_below() -> float:
+	var q := PhysicsRayQueryParameters3D.create(global_position + Vector3(0, 0.5, 0), global_position + Vector3(0, -20, 0))
+	q.collision_mask = 1
+	q.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	return float(hit["position"].y) if hit else global_position.y
 
 
 func _show_gun(dt: float) -> void:
@@ -1490,6 +1579,9 @@ func _physics_process(dt: float) -> void:
 	_bend_spine(dt)
 	_low_ready(dt)
 	_show_gun(dt)
+	if blobs.is_empty():
+		blobs = make_blobs(self)
+	place_blobs(blobs, skel, global_position.y if is_on_floor() else _ground_below(), dead)
 	wall_k = wall_tuck(self, skel, yaw + SHOW_TWIST * show_k, wall_k, dt) if not dead and not holstered and climb_t < 0.0 else lerp(wall_k, 0.0, min(1.0, dt * 10.0))
 	place_left_target(skel, ik_tgt, weapons[wi]["gun"], {}, pump_slide())
 	_update_camera(dt)
