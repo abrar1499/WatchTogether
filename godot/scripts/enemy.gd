@@ -13,9 +13,9 @@ const STATES := {"idle": "idle", "walk": "walk", "run": "run", "aim": "aim", "kn
 	"dieFall": "fallback"}
 const WALK := 1.15
 const RUN := 3.0
-const FOV_COS := 0.34          # about 70 degrees either side
-const SIGHT_RANGE := 38.0
-const COMBAT_RANGE := 60.0
+const FOV_COS := 0.1           # about 84 degrees either side
+const SIGHT_RANGE := 55.0
+const COMBAT_RANGE := 75.0
 
 var main: Node
 var player: Node
@@ -27,7 +27,7 @@ var muzzle: Node3D
 var body: CollisionShape3D
 var cap: CapsuleShape3D
 var head_b := -1
-var hp := 100.0
+var hp := 120.0
 var dead := false
 var dead_t := 0.0
 var rag: PhysicalBoneSimulator3D = null      # his body falling (see player.ragdoll)
@@ -150,7 +150,7 @@ func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasma
 	kneels = false        # (always on his feet: kneeling and standing again looked odd)
 	perch = pos.y > 1.5
 	# (a guard up on a tower stands at the rail with his rifle up, watching: kneeling there he looked asleep)
-	has_nade = randf() < 0.5
+	has_nade = randf() < 0.75
 	flank = 1.0 if randf() < 0.5 else -1.0
 	hold_t = randf_range(3.0, 6.0)
 	rig = player.make_rig(Color(0.86, 0.74, 0.58) if kind == "soldier" else Color(1, 1, 1), [gun], false, kind)
@@ -367,7 +367,7 @@ func _physics_process(dt: float) -> void:
 		var dist := to_p.length()
 		if sees and dist > 30.0:
 			moving = false
-			target_v = to_p.normalized() * WALK * 1.3
+			target_v = to_p.normalized() * RUN * 0.75        # closing in
 			face = atan2(-to_p.x, -to_p.z)
 		elif sees or (moving and lost_t < 2.5):
 			if moving:
@@ -376,7 +376,7 @@ func _physics_process(dt: float) -> void:
 				move_t += dt
 				if to_s.length() < 0.45 or move_t > 5.0:
 					moving = false
-					hold_t = randf_range(5.0, 9.0)
+					hold_t = randf_range(2.5, 5.0)     # not long in one place: he works round to a side
 					peek_up = true
 					peek_t = randf_range(2.5, 4.0)
 				else:
@@ -395,10 +395,11 @@ func _physics_process(dt: float) -> void:
 			spot_cover = false
 			var to_l := last_seen - global_position
 			to_l.y = 0.0
-			if lost_t > 2.5 and to_l.length() > 1.2 and home.distance_to(global_position) < 22.0 and lost_t < 12.0:
-				target_v = to_l.normalized() * WALK * 1.3     # careful, not a charge
+			if lost_t > 1.2 and to_l.length() > 1.2 and home.distance_to(global_position) < 50.0 and lost_t < 22.0:
+				# lost sight of him: after him, to where he was last seen, quickly while it is fresh
+				target_v = to_l.normalized() * (RUN * 0.8 if lost_t < 8.0 else WALK * 1.3)
 				face = atan2(-to_l.x, -to_l.z)
-			elif lost_t > 12.0:
+			elif lost_t > 22.0:
 				mode = "guard"
 				alert = 0.5
 				wait_t = 1.0
@@ -480,7 +481,7 @@ func _physics_process(dt: float) -> void:
 				shots_left -= 1
 				shot_t = 0.11
 				if shots_left == 0:
-					pause_t = randf_range(0.75, 1.4) * (1.5 if arm_hit else 1.0)
+					pause_t = randf_range(0.55, 1.1) * (1.5 if arm_hit else 1.0)
 					if gun == "svd":
 						pause_t = randf_range(2.2, 3.6)
 		else:
@@ -706,7 +707,7 @@ func _perceive(dt: float) -> void:
 		seen_t += dt
 		last_seen = player.global_position
 		if mode != "combat":
-			var gain := (3.0 if d < 12.0 else 1.6) * (0.55 if player.crouch else 1.0) * (1.4 if player.speed > 2.5 else 1.0) * (2.5 if mode == "search" else 1.0)
+			var gain := (4.5 if d < 12.0 else 2.4) * (0.55 if player.crouch else 1.0) * (1.4 if player.speed > 2.5 else 1.0) * (2.5 if mode == "search" else 1.0)
 			alert += dt * gain
 			if alert >= 1.0:
 				alarm(player.global_position, true)
@@ -793,7 +794,7 @@ func _shoot() -> void:
 	var chest: Vector3 = player.global_position + Vector3(0, 0.85 if player.crouch else 1.25, 0)
 	var dir := (chest - from).normalized()
 	var d := from.distance_to(chest)
-	var sp: float = 0.03 * clamp(1.3 - seen_t * 0.3, 0.5, 1.3)    # (rounds must now meet the body itself, not a wide capsule)
+	var sp: float = 0.026 * clamp(1.3 - seen_t * 0.3, 0.5, 1.3)    # (rounds must now meet the body itself, not a wide capsule)
 	sp *= 1.5 if player.speed > 2.5 else 1.0
 	sp *= 0.65 if player.crouch else 1.0
 	sp *= 0.7 + d / 40.0
@@ -804,7 +805,7 @@ func _shoot() -> void:
 	main.fx.muzzle_flash(from, muzzle.global_transform.basis.z, gun)
 
 	shot_n += 1
-	var end: Vector3 = main.shoot_ray(from, dir, randf_range(32.0, 40.0) if gun == "svd" else randf_range(5.5, 9.0), self)
+	var end: Vector3 = main.shoot_ray(from, dir, randf_range(34.0, 42.0) if gun == "svd" else randf_range(7.0, 10.5), self)
 	if shot_n % 2 == 0 or gun == "svd":
 		main.fx.tracer(from, end)
 

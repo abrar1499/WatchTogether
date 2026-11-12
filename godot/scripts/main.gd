@@ -1973,7 +1973,7 @@ func enemy_alarm(src: Node) -> void:
 		if e == src or e.dead or e.mode == "combat":
 			continue
 		var d: float = e.global_position.distance_to(src.global_position)
-		if d < 7.0 or (d < 15.0 and e.can_see(src.global_position + Vector3(0, 1.5, 0))):
+		if d < 14.0 or (d < 34.0 and e.can_see(src.global_position + Vector3(0, 1.5, 0))):
 			e.investigate(src.last_seen)
 
 
@@ -2837,11 +2837,11 @@ class Snd extends Node:
 		var at: float = AK_SINGLE[randi() % AK_SINGLE.size()]
 		match gun:
 			"svd":
-				_play("ak", at, 0.85, 3.0, 0.8, 0.2, true)
+				_play("ak", at, 0.85, -3.0, 0.8, 0.2, true)
 			"shotgun":
-				_play("ak", at, 0.85, 5.0, 0.62, 0.25, true)
+				_play("ak", at, 0.85, -1.0, 0.62, 0.25, true)
 			"rpg":
-				_play("ak", at, 0.85, 2.0, 0.48, 0.3, true)
+				_play("ak", at, 0.85, -4.0, 0.48, 0.3, true)
 
 	## The player's RPG: the launch and the rocket's roar going away (the user's recording, its first 3.5 s).
 	func rocket(_pos: Vector3) -> void:
@@ -2849,7 +2849,7 @@ class Snd extends Node:
 
 	## A sniper's single shot, from where he is.
 	func enemy_single(pos: Vector3) -> void:
-		_play3d("ak", pos, AK_SINGLE[randi() % AK_SINGLE.size()], 0.85, -1.0, 0.8, 0.2, true)
+		_play3d("ak", pos, AK_SINGLE[randi() % AK_SINGLE.size()], 0.85, -5.0, 0.8, 0.2, true)
 
 	## The shotgun's pump: the bolt rack from the rifle reload, a little quicker.
 	func pump() -> void:
@@ -2883,7 +2883,7 @@ class Snd extends Node:
 	## An enemy burst: the enemy rifle recording from where he stands, a little quieter than the player's gun.
 	func enemy_burst(pos: Vector3, shots: int) -> void:
 		var long := shots > 4
-		_play3d("enemy_ak", pos, 0.595 if long else 0.78, 0.97 if long else 0.79, 0.0)
+		_play3d("enemy_ak", pos, 0.595 if long else 0.78, 0.97 if long else 0.79, -4.0)
 
 	## A round striking something: the sound of what it hit, from there (not from far off).
 	func impact(pos: Vector3, surf: String, _mine: bool) -> void:
@@ -2931,7 +2931,7 @@ class Snd extends Node:
 		auto_loop = AK_LOOP if src == "ak" else M4_LOOP
 		auto.stream = streams[src]
 		auto.pitch_scale = {"smg": 1.12, "badger": 0.92}.get(kind, 1.0)
-		auto.volume_db = -7.0 if kind == "badger" else 0.0
+		auto.volume_db = -13.0 if kind == "badger" else -6.0
 		auto.play(auto_loop[0])
 
 	func stop_auto() -> void:
@@ -2939,12 +2939,12 @@ class Snd extends Node:
 			auto.stop()
 
 	func pistol() -> void:
-		_play("pistol", PISTOL_ON[pistol_i % PISTOL_ON.size()], 0.62)
+		_play("pistol", PISTOL_ON[pistol_i % PISTOL_ON.size()], 0.62, -6.0)
 		pistol_i += 1
 
 	func reload(kind: String) -> void:
 		var k := "reload_pistol" if kind == "pistol" else "reload_rifle"
-		_play(k, 0.0, 9.0)
+		_play(k, 0.0, 9.0, -8.0)
 
 	func step(run: bool, crouch: bool) -> void:
 		# boots on hard ground at every pace (the wet sand recording sounded like water): softer for a walk

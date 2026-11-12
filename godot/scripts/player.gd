@@ -472,7 +472,7 @@ func aim_chest(sk: Skeleton3D, want: Vector3, w: float, d := {}) -> void:
 ## Moving with the gun up but not aiming: the chest turned a little to the right, so the rifle shows beside him
 ## from the camera behind (straight ahead it was hidden by his own back).
 var show_k := 0.0
-const SHOW_TWIST := -0.62
+const SHOW_TWIST := 0.0
 
 
 # ---- a body with weight ----
@@ -671,7 +671,7 @@ var wall_push := Vector3.ZERO
 
 func _feet_out_of_walls(dt: float) -> void:
 	var want := Vector3.ZERO
-	if not dead and climb_t < 0.0:
+	if not dead and climb_t < 0.0 and not cover:
 		var xf := skel.global_transform
 		var hips: Vector3 = xf * skel.get_bone_global_pose(skel.find_bone("mixamorigHips")).origin
 		var space := get_world_3d().direct_space_state
@@ -1812,7 +1812,7 @@ func _physics_process(dt: float) -> void:
 	else:
 		blobs[0].visible = true
 		place_blobs(blobs, skel, global_position.y if is_on_floor() else _ground_below(), false)
-	wall_k = wall_tuck(self, skel, yaw + SHOW_TWIST * show_k, wall_k, dt) if not dead and not holstered and climb_t < 0.0 else lerp(wall_k, 0.0, min(1.0, dt * 10.0))
+	wall_k = wall_tuck(self, skel, yaw + SHOW_TWIST * show_k, wall_k, dt) if not dead and not holstered and climb_t < 0.0 and not cover else lerp(wall_k, 0.0, min(1.0, dt * 10.0))
 	place_left_target(skel, ik_tgt, weapons[wi]["gun"], {}, pump_slide())
 	_update_camera(dt)
 	_footsteps(dt)
@@ -2251,7 +2251,7 @@ func aim_dir_now() -> Vector3:
 
 
 func _update_camera(dt: float) -> void:
-	var lens := [[2.2, 1.05, 1.7], [1.35, 0.45, 1.62], [0.0, 0.0, 1.62]]
+	var lens := [[2.2, 0.62, 1.66], [1.35, 0.45, 1.62], [0.0, 0.0, 1.62]]
 	var cfg: Array = lens[view]
 	var tl: float = cfg[0]
 	var ts: float = cfg[1]
@@ -2491,7 +2491,7 @@ func _cover_step(dt: float) -> void:
 		ends[sgn] = (ray.call(ahead, ahead - n * 1.7) as Dictionary).is_empty()
 		blocked[sgn] = not (ray.call(base + Vector3(0, 0.55, 0), ahead + n * 0.2) as Dictionary).is_empty()
 		gap[sgn] = 99.0
-		for st in [0.3, 0.55, 0.8, 1.05, 1.3, 1.6, 1.9, 2.2, 2.5]:
+		for st in [0.3, 0.55, 0.8, 1.05, 1.3]:
 			var q2: Vector3 = base + tan * (sgn * st) + Vector3(0, 0.55, 0)
 			if (ray.call(q2, q2 - n * 1.7) as Dictionary).is_empty():
 				gap[sgn] = st
