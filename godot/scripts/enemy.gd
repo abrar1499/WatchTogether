@@ -361,7 +361,7 @@ func _physics_process(dt: float) -> void:
 		target_v = target_v.rotated(Vector3.UP, detour_sign * PI * 0.5)
 		if target_v.length() > 0.1:
 			face = atan2(-target_v.x, -target_v.z)
-	yaw = lerp_angle(yaw, face, min(1.0, dt * 6.0))
+	yaw = lerp_angle(yaw, face, min(1.0, dt * 9.0))
 	rotation.y = yaw
 	var hv := Vector3(vel.x, 0, vel.z).lerp(target_v, min(1.0, dt * 6.0))
 	vel.x = hv.x
@@ -385,8 +385,8 @@ func _physics_process(dt: float) -> void:
 
 	# aim and shoot
 	var facing_ok: bool = abs(wrapf(face - yaw, -PI, PI)) < 0.35
-	aim_w = lerp(aim_w, 1.0 if (want_aim and facing_ok) else 0.0, min(1.0, dt * 5.0))
-	if want_aim and sees and mode == "combat" and aim_w > 0.85 and not player.dead:
+	aim_w = lerp(aim_w, 1.0 if (want_aim and facing_ok) else 0.0, min(1.0, dt * 8.0))
+	if want_aim and sees and mode == "combat" and aim_w > 0.7 and not player.dead:
 		if shots_left > 0:
 			shot_t -= dt
 			if shot_t <= 0.0:
@@ -394,7 +394,7 @@ func _physics_process(dt: float) -> void:
 				shots_left -= 1
 				shot_t = 0.11
 				if shots_left == 0:
-					pause_t = randf_range(1.2, 2.4) * (1.5 if arm_hit else 1.0)
+					pause_t = randf_range(0.75, 1.4) * (1.5 if arm_hit else 1.0)
 					if gun == "svd":
 						pause_t = randf_range(2.2, 3.6)
 		else:
@@ -597,7 +597,7 @@ func _perceive(dt: float) -> void:
 		seen_t += dt
 		last_seen = player.global_position
 		if mode != "combat":
-			var gain := (1.5 if d < 12.0 else 0.75) * (0.55 if player.crouch else 1.0) * (1.4 if player.speed > 2.5 else 1.0) * (2.5 if mode == "search" else 1.0)
+			var gain := (3.0 if d < 12.0 else 1.6) * (0.55 if player.crouch else 1.0) * (1.4 if player.speed > 2.5 else 1.0) * (2.5 if mode == "search" else 1.0)
 			alert += dt * gain
 			if alert >= 1.0:
 				alarm(player.global_position, true)
@@ -619,7 +619,7 @@ func alarm(pos: Vector3, spread := false) -> void:
 	last_seen = pos
 	lost_t = 0.0 if sees else max(lost_t, 0.5)
 	if was != "combat":
-		pause_t = max(pause_t, randf_range(1.0, 1.8))
+		pause_t = max(pause_t, randf_range(0.3, 0.6))
 		if spread:
 			main.enemy_alarm(self)
 
@@ -653,7 +653,7 @@ func _shoot() -> void:
 	var chest: Vector3 = player.global_position + Vector3(0, 0.85 if player.crouch else 1.25, 0)
 	var dir := (chest - from).normalized()
 	var d := from.distance_to(chest)
-	var sp: float = 0.048 * clamp(1.4 - seen_t * 0.2, 0.5, 1.4)    # (rounds must now meet the body itself, not a wide capsule)
+	var sp: float = 0.035 * clamp(1.3 - seen_t * 0.3, 0.5, 1.3)    # (rounds must now meet the body itself, not a wide capsule)
 	sp *= 1.5 if player.speed > 2.5 else 1.0
 	sp *= 0.65 if player.crouch else 1.0
 	sp *= 0.7 + d / 40.0
