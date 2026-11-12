@@ -1910,7 +1910,9 @@ func _update_camera(dt: float) -> void:
 	cam_len = lerp(cam_len, tl, min(1.0, dt * 10.0))
 	cam_side = lerp(cam_side, ts, min(1.0, dt * 10.0))
 	cam_h = lerp(cam_h, th, min(1.0, dt * (14.0 if climb_t >= 0.0 else 8.0)))
-	if scoped:
+	# aiming: the view goes down the gun's own sights (first person), every gun
+	var sights: bool = aiming and not holstered and not dead and switching <= 0.0
+	if scoped or sights:
 		cam_len = 0.0
 		cam_side = 0.0
 		cam_h = 1.62 - (0.32 if crouch else 0.0)
@@ -1936,7 +1938,7 @@ func _update_camera(dt: float) -> void:
 	cam.fov = lerp(cam.fov, fov, min(1.0, dt * 10.0))
 	if scoped:
 		cam.fov = float(w["scope"])
-	var fp := (view == 2 or scoped) and not dead
+	var fp := (view == 2 or scoped or sights) and not dead
 	# (pressed against a wall the camera can end up right behind his head: do not fill the screen with him)
 	model.visible = not fp and not (cam_len > 0.6 and cam_arm.get_hit_length() < 0.45)
 	vm.visible = fp and not scoped and not (holstered and act_w > 0.9)
