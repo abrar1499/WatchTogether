@@ -30,6 +30,7 @@ var head_b := -1
 var hp := 100.0
 var dead := false
 var dead_t := 0.0
+var wall_k := 0.0              # his rifle pointed down out of a wall in front of him
 var home := Vector3.ZERO
 var lod_n := randi() % 6
 var ik_off := false
@@ -189,6 +190,27 @@ func _build_tree() -> void:
 	playback = tree.get("parameters/loco/playback")
 
 
+## A body lying down: no part of it below the ground he stands on (a death fall and the roll when his gun is
+## taken turned him about his hips, and half of him went into the ground). The whole body is lifted to the lowest
+## joint's height, plus the thickness of flesh round it.
+func _keep_above_ground() -> void:
+	var root: Node3D = rig["root"]
+	var low := INF
+	for b in [hips_b, skel.find_bone("mixamorigHead"), skel.find_bone("mixamorigLeftHand"), skel.find_bone("mixamorigRightHand"),
+			skel.find_bone("mixamorigSpine2"), skel.find_bone("mixamorigLeftFoot"), skel.find_bone("mixamorigRightFoot"),
+			skel.find_bone("mixamorigLeftLeg"), skel.find_bone("mixamorigRightLeg"), skel.find_bone("mixamorigLeftForeArm"), skel.find_bone("mixamorigRightForeArm")]:
+		if b < 0:
+			continue
+		low = min(low, (skel.global_transform * skel.get_bone_global_pose(b).origin).y)
+	if low == INF:
+		return
+	var floor_y := global_position.y
+	var need := floor_y + 0.12 - low
+	# only ever up, eased (and back down as far as the pose lets him lie)
+	var lift: float = clamp(root.position.y + need, 0.0, 0.8)
+	root.position.y = lerp(root.position.y, lift, 0.35)
+
+
 func _physics_process(dt: float) -> void:
 	if dead:
 		dead_t += dt
@@ -202,6 +224,8 @@ func _physics_process(dt: float) -> void:
 		if abs(roll) > 0.001:
 			var axis: Vector3 = (skel.get_bone_global_pose(skel.find_bone("mixamorigSpine2")).origin - skel.get_bone_global_pose(hips_b).origin).normalized()
 			skel.set_bone_pose_rotation(hips_b, Quaternion(axis, roll) * hips_base)
+		if dead_t < 9.0:
+			_keep_above_ground()
 		return
 	# far from the player and not fighting: think and move at a sixth of the rate (nobody can see the difference)
 	# (a phone's processor is the limit in a big map: beyond 40 m a third of the rate, beyond 70 m a sixth)
@@ -451,6 +475,7 @@ func _physics_process(dt: float) -> void:
 		scale *= 1.0 + 0.55 * sin(limp_ph)
 	tree.set("parameters/speed/scale", scale)
 	tree.advance(dt)
+	wall_k = player.wall_tuck(self, skel, yaw, wall_k, dt) if not (down or perch) else 0.0
 	if limping:
 		var dip: float = max(0.0, sin(limp_ph)) * 0.06 / skel.global_transform.basis.get_scale().x
 		skel.set_bone_pose_position(hips_b, skel.get_bone_pose_position(hips_b) + Vector3(0, -dip, 0))
@@ -743,8 +768,7 @@ func give_gun() -> String:
 	if taken:
 		return ""
 	taken = true
-	var tw := create_tween()
-	tw.tween_property(self, "roll", randf_range(0.5, 0.75) * (1.0 if randf() < 0.5 else -1.0), 0.55).set_trans(Tween.TRANS_SINE)
+	# (he used to be rolled over when it was taken: half of him went into the ground, or his legs into the air)
 	get_tree().create_timer(0.5).timeout.connect(func(): rig["guns"][gun].visible = false)
 	return gun
 

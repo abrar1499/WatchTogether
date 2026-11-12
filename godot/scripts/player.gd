@@ -474,6 +474,31 @@ var show_k := 0.0
 const SHOW_TWIST := -0.62
 
 
+## A wall (or anything solid) right in front of the gun: the rifle is pointed down out of it, both arms turned
+## down at the shoulder, eased in and out. Used for him and for every soldier. Returns the new amount (0..1).
+func wall_tuck(who: CharacterBody3D, sk: Skeleton3D, face_yaw: float, k: float, dt: float, reach := 1.05) -> float:
+	var from := who.global_position + Vector3(0, 1.4, 0) + who.global_transform.basis.x * 0.15
+	var fwd := Vector3(-sin(face_yaw), 0, -cos(face_yaw))
+	var q := PhysicsRayQueryParameters3D.create(from, from + fwd * reach)
+	q.collision_mask = 1
+	q.exclude = [who.get_rid()]
+	var hit := who.get_world_3d().direct_space_state.intersect_ray(q)
+	var want := 0.0
+	if hit:
+		want = clamp((reach - from.distance_to(hit["position"])) / (reach * 0.55), 0.0, 1.0)
+	k = lerp(k, want, min(1.0, dt * 10.0))
+	if k > 0.01:
+		var side: Vector3 = (sk.global_transform.basis.orthonormalized().inverse() * who.global_transform.basis.x).normalized()
+		for n in ["mixamorigRightArm", "mixamorigLeftArm"]:
+			var b := sk.find_bone(n)
+			var pg: Basis = sk.get_bone_global_pose(sk.get_bone_parent(b)).basis.orthonormalized()
+			sk.set_bone_pose_rotation(b, Quaternion((pg.inverse() * side).normalized(), -1.05 * k) * sk.get_bone_pose_rotation(b))
+	return k
+
+
+var wall_k := 0.0
+
+
 func _show_gun(dt: float) -> void:
 	var want := 1.0 if (speed > 0.25 and is_on_floor() and not aiming and not holstered and not crouch and reloading <= 0.0 and not dead) else 0.0
 	show_k = lerp(show_k, want, min(1.0, dt * 6.0))
@@ -1465,6 +1490,7 @@ func _physics_process(dt: float) -> void:
 	_bend_spine(dt)
 	_low_ready(dt)
 	_show_gun(dt)
+	wall_k = wall_tuck(self, skel, yaw + SHOW_TWIST * show_k, wall_k, dt) if not dead and not holstered and climb_t < 0.0 else lerp(wall_k, 0.0, min(1.0, dt * 10.0))
 	place_left_target(skel, ik_tgt, weapons[wi]["gun"], {}, pump_slide())
 	_update_camera(dt)
 	_footsteps(dt)
