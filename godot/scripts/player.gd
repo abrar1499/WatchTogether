@@ -471,7 +471,7 @@ func aim_chest(sk: Skeleton3D, want: Vector3, w: float, d := {}) -> void:
 ## Moving with the gun up but not aiming: the chest turned a little to the right, so the rifle shows beside him
 ## from the camera behind (straight ahead it was hidden by his own back).
 var show_k := 0.0
-const SHOW_TWIST := -0.3
+const SHOW_TWIST := -0.5
 
 
 func _show_gun(dt: float) -> void:
@@ -1893,7 +1893,7 @@ func aim_dir_now() -> Vector3:
 
 
 func _update_camera(dt: float) -> void:
-	var lens := [[2.2, 0.85, 1.68], [1.35, 0.45, 1.62], [0.0, 0.0, 1.62]]
+	var lens := [[2.2, 1.05, 1.7], [1.35, 0.45, 1.62], [0.0, 0.0, 1.62]]
 	var cfg: Array = lens[view]
 	var tl: float = cfg[0]
 	var ts: float = cfg[1]
