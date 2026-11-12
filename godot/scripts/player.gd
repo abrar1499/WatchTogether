@@ -534,6 +534,42 @@ func make_blobs(who: Node3D) -> Array:
 	return out
 
 
+## A foot reaching out in a stride can go through a wall he walks beside or into (the body capsule keeps only his
+## middle out). Each toe is tested from the hips at its own height; if a wall is between, the whole model is moved
+## back from that wall by as much, eased so it does not jump.
+var wall_push := Vector3.ZERO
+
+
+func _feet_out_of_walls(dt: float) -> void:
+	var want := Vector3.ZERO
+	if not dead and climb_t < 0.0:
+		var xf := skel.global_transform
+		var hips: Vector3 = xf * skel.get_bone_global_pose(skel.find_bone("mixamorigHips")).origin
+		var space := get_world_3d().direct_space_state
+		for n in ["mixamorigLeftToe_End", "mixamorigRightToe_End", "mixamorigLeftFoot", "mixamorigRightFoot"]:
+			var b := skel.find_bone(n)
+			if b < 0:
+				continue
+			var f: Vector3 = xf * skel.get_bone_global_pose(b).origin
+			var from := Vector3(global_position.x, f.y + 0.05, global_position.z)
+			var to := Vector3(f.x, f.y + 0.05, f.z)
+			var d := to - from
+			if d.length() < 0.05:
+				continue
+			to += d.normalized() * 0.06          # the boot's toe beyond the joint
+			var q := PhysicsRayQueryParameters3D.create(from, to)
+			q.collision_mask = 1
+			q.exclude = [get_rid()]
+			var hit := space.intersect_ray(q)
+			if hit:
+				var push: Vector3 = hit["position"] - to
+				push.y = 0.0
+				if push.length() > want.length():
+					want = push
+	wall_push = wall_push.lerp(want, min(1.0, dt * 14.0))
+	model.global_position = Vector3(global_position.x + wall_push.x, model.global_position.y, global_position.z + wall_push.z)
+
+
 ## How far the soles float above his feet's floor in the standing pose: the toes' joints sit inside the boot, about
 ## 3 cm above the sole, but in these models they stood 7 to 12 cm up, so people seemed to hover. Measured once
 ## standing still; the model is then let down by the difference.
@@ -1606,6 +1642,7 @@ func _physics_process(dt: float) -> void:
 	_bend_spine(dt)
 	_low_ready(dt)
 	_show_gun(dt)
+	_feet_out_of_walls(dt)
 	if not sole_fit and t > 0.6 and speed < 0.1 and is_on_floor() and not crouch and not dead:
 		sole_fit = true
 		model.position.y -= sole_drop(skel, global_position.y)
