@@ -485,7 +485,8 @@ static func _blob_material() -> StandardMaterial3D:
 		var g := Gradient.new()
 		g.set_color(0, Color(0, 0, 0, 1))
 		g.set_color(1, Color(0, 0, 0, 0))
-		g.add_point(0.45, Color(0, 0, 0, 0.55))
+		g.add_point(0.3, Color(0, 0, 0, 0.6))
+		g.add_point(0.65, Color(0, 0, 0, 0.18))
 		var gt := GradientTexture2D.new()
 		gt.gradient = g
 		gt.fill = GradientTexture2D.FILL_RADIAL
@@ -503,16 +504,28 @@ static func _blob_material() -> StandardMaterial3D:
 	return blob_mat
 
 
+static var blob_shades := {}
+
+
+## The spot's material at strength a (shared: one per strength). (A mesh's own transparency setting is not drawn
+## by the phone renderer, so the strength is in the material's colour.)
+static func _blob_shade(a: float) -> StandardMaterial3D:
+	if not blob_shades.has(a):
+		var m: StandardMaterial3D = _blob_material().duplicate()
+		m.albedo_color = Color(1, 1, 1, a)
+		blob_shades[a] = m
+	return blob_shades[a]
+
+
 func make_blobs(who: Node3D) -> Array:
 	var out := []
-	for k in [[1.0, 0.26], [0.34, 0.42], [0.34, 0.42]]:
+	for k in [[0.95, 0.5], [0.45, 0.35], [0.45, 0.35]]:
 		var mi := MeshInstance3D.new()
 		var q := QuadMesh.new()
 		q.size = Vector2(k[0], k[0])
 		q.orientation = PlaneMesh.FACE_Y
 		mi.mesh = q
-		mi.material_override = _blob_material()
-		mi.transparency = 1.0 - k[1]
+		mi.material_override = _blob_shade(k[1])
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.top_level = true
 		mi.visibility_range_end = 45.0
@@ -548,8 +561,7 @@ func place_blobs(blobs: Array, sk: Skeleton3D, ground_y: float, dead := false) -
 		var h: float = clamp((f.y - ground_y) / 0.35, 0.0, 1.0)
 		m.visible = true
 		m.global_position = Vector3(f.x, y + 0.002 * i, f.z)
-		m.scale = Vector3.ONE * (1.0 + h * 0.6)
-		m.transparency = 0.58 + h * 0.4
+		m.scale = Vector3.ONE * (1.0 + h * 0.5)
 		i += 1
 
 
