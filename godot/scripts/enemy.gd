@@ -30,6 +30,8 @@ var head_b := -1
 var hp := 100.0
 var dead := false
 var dead_t := 0.0
+var sole_fit := false
+var sole_base := 0.0           # the model let down so his soles meet the ground
 var blobs: Array = []        # soft shadow spots under him (see player.make_blobs)
 var wall_k := 0.0              # his rifle pointed down out of a wall in front of him
 var home := Vector3.ZERO
@@ -208,7 +210,7 @@ func _keep_above_ground() -> void:
 	var floor_y := global_position.y
 	var need := floor_y + 0.12 - low
 	# only ever up, eased (and back down as far as the pose lets him lie)
-	var lift: float = clamp(root.position.y + need, 0.0, 0.8)
+	var lift: float = clamp(root.position.y + need, sole_base, 0.8)
 	root.position.y = lerp(root.position.y, lift, 0.35)
 
 
@@ -478,6 +480,10 @@ func _physics_process(dt: float) -> void:
 		scale *= 1.0 + 0.55 * sin(limp_ph)
 	tree.set("parameters/speed/scale", scale)
 	tree.advance(dt)
+	if not sole_fit and t_life > 0.6 and is_on_floor() and state in ["idle", "aim"] and Vector2(vel.x, vel.z).length() < 0.1:
+		sole_fit = true
+		sole_base = -player.sole_drop(skel, global_position.y)
+		rig["root"].position.y = sole_base
 	if blobs.is_empty():
 		blobs = player.make_blobs(self)
 	player.place_blobs(blobs, skel, global_position.y, false)

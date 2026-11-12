@@ -534,6 +534,20 @@ func make_blobs(who: Node3D) -> Array:
 	return out
 
 
+## How far the soles float above his feet's floor in the standing pose: the toes' joints sit inside the boot, about
+## 3 cm above the sole, but in these models they stood 7 to 12 cm up, so people seemed to hover. Measured once
+## standing still; the model is then let down by the difference.
+func sole_drop(sk: Skeleton3D, floor_y: float) -> float:
+	var m := INF
+	for n in ["mixamorigLeftToeBase", "mixamorigRightToeBase", "mixamorigLeftToe_End", "mixamorigRightToe_End"]:
+		var b := sk.find_bone(n)
+		if b >= 0:
+			m = min(m, (sk.global_transform * sk.get_bone_global_pose(b).origin).y)
+	if m == INF:
+		return 0.0
+	return clamp(m - floor_y - 0.03, 0.0, 0.14)
+
+
 ## Put the spots: the body's under the hips, each foot's under that foot, all on the ground at ground_y. dead: one
 ## long spot under the whole body.
 func place_blobs(blobs: Array, sk: Skeleton3D, ground_y: float, dead := false) -> void:
@@ -589,6 +603,7 @@ func wall_tuck(who: CharacterBody3D, sk: Skeleton3D, face_yaw: float, k: float, 
 
 var wall_k := 0.0
 var blobs: Array = []
+var sole_fit := false
 
 
 ## The ground under him when he is in the air (a jump, a fall): what a ray straight down finds.
@@ -1591,6 +1606,9 @@ func _physics_process(dt: float) -> void:
 	_bend_spine(dt)
 	_low_ready(dt)
 	_show_gun(dt)
+	if not sole_fit and t > 0.6 and speed < 0.1 and is_on_floor() and not crouch and not dead:
+		sole_fit = true
+		model.position.y -= sole_drop(skel, global_position.y)
 	if blobs.is_empty():
 		blobs = make_blobs(self)
 	place_blobs(blobs, skel, global_position.y if is_on_floor() else _ground_below(), dead)
