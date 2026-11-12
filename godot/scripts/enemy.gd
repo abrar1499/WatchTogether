@@ -135,8 +135,7 @@ func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasma
 	rotation.y = yaw
 	kneels = false        # (always on his feet: kneeling and standing again looked odd)
 	perch = pos.y > 1.5
-	if perch:
-		kneels = true
+	# (a guard up on a tower stands at the rail with his rifle up, watching: kneeling there he looked asleep)
 	has_nade = randf() < 0.5
 	flank = 1.0 if randf() < 0.5 else -1.0
 	hold_t = randf_range(3.0, 6.0)
@@ -151,7 +150,7 @@ func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasma
 	if crawl:
 		crawl.loop_mode = Animation.LOOP_LINEAR
 	if gun == "svd":
-		kneels = true
+		kneels = false      # (the sniper stands too: kneeling behind a tower wall he was hidden, as if asleep)
 		has_nade = false
 	_build_tree()
 
@@ -208,7 +207,7 @@ func _physics_process(dt: float) -> void:
 	# (a phone's processor is the limit in a big map: beyond 40 m a third of the rate, beyond 70 m a sixth)
 	var far2: float = global_position.distance_squared_to(player.global_position)
 	# beyond 85 m he is not drawn at all: his hands stop following the gun, and he thinks twice a second
-	var asleep: bool = mode != "combat" and far2 > 85.0 * 85.0
+	var asleep: bool = mode != "combat" and far2 > 85.0 * 85.0 and not perch
 	if asleep != ik_off:
 		ik_off = asleep
 		if asleep:
@@ -426,7 +425,7 @@ func _physics_process(dt: float) -> void:
 		st = "walk"
 	elif mode == "combat" and spot_cover and not peek_up:
 		st = "kneel"
-	elif want_aim or mode == "combat":
+	elif want_aim or mode == "combat" or perch:
 		st = "kneel_aim" if (kneels and not spot_cover) else "aim"
 	if st != state:
 		playback.travel(st)
