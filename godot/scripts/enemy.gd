@@ -653,7 +653,7 @@ func _shoot() -> void:
 	var chest: Vector3 = player.global_position + Vector3(0, 0.85 if player.crouch else 1.25, 0)
 	var dir := (chest - from).normalized()
 	var d := from.distance_to(chest)
-	var sp: float = 0.035 * clamp(1.3 - seen_t * 0.3, 0.5, 1.3)    # (rounds must now meet the body itself, not a wide capsule)
+	var sp: float = 0.03 * clamp(1.3 - seen_t * 0.3, 0.5, 1.3)    # (rounds must now meet the body itself, not a wide capsule)
 	sp *= 1.5 if player.speed > 2.5 else 1.0
 	sp *= 0.65 if player.crouch else 1.0
 	sp *= 0.7 + d / 40.0
@@ -664,7 +664,7 @@ func _shoot() -> void:
 	main.fx.muzzle_flash(from, muzzle.global_transform.basis.z, gun)
 
 	shot_n += 1
-	var end: Vector3 = main.shoot_ray(from, dir, randf_range(26.0, 34.0) if gun == "svd" else randf_range(4.0, 7.0), self)
+	var end: Vector3 = main.shoot_ray(from, dir, randf_range(32.0, 40.0) if gun == "svd" else randf_range(5.5, 9.0), self)
 	if shot_n % 2 == 0 or gun == "svd":
 		main.fx.tracer(from, end)
 
