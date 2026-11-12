@@ -30,6 +30,8 @@ var head_b := -1
 var hp := 100.0
 var dead := false
 var dead_t := 0.0
+var rag: PhysicalBoneSimulator3D = null      # his body falling (see player.ragdoll)
+var hit_at := Vector3.ZERO     # where the last round struck him
 var sole_fit := false
 var sole_base := 0.0           # the model let down so his soles meet the ground
 var blobs: Array = []        # soft shadow spots under him (see player.make_blobs)
@@ -201,6 +203,18 @@ func _build_tree() -> void:
 	playback = tree.get("parameters/loco/playback")
 
 
+## Where his gun lies (in his hand).
+func gun_pos() -> Vector3:
+	return (rig["guns"][gun] as Node3D).global_position
+
+
+## Where his body is: his hips (falling, they are where the weight on them is).
+func body_pos() -> Vector3:
+	if rag != null and is_instance_valid(rag) and rag.has_node("rag_Hips"):
+		return (rag.get_node("rag_Hips") as Node3D).global_position
+	return skel.global_transform * skel.get_bone_global_pose(hips_b).origin
+
+
 ## A body lying down: no part of it below the ground he stands on (a death fall and the roll when his gun is
 ## taken turned him about his hips, and half of him went into the ground). The whole body is lifted to the lowest
 ## joint's height, plus the thickness of flesh round it.
@@ -225,20 +239,18 @@ func _keep_above_ground() -> void:
 func _physics_process(dt: float) -> void:
 	if dead:
 		dead_t += dt
-		if dead_t < 6.0:
-			tree.advance(dt)
-			if not taken:
-				player.pose_rig_hands(skel, gun, rig["data"])
-			hips_base = skel.get_bone_pose_rotation(hips_b)
 		for b in severed:
 			skel.set_bone_pose_scale(b, Vector3.ONE * 0.001)
-		if abs(roll) > 0.001:
-			var axis: Vector3 = (skel.get_bone_global_pose(skel.find_bone("mixamorigSpine2")).origin - skel.get_bone_global_pose(hips_b).origin).normalized()
-			skel.set_bone_pose_rotation(hips_b, Quaternion(axis, roll) * hips_base)
-		if dead_t < 9.0:
-			_keep_above_ground()
-			if not blobs.is_empty():
-				player.place_blobs(blobs, skel, global_position.y, true)
+		if rag != null and dead_t > 5.0:
+			player.ragdoll_rest(skel, rag)       # at rest: the pose stays, the weights go
+			rag = null
+		if not blobs.is_empty():
+			if rag != null:
+				for bl in blobs:
+					bl.visible = false
+			elif dead_t < 9.0:
+				blobs[0].visible = true
+				player.place_blobs(blobs, skel, body_pos().y - 0.14, true)
 		return
 	# far from the player and not fighting: think and move at a sixth of the rate (nobody can see the difference)
 	# (a phone's processor is the limit in a big map: beyond 40 m a third of the rate, beyond 70 m a sixth)
@@ -676,9 +688,9 @@ func _perceive(dt: float) -> void:
 			var tb: Vector3 = b.global_position - global_position
 			if tb.length() > 24.0 or fwd0.dot(Vector3(tb.x, 0, tb.z).normalized()) < 0.2:
 				continue
-			if _clear(eye, b.global_position + Vector3(0, 0.3, 0)):
+			if _clear(eye, b.body_pos() + Vector3(0, 0.3, 0)):
 				b.set_meta("looked_at", true)
-				see_body(b.global_position)
+				see_body(b.body_pos())
 				break
 	var target: Vector3 = player.global_position + Vector3(0, 0.9 if player.crouch else 1.35, 0)
 	var to := target - eye
@@ -802,6 +814,7 @@ func _shoot() -> void:
 func take_hit(dmg: float, pos: Vector3, dir: Vector3, power := 1.0, part := "torso") -> void:
 	if dead:
 		return
+	hit_at = pos
 	var headshot := part == "head"
 	main.fx.blood(pos, -dir)
 	var limb := part.begins_with("leg") or part.begins_with("arm")
@@ -988,9 +1001,13 @@ func _die(headshot: bool, blasted := false, push := Vector3.ZERO, force := 0.0, 
 	if nade_t >= 0.0:
 		nade_t = -1.0
 		rig["guns"][gun].visible = true
-	playback.travel(clip)
-	tree.set("parameters/speed/scale", 1.15 if clip == "dieKnock" else 1.0)
 	rig["ik"].interpolation = 0.0
+	rig["ik"].stop()
+	# he falls as a body with weight (see player.ragdoll): let go where he was hit, thrown the way the round went
+	var throw_: Vector3 = flat * clamp(force, 0.6, 3.0) * 30.0
+	if blasted:
+		throw_ = flat * 260.0 + Vector3(0, 150.0, 0)
+	rag = player.ragdoll(skel, rig["guns"][gun], throw_, hit_at if hit_at != Vector3.ZERO else global_position + Vector3(0, 1.2, 0))
 	main.snd.death(global_position, "blast" if blasted else ("head" if (headshot or silent_death) else "body"))
 	main.on_enemy_killed(self, headshot)
 	main.comrade_down(self)

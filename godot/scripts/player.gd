@@ -475,6 +475,134 @@ var show_k := 0.0
 const SHOW_TWIST := -0.62
 
 
+# ---- a body with weight ----
+## A man who is shot falls as a body does: every big bone becomes a weight on a joint (hips, chest, head, upper
+## and lower arms and legs, and the hand with its gun), let go where the round caught him and pushed the way it
+## was going. He lands on the ground, on steps, against a wall, his rifle in his hand beside him. When he has come
+## to rest the weights are taken away and he keeps the pose (so a street of the dead costs nothing).
+##   bone, the bone its length runs to, radius, mass, how far its joint swings (degrees)
+const RAG := [["Hips", "Spine1", 0.15, 14.0, 0.0], ["Spine2", "Neck", 0.16, 20.0, 28.0], ["Head", "HeadTop_End", 0.1, 5.0, 35.0],
+	["LeftArm", "LeftForeArm", 0.05, 2.5, 85.0], ["LeftForeArm", "LeftHand", 0.045, 1.8, 70.0],
+	["RightArm", "RightForeArm", 0.05, 2.5, 85.0], ["RightForeArm", "RightHand", 0.045, 1.8, 70.0],
+	["LeftUpLeg", "LeftLeg", 0.08, 8.0, 55.0], ["LeftLeg", "LeftFoot", 0.06, 4.5, 65.0],
+	["RightUpLeg", "RightLeg", 0.08, 8.0, 55.0], ["RightLeg", "RightFoot", 0.06, 4.5, 65.0],
+	["LeftFoot", "LeftToeBase", 0.045, 1.0, 30.0], ["RightFoot", "RightToeBase", 0.045, 1.0, 30.0]]
+
+
+## Make the weights for skeleton sk and let them go. gun_node: the rifle in his right hand (its length rests on the
+## ground too). push: the way he is thrown, with what force; at: where on him. Returns the simulator.
+func ragdoll(sk: Skeleton3D, gun_node: Node3D, push: Vector3, at: Vector3) -> PhysicalBoneSimulator3D:
+	var sim := PhysicalBoneSimulator3D.new()
+	sk.add_child(sim)
+	var made := {}
+	# (the hero's skeleton is in centimetres, scaled down a hundred times: the weights are made in metres, each
+	# weight's frame the bone's with that scale taken out)
+	var sc: float = sk.global_transform.basis.get_scale().x
+	var unscale := Basis.IDENTITY.scaled(Vector3.ONE / sc)
+	for r in RAG:
+		var b := sk.find_bone("mixamorig" + r[0])
+		var c := sk.find_bone("mixamorig" + r[1])
+		if b < 0:
+			continue
+		var len_: float = 0.12
+		if c >= 0:
+			len_ = max(0.06, sk.get_bone_global_rest(c).origin.distance_to(sk.get_bone_global_rest(b).origin) * sc)
+		var rad: float = r[2]
+		var pb := PhysicalBone3D.new()
+		pb.name = "rag_" + r[0]
+		var cs := CollisionShape3D.new()
+		var cap := CapsuleShape3D.new()
+		cap.radius = rad
+		cap.height = max(len_, rad * 2.0 + 0.01)
+		cs.shape = cap
+		pb.add_child(cs)
+		pb.mass = r[3]
+		pb.friction = 0.9
+		pb.bounce = 0.0
+		pb.linear_damp = 0.25
+		pb.angular_damp = 2.5
+		pb.collision_layer = 16
+		pb.collision_mask = 1
+		pb.bone_name = "mixamorig" + r[0]
+		sim.add_child(pb)
+		pb.body_offset = Transform3D(unscale, Vector3(0, len_ * 0.5 / sc, 0))      # the bone runs along its own y
+		pb.joint_offset = Transform3D(Basis.IDENTITY, Vector3(0, -len_ * 0.5, 0))
+		if float(r[4]) > 0.0:
+			pb.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
+			pb.set("joint_constraints/swing_span", float(r[4]))
+			pb.set("joint_constraints/twist_span", 25.0)
+			pb.set("joint_constraints/softness", 0.6)
+		made[r[0]] = pb
+	# the rifle: a long thin weight on the hand that holds it
+	var hb := sk.find_bone("mixamorigRightHand")
+	if hb >= 0 and gun_node != null and gun_node.visible:
+		var pb := PhysicalBone3D.new()
+		pb.name = "rag_gun"
+		var hg: Transform3D = sk.global_transform * sk.get_bone_global_pose(hb)
+		var rel: Transform3D = Transform3D(hg.basis.orthonormalized(), hg.origin).affine_inverse() * gun_node.global_transform
+		rel = rel.orthonormalized()
+		var cs := CollisionShape3D.new()
+		var bx := BoxShape3D.new()
+		bx.size = Vector3(0.06, 0.16, 0.75)
+		cs.shape = bx
+		cs.transform = rel * Transform3D(Basis.IDENTITY, Vector3(0, 0.0, 0.22))
+		pb.add_child(cs)
+		pb.mass = 3.5
+		pb.friction = 0.9
+		pb.linear_damp = 0.25
+		pb.angular_damp = 2.5
+		pb.collision_layer = 16
+		pb.collision_mask = 1
+		pb.bone_name = "mixamorigRightHand"
+		sim.add_child(pb)
+		pb.body_offset = Transform3D(unscale, Vector3.ZERO)
+		pb.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
+		pb.set("joint_constraints/swing_span", 50.0)
+		pb.set("joint_constraints/twist_span", 30.0)
+	sim.physical_bones_start_simulation()
+	# thrown where he was hit: the nearest weight takes the push, the chest a share of it
+	var best: PhysicalBone3D = null
+	var best_d := INF
+	for k in made:
+		var d: float = (made[k] as PhysicalBone3D).global_position.distance_to(at)
+		if d < best_d:
+			best_d = d
+			best = made[k]
+	if best != null:
+		best.apply_central_impulse(push)
+	if made.has("Spine2"):
+		(made["Spine2"] as PhysicalBone3D).apply_central_impulse(push * 0.6)
+	return sim
+
+
+## He has come to rest: keep the pose he lies in and take the weights away. (While the weights are on, the
+## skeleton's own poses are still the animation's: where he really lies is read from the weights.)
+func ragdoll_rest(sk: Skeleton3D, sim: PhysicalBoneSimulator3D) -> void:
+	if not is_instance_valid(sim):
+		return
+	var inv := sk.global_transform.affine_inverse()
+	var held := {}
+	for pb in sim.get_children():
+		if pb is PhysicalBone3D and pb.name != "rag_gun":
+			held[sk.find_bone(pb.bone_name)] = inv * (pb as PhysicalBone3D).global_transform * (pb as PhysicalBone3D).body_offset.affine_inverse()
+	var g := []
+	var loc := []
+	for i in sk.get_bone_count():
+		var par := sk.get_bone_parent(i)
+		var pg: Transform3D = Transform3D.IDENTITY if par < 0 else g[par]
+		var l: Transform3D = sk.get_bone_pose(i)
+		if held.has(i):
+			l = pg.affine_inverse() * (held[i] as Transform3D)
+		loc.append(l)
+		g.append(pg * l)
+	sim.physical_bones_stop_simulation()
+	sim.queue_free()
+	for i in sk.get_bone_count():
+		if held.has(i):
+			sk.set_bone_pose_position(i, (loc[i] as Transform3D).origin)
+			sk.set_bone_pose_rotation(i, (loc[i] as Transform3D).basis.get_rotation_quaternion())
+
+
 # ---- soft contact shadows ----
 ## Nothing casts a real shadow (too dear on a phone), so people looked as if they floated. Each one gets three soft
 ## dark spots on the ground: one under the body and one under each foot, following the feet as they step.
@@ -659,21 +787,25 @@ func _reach(_dt: float) -> void:
 	var k: float = sin(PI * clamp(act_t / 1.15, 0.0, 1.0))
 	if k < 0.01:
 		return
+	# he bends over the body as he reaches
+	turn_chest(skel, Quaternion((skel.global_transform.basis.orthonormalized().inverse() * global_transform.basis.x).normalized(), -0.55 * k))
 	var b := skel.find_bone("mixamorigRightArm")
 	var e := skel.find_bone("mixamorigRightForeArm")
 	var sh: Vector3 = skel.get_bone_global_pose(b).origin
 	var el: Vector3 = skel.get_bone_global_pose(e).origin
-	var target: Vector3 = skel.global_transform.affine_inverse() * (act_obj.global_position + Vector3(0, 0.25, 0))
+	# (to the gun itself, where it lies in the dead man's hand)
+	var gp: Vector3 = act_obj.gun_pos() if act_obj.has_method("gun_pos") else act_obj.global_position + Vector3(0, 0.25, 0)
+	var target: Vector3 = skel.global_transform.affine_inverse() * gp
 	var now_d := (el - sh).normalized()
 	var want_d := (target - sh).normalized()
 	var axis := now_d.cross(want_d)
 	if axis.length() < 0.001:
 		return
-	var ang: float = now_d.angle_to(want_d) * k * 0.85
+	var ang: float = now_d.angle_to(want_d) * k
 	var pg: Basis = skel.get_bone_global_pose(skel.get_bone_parent(b)).basis.orthonormalized()
 	skel.set_bone_pose_rotation(b, Quaternion((pg.inverse() * axis.normalized()).normalized(), ang) * skel.get_bone_pose_rotation(b))
 	# the forearm straightens out as it reaches
-	skel.set_bone_pose_rotation(e, skel.get_bone_pose_rotation(e).slerp(Quaternion.IDENTITY, k * 0.6))
+	skel.set_bone_pose_rotation(e, skel.get_bone_pose_rotation(e).slerp(Quaternion.IDENTITY, k * 0.9))
 
 
 func _show_gun(dt: float) -> void:
@@ -1674,7 +1806,12 @@ func _physics_process(dt: float) -> void:
 		model.position.y -= sole_drop(skel, global_position.y)
 	if blobs.is_empty():
 		blobs = make_blobs(self)
-	place_blobs(blobs, skel, global_position.y if is_on_floor() else _ground_below(), dead)
+	if dead:
+		for bl in blobs:
+			bl.visible = false           # (his body lies where it fell, not where he stood)
+	else:
+		blobs[0].visible = true
+		place_blobs(blobs, skel, global_position.y if is_on_floor() else _ground_below(), false)
 	wall_k = wall_tuck(self, skel, yaw + SHOW_TWIST * show_k, wall_k, dt) if not dead and not holstered and climb_t < 0.0 else lerp(wall_k, 0.0, min(1.0, dt * 10.0))
 	place_left_target(skel, ik_tgt, weapons[wi]["gun"], {}, pump_slide())
 	_update_camera(dt)
@@ -1787,7 +1924,7 @@ func _probe_action() -> void:
 			return
 	for e in world.enemies:
 		if e.dead and not e.taken:
-			var body: Vector3 = e.skel.global_transform * e.skel.get_bone_global_pose(e.hips_b).origin
+			var body: Vector3 = e.body_pos()
 			if Vector2(body.x - global_position.x, body.z - global_position.z).length() < 1.6 and abs(body.y - global_position.y) < 1.5:
 				act_kind = "take"
 				act_node = e
@@ -1827,7 +1964,7 @@ func action() -> void:
 	firing = false
 	snd.stop_auto()
 	if act_doing in ["take", "item"] and is_instance_valid(act_obj):
-		var tb: Vector3 = act_obj.global_position - global_position
+		var tb: Vector3 = (act_obj.gun_pos() if act_obj.has_method("gun_pos") else act_obj.global_position) - global_position
 		if Vector2(tb.x, tb.z).length() > 0.2:
 			yaw = atan2(-tb.x, -tb.z)
 	if act_doing == "kick" and is_instance_valid(act_obj):
@@ -2237,6 +2374,8 @@ func hit(dmg: float, from: Vector3, part := "") -> void:
 
 
 var view_before := 0
+var my_rag: PhysicalBoneSimulator3D = null
+var layer_alive := 1
 func _die() -> void:
 	dead = true
 	dead_t = 0.0
@@ -2246,11 +2385,22 @@ func _die() -> void:
 	view_before = view
 	if view == 2:
 		view = 0
+	# he falls as a body with weight too (his own standing shape out of its way)
+	layer_alive = collision_layer
+	collision_layer = 0
+	ik.stop()
+	my_rag = ragdoll(skel, guns[weapons[wi]["gun"]], Vector3(-sin(yaw), 0, -cos(yaw)) * -25.0, global_position + Vector3(0, 1.2, 0))
 	if fx.get_parent().has_method("on_player_dead"):
 		fx.get_parent().on_player_dead()
 
 
 func _respawn() -> void:
+	if is_instance_valid(my_rag):
+		my_rag.physical_bones_stop_simulation()
+		my_rag.queue_free()
+		my_rag = null
+		collision_layer = layer_alive
+		ik.start()
 	dead = false
 	hp = 100.0
 	vel = Vector3.ZERO
