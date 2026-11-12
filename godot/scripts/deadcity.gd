@@ -37,7 +37,7 @@ func _process(dt: float) -> void:
 
 
 func tick() -> void:
-	await main.breathe(40)
+	await main.breathe(18)
 
 
 # ---------------- small helpers ----------------

@@ -59,18 +59,48 @@ func ready_player() -> void:
 	p.yaw = start_yaw
 
 
-func begin() -> void:
-	start_t = t
-	for ps in posts:
-		var e = load("res://scripts/enemy.gd").new()
-		e.name = "Enemy%d" % main.enemies.size()
-		main.add_child(e)
-		e.setup(main, ps[0] + Vector3(0, 0.05, 0), ps[1], ps[0], ps[2], ps[3], ps[4])
-		e.grace = 1.0
-		main.enemies.append(e)
-		_far_cull(e)
+var mustered := false
+
+
+func _post_soldier(ps: Array) -> void:
+	var e = load("res://scripts/enemy.gd").new()
+	e.name = "Enemy%d" % main.enemies.size()
+	main.add_child(e)
+	e.setup(main, ps[0] + Vector3(0, 0.05, 0), ps[1], ps[0], ps[2], ps[3], ps[4])
+	main.enemies.append(e)
+	_far_cull(e)
+
+
+## The soldiers at their posts, made while the loading screen is still up: each is a model, a skeleton and an
+## animation tree, and all of them together were a freeze of a second or two after START was pressed. They stand
+## where they are, not thinking, until begin().
+func muster() -> void:
+	if mustered:
+		return
+	mustered = true
+	for i in posts.size():
+		_post_soldier(posts[i])
+		var e = main.enemies[main.enemies.size() - 1]
+		e.set_process(false)
+		e.set_physics_process(false)
+		if i % 3 == 2:
+			await get_tree().process_frame
 	if target_post >= 0:
 		target = main.enemies[target_post]
+
+
+func begin() -> void:
+	start_t = t
+	if not mustered:
+		mustered = true
+		for ps in posts:
+			_post_soldier(ps)
+		if target_post >= 0:
+			target = main.enemies[target_post]
+	for e in main.enemies:
+		e.set_process(true)
+		e.set_physics_process(true)
+		e.grace = 1.0
 	main.ui.message("MISSION %d" % n, title, 3.5)
 
 
@@ -501,10 +531,10 @@ func _m1() -> Vector3:
 	main.flat_c = Vector2(0, -25)
 	main.flat_r = 80.0
 	main.area = Rect2(-33, -54, 66, 58)
-	await main.breathe(5)
+	await main.breathe(3)
 	main._build_ground()
 	main._build_mountains()
-	await main.breathe(5)
+	await main.breathe(3)
 	main._build_rocks(main._tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true), 70.0, false)
 	main.scatter(1200, 260, 44.0)
 	main.apply_golden()
@@ -545,7 +575,7 @@ func _m1() -> Vector3:
 	_sandbags(Vector3(-14, 0, -25.5), 4)
 	_drum(Vector3(-16, 0, -18.5), "red")
 	_drum(Vector3(-16.6, 0, -19.1), "blue")
-	await main.breathe(5)
+	await main.breathe(3)
 	# inner compound: command hut, barracks, a third tower, mast and generator
 	var hut_c := Vector3(8, 0, -12)
 	_hut(hut_c, 6.0, 5.0, 1.2, "x")
@@ -1309,7 +1339,7 @@ func _m3() -> Vector3:
 	main._build_ground()
 	main._build_mountains()
 	main.apply_war_day()
-	main.photo_sky("res://assets/sky/overcast.hdr", 0.9, 76.0)
+	main.photo_sky("res://assets/sky/overcast.hdr", 2.6, 76.0)      # (a grey day: at 0.9 the film curve made it night)
 	main.extra_cover = []
 	city = load("res://scripts/city.gd").new(main, 33)
 	dead.main = main

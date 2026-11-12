@@ -504,6 +504,8 @@ func ad_image(seed_: int) -> ImageTexture:
 ## meshes swap at KIT_SWAP metres. Props from the same library (roller shutters, air conditioners, lamps) join in.
 const KIT := "res://assets/city/kit/"
 const KIT_SWAP := 32.0
+const FINE_BELOW := 14.5      # pieces whose foot is above this height are the light ones in the near mesh too
+const PLASTER_KEY := ["k_plaster0", "k_plaster1", "k_plaster2", "k_plaster3", "k_plaster4", "k_plaster5", "k_plaster6", "k_plaster7"]
 const KIT_FAR := 75.0         # beyond this, a building is flat walls with its window panes on them
 const KIT_GONE := 270.0       # and beyond this (deep in the haze) it is not drawn
 const PLASTER := [Color(0.93, 0.9, 0.84), Color(0.84, 0.83, 0.8), Color(0.96, 0.87, 0.74), Color(0.76, 0.75, 0.72),
@@ -515,7 +517,7 @@ const SIGN_BG := [Color(0.08, 0.32, 0.18), Color(0.55, 0.07, 0.06), Color(0.06, 
 const SHUTTER_SCENE := "res://assets/city/props/rollershutter_door/rollershutter_door_game.gltf"
 const AIRCON_SCENE := "res://assets/city/props/exterior_aircon_unit/exterior_aircon_unit_game.gltf"
 var kit := {}
-var near := {}          # material key -> SurfaceTool: near pieces of the building being made
+var near := {}          # material key -> Buf: near pieces of the buildings being made
 var far := {}
 var vfar := {}
 var dmg := []             # shell holes in the building being made: [centre, radius]
@@ -582,6 +584,10 @@ void fragment() {
 	var g := ShaderMaterial.new()
 	g.shader = gs
 	mats["k_glass"] = g
+	var acb := StandardMaterial3D.new()        # an air conditioner seen from far: a pale box
+	acb.albedo_color = Color(0.62, 0.62, 0.58)
+	acb.roughness = 0.7
+	mats["k_acbox"] = acb
 	mats["k_roof"] = _pbr("res://assets/city/tex/gravel_concrete_diff.jpg", "res://assets/city/tex/gravel_concrete_nor.jpg", "", Color(0.7, 0.7, 0.68), 0.25)
 	# shop insides seen under a raised shutter: plastered, lit warm
 	var shop := _pbr("res://assets/city/tex/plaster_grey_diff.jpg", t + "plaster_nor_gl_1k.jpg", "", Color(1, 1, 1), 1.0 / 3.0)
@@ -693,53 +699,336 @@ func _kit_mesh(name: String, lo: bool) -> ArrayMesh:
 	return kit[k]
 
 
-func _kst(d: Dictionary, key: String) -> SurfaceTool:
-	if not d.has(key):
-		var st := SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		d[key] = st
-	return d[key]
+# ---- joining pieces ----
+## A level's buildings are thousands of kit pieces joined into a few meshes. SurfaceTool.append_from reads every
+## piece back from the graphics card and copies it a vertex at a time: for mission 2's 24 000 pieces a phone needs
+## most of a minute. Here a piece's arrays are read once and kept; placing a piece only notes where it stands, and
+## the mesh is put together at the end with whole-array work (a transform over a packed array, an append), the
+## copies of one piece that face the same way taken together.
+class Buf:
+	var groups := {}       # Vector3i(part, basis, tint) -> PackedVector3Array: where each copy stands
+	var order: Array = []  # the groups' keys, and how far the mesh has got through them (a mesh made in slices)
+	var gi := 0
+	var done := 0
+
+
+const BIAS := 8388608.0      # 2^23: a float this much above a whole number holds that number in its low 23 bits
+const TILE := 8              # copies of a part kept side by side, to add several at once
+const P_V := 0               # a part: positions, normals, tangent directions, tangent signs, uvs, triangles,
+const P_N := 1               # vertex count, then normals .. triangles again for TILE copies in a row
+const P_T := 2
+const P_W := 3
+const P_UV := 4
+const P_TRI := 5
+const P_NV := 6
+const P_TILED := 7
+var parts := {}              # "mesh id|surface" -> number in part_list
+var part_list: Array = []
+var basis_ids := {}
+var basis_list: Array = []
+var tint_ids := {}
+var tint_list: Array = [Color(0, 0, 0), Color(0, 0, 0)]
+var tint_fill: Array = [PackedColorArray(), PackedColorArray()]
+var kit_srf := {}            # piece name (+ "_lo") -> [[kind, material key, part], ..]; kind 0 plaster, 1 glass, 2 other
+
+
+## The number of the part made of surface s of mesh m.
+func _part(m: Mesh, s: int) -> int:
+	var key := "%d|%d" % [m.get_instance_id(), s]
+	if parts.has(key):
+		return parts[key]
+	var a := m.surface_get_arrays(s)
+	var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+	var nv := v.size()
+	var t3 := PackedVector3Array()
+	var w := PackedFloat32Array()
+	t3.resize(nv)
+	w.resize(nv)
+	if a[Mesh.ARRAY_TANGENT] != null:
+		var t: PackedFloat32Array = a[Mesh.ARRAY_TANGENT]
+		for i in nv:
+			t3[i] = Vector3(t[i * 4], t[i * 4 + 1], t[i * 4 + 2])
+			w[i] = t[i * 4 + 3]
+	else:
+		t3.fill(Vector3(1, 0, 0))
+		w.fill(1.0)
+	var tri := PackedVector3Array()
+	if a[Mesh.ARRAY_INDEX] != null:
+		var ix: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+		tri.resize(ix.size() / 3)
+		for i in tri.size():
+			tri[i] = Vector3(ix[i * 3], ix[i * 3 + 1], ix[i * 3 + 2])
+	else:
+		tri.resize(nv / 3)
+		for i in tri.size():
+			tri[i] = Vector3(i * 3, i * 3 + 1, i * 3 + 2)
+	var uv: PackedVector2Array = a[Mesh.ARRAY_TEX_UV] if a[Mesh.ARRAY_TEX_UV] != null else PackedVector2Array()
+	if uv.size() != nv:
+		uv.resize(nv)
+	var nr: PackedVector3Array = a[Mesh.ARRAY_NORMAL] if a[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+	if nr.size() != nv:
+		nr.resize(nv)
+		nr.fill(Vector3.UP)
+	part_list.append([v, nr, t3, w, uv, tri, nv, null])
+	parts[key] = part_list.size() - 1
+	return part_list.size() - 1
+
+
+## TILE copies of a part's arrays in a row: [normals, tangent directions, signs, uvs, triangles].
+func _tiled(p: Array) -> Array:
+	if p[P_TILED] == null:
+		var nv: int = p[P_NV]
+		var out := []
+		for k in [P_N, P_T, P_W, P_UV]:
+			var one = p[k]
+			var many = one.duplicate()
+			for i in TILE - 1:
+				many.append_array(one)
+			out.append(many)
+		var tri: PackedVector3Array = (p[P_TRI] as PackedVector3Array).duplicate()
+		for i in range(1, TILE):
+			var o := float(i * nv)
+			tri.append_array(Transform3D(Basis.IDENTITY, Vector3(o, o, o)) * (p[P_TRI] as PackedVector3Array))
+		out.append(tri)
+		p[P_TILED] = out
+	return p[P_TILED]
+
+
+func _basis_id(b: Basis) -> int:
+	var id = basis_ids.get(b)
+	if id == null:
+		id = basis_list.size()
+		basis_list.append(b)
+		basis_ids[b] = id
+	return id
+
+
+func _tint_id(c: Color) -> int:
+	var id = tint_ids.get(c)
+	if id == null:
+		id = tint_list.size()
+		tint_list.append(c)
+		tint_fill.append(PackedColorArray())
+		tint_ids[c] = id
+	return id
+
+
+## Note a copy of part `pid` for the mesh being made under `key` in `level`: turned as basis `bid`, standing at o.
+## tint: every vertex takes that colour (window panes: 1 for dark glass, else the light of the room); 0 = none.
+func _put(level: Dictionary, key: String, pid: int, bid: int, o: Vector3, tint := 0) -> void:
+	var b: Buf = level.get(key)
+	if b == null:
+		b = Buf.new()
+		level[key] = b
+	var gk := Vector3i(pid, bid, tint)
+	var g = b.groups.get(gk)
+	if g == null:
+		g = PackedVector3Array()
+		b.groups[gk] = g
+	g.append(o)
+
+
+## One surface of the mesh from what was noted in b: all of it, or (limit > 0) the next `limit` vertices or so.
+## Returns true when b has been used up.
+func _buf_slice(am: ArrayMesh, b: Buf, limit := 0) -> bool:
+	var V := PackedVector3Array()
+	var N := PackedVector3Array()
+	var T := PackedVector3Array()
+	var W := PackedFloat32Array()
+	var UV := PackedVector2Array()
+	var TRI := PackedVector3Array()
+	var COL := PackedColorArray()
+	if b.order.is_empty():
+		b.order = b.groups.keys()
+	var full := false
+	while b.gi < b.order.size() and not full:
+		var gk: Vector3i = b.order[b.gi]
+		var p: Array = part_list[gk.x]
+		var basis: Basis = basis_list[gk.y]
+		var rot := Transform3D(basis, Vector3.ZERO)
+		var org: PackedVector3Array = b.groups[gk]
+		var v: PackedVector3Array = p[P_V]
+		var nv: int = p[P_NV]
+		var nt: int = (p[P_TRI] as PackedVector3Array).size()
+		var k := org.size()
+		var done := b.done
+		while done < k:
+			var c := mini(TILE, k - done)
+			var base := float(V.size()) + BIAS
+			for j in c:
+				V.append_array(Transform3D(basis, org[done + j]) * v)
+			if c == 1:
+				N.append_array(rot * (p[P_N] as PackedVector3Array))
+				T.append_array(rot * (p[P_T] as PackedVector3Array))
+				W.append_array(p[P_W])
+				UV.append_array(p[P_UV])
+				TRI.append_array(Transform3D(Basis.IDENTITY, Vector3(base, base, base)) * (p[P_TRI] as PackedVector3Array))
+			else:
+				var tl := _tiled(p)
+				if c == TILE:
+					N.append_array(rot * (tl[0] as PackedVector3Array))
+					T.append_array(rot * (tl[1] as PackedVector3Array))
+					W.append_array(tl[2])
+					UV.append_array(tl[3])
+					TRI.append_array(Transform3D(Basis.IDENTITY, Vector3(base, base, base)) * (tl[4] as PackedVector3Array))
+				else:
+					N.append_array(rot * (tl[0] as PackedVector3Array).slice(0, c * nv))
+					T.append_array(rot * (tl[1] as PackedVector3Array).slice(0, c * nv))
+					W.append_array((tl[2] as PackedFloat32Array).slice(0, c * nv))
+					UV.append_array((tl[3] as PackedVector2Array).slice(0, c * nv))
+					TRI.append_array(Transform3D(Basis.IDENTITY, Vector3(base, base, base)) * (tl[4] as PackedVector3Array).slice(0, c * nt))
+			if gk.z > 0:
+				var fill: PackedColorArray = tint_fill[gk.z]
+				if fill.size() < c * nv:
+					fill.resize(maxi(c * nv, 256))
+					fill.fill(tint_list[gk.z])
+				COL.append_array(fill.slice(0, c * nv))
+			done += c
+			if limit > 0 and V.size() >= limit:
+				full = true
+				break
+		if done >= k:
+			b.gi += 1
+			b.done = 0
+		else:
+			b.done = done
+	var used_up := b.gi >= b.order.size()
+	if used_up:
+		b.gi = 0
+		b.done = 0
+	var nv_all := V.size()
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = V
+	arr[Mesh.ARRAY_NORMAL] = N
+	arr[Mesh.ARRAY_TEX_UV] = UV
+	if COL.size() == nv_all:
+		arr[Mesh.ARRAY_COLOR] = COL
+	# tangents want four floats a vertex (direction, sign). An image does the weaving: three "pixels" of four bytes
+	# a row are a direction's floats; widened to four, the signs go in as the last column.
+	var ti := Image.create_from_data(3, nv_all, false, Image.FORMAT_RGBA8, T.to_byte_array())
+	ti.crop(4, nv_all)
+	ti.blit_rect(Image.create_from_data(1, nv_all, false, Image.FORMAT_RGBA8, W.to_byte_array()), Rect2i(0, 0, 1, nv_all), Vector2i(3, 0))
+	arr[Mesh.ARRAY_TANGENT] = ti.get_data().to_float32_array()
+	# triangles: each vertex number is a float, 2^23 + number: its low three bytes are the number, the fourth is
+	# not. Seen as rows of four one-byte pixels, the fourth column is painted black, and the bytes are the same
+	# numbers as 32-bit integers.
+	var ni := TRI.size() * 3
+	var ii := Image.create_from_data(4, ni, false, Image.FORMAT_R8, TRI.to_byte_array())
+	ii.fill_rect(Rect2i(3, 0, 1, ni), Color(0, 0, 0))
+	arr[Mesh.ARRAY_INDEX] = ii.get_data().to_int32_array()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES)
+	return used_up
+
+
+## The surfaces of kit piece `name` (its light version if lo): [[kind, material key, part], ..].
+func _kit_surfaces(name: String, lo: bool) -> Array:
+	var k := name + ("_lo" if lo else "")
+	var out = kit_srf.get(k)
+	if out == null:
+		out = []
+		var m := _kit_mesh(name, lo)
+		for s in m.get_surface_count():
+			var sn := m.surface_get_name(s)
+			out.append([0 if sn == "plaster" else (1 if sn == "glass" else 2), "k_" + sn, _part(m, s)])
+		kit_srf[k] = out
+	return out
+
+
+## A plain box the size of mesh m, as a part.
+func _box_part(m: Mesh) -> int:
+	var k := "box|%d" % m.get_instance_id()
+	if parts.has(k):
+		return parts[k]
+	var bb := m.get_aabb()
+	var c := bb.get_center()
+	var h := bb.size * 0.5
+	var v := PackedVector3Array()
+	var n := PackedVector3Array()
+	var t := PackedVector3Array()
+	var w := PackedFloat32Array()
+	var uv := PackedVector2Array()
+	var tri := PackedVector3Array()
+	for f in [[Vector3(1, 0, 0), Vector3(0, 1, 0)], [Vector3(-1, 0, 0), Vector3(0, 1, 0)], [Vector3(0, 0, -1), Vector3(0, 1, 0)],
+			[Vector3(0, 0, 1), Vector3(0, 1, 0)], [Vector3(1, 0, 0), Vector3(0, 0, -1)], [Vector3(1, 0, 0), Vector3(0, 0, 1)]]:
+		var u: Vector3 = f[0]
+		var vv: Vector3 = f[1]
+		var nn := u.cross(vv)
+		var fc := c + nn * h
+		var uu := u * h
+		var ww := vv * h
+		var b0 := float(v.size())
+		v.append_array(PackedVector3Array([fc - uu - ww, fc + uu - ww, fc + uu + ww, fc - uu + ww]))
+		for i in 4:
+			n.append(nn)
+			t.append(u)
+			w.append(1.0)
+		uv.append_array(PackedVector2Array([Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]))
+		tri.append(Vector3(b0, b0 + 2, b0 + 1))
+		tri.append(Vector3(b0, b0 + 3, b0 + 2))
+	part_list.append([v, n, t, w, uv, tri, v.size(), null])
+	parts[k] = part_list.size() - 1
+	return parts[k]
+
+
+## One flat pane over all the glass of window (or door) `name`: what stands for its panes from far off, and up
+## where nobody gets a close look (the frame and its bars are in front of it either way). -1: it has no glass.
+func _pane_part(name: String) -> int:
+	var k := "pane|" + name
+	if parts.has(k):
+		return parts[k]
+	var id := -1
+	for sf in _kit_surfaces(name, true):
+		if sf[0] != 1:
+			continue
+		var box := AABB()
+		var first := true
+		for q in (part_list[sf[2]][P_V] as PackedVector3Array):
+			box = AABB(q, Vector3.ZERO) if first else box.expand(q)
+			first = false
+		var a := box.position
+		var b := box.end
+		var z := a.z           # the deepest of its panes (a sash window has two layers): every bar stays in front
+		var w := PackedFloat32Array([1.0, 1.0, 1.0, 1.0])
+		var n := PackedVector3Array([Vector3(0, 0, 1), Vector3(0, 0, 1), Vector3(0, 0, 1), Vector3(0, 0, 1)])
+		var t := PackedVector3Array([Vector3(1, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 0)])
+		part_list.append([PackedVector3Array([Vector3(a.x, b.y, z), Vector3(b.x, b.y, z), Vector3(b.x, a.y, z), Vector3(a.x, a.y, z)]), n, t, w,
+			PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]), PackedVector3Array([Vector3(0, 1, 2), Vector3(0, 2, 3)]), 4, null])
+		id = part_list.size() - 1
+	parts[k] = id
+	return id
 
 
 ## Put kit piece `name` at xf into the building being made, near and far. Plaster takes the building's tone; panes
 ## are dark, or lit with colour `lit`.
 func piece(name: String, xf: Transform3D, tone: int, lit := Color(0, 0, 0), glass := true) -> void:
-	for lo in [false, true]:
-		var m := _kit_mesh(name, lo)
-		for s in m.get_surface_count():
-			var sn := m.surface_get_name(s)
-			if sn == "glass" and not glass:
-				continue           # the pane is gone: an empty frame
-			if sn == "glass":
-				_kst(far if lo else near, "k_glass").append_from(_glass_mesh(m, s, lit), 0, xf)
-				continue
-			var key := "k_" + sn
-			if sn == "plaster":
-				key = "k_plaster%d" % tone
-			_kst(far if lo else near, key).append_from(m, s, xf)
+	var bid := _basis_id(xf.basis)
+	var o := xf.origin
+	var plaster: String = PLASTER_KEY[tone]
+	var tint := 1 if lit == Color(0, 0, 0) else _tint_id(lit)
+	var high := o.y > FINE_BELOW
+	var pane := -1
+	# near: the detailed piece up to the fifth storey, the light one above (out of reach of a close look)
+	for lo in 2:
+		var level: Dictionary = far if lo == 1 else near
+		for sf in _kit_surfaces(name, lo == 1 or high):
+			if sf[0] == 1:
+				if not glass:          # the pane is gone: an empty frame
+					continue
+				if lo == 1 or high:
+					pane = _pane_part(name)
+					if pane >= 0:
+						_put(level, "k_glass", pane, bid, o, tint)
+				else:
+					_put(level, "k_glass", sf[2], bid, o, tint)
+			else:
+				_put(level, plaster if sf[0] == 0 else sf[1], sf[2], bid, o)
 	# very far: a plain wall for every wall piece, the panes laid on it; no frames, mouldings or piers
-	if name.begins_with("wall_") and not name.begins_with("wall_pier"):
-		_kst(vfar, "k_plaster%d" % tone).append_from(_kit_mesh("wall_standard_standard_01", true), 0, xf)
-	elif name.begins_with("window_") or name.begins_with("door_"):
-		var m2 := _kit_mesh(name, true)
-		for s in m2.get_surface_count():
-			if m2.surface_get_name(s) == "glass" and glass:
-				_kst(vfar, "k_glass").append_from(_glass_mesh(m2, s, lit), 0, Transform3D(xf.basis, xf.origin + xf.basis.z.normalized() * 0.26))
-
-
-## A piece's glass with every vertex coloured (black: dark glass; else the light of the room).
-func _glass_mesh(m: ArrayMesh, s: int, col: Color) -> ArrayMesh:
-	var key := "%d|%d|%s" % [m.get_instance_id(), s, col.to_html()]
-	if not kit.has(key):
-		var a := m.surface_get_arrays(s)
-		var cols := PackedColorArray()
-		cols.resize((a[Mesh.ARRAY_VERTEX] as PackedVector3Array).size())
-		cols.fill(col)
-		a[Mesh.ARRAY_COLOR] = cols
-		var am := ArrayMesh.new()
-		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
-		kit[key] = am
-	return kit[key]
+	if name.begins_with("wall_"):
+		if not name.begins_with("wall_pier"):
+			_put(vfar, plaster, _kit_surfaces("wall_standard_standard_01", true)[0][2], bid, o)
+	elif pane >= 0:
+		_put(vfar, "k_glass", pane, bid, o + xf.basis.z.normalized() * 0.26, tint)
 
 
 ## A mesh of a Poly Haven prop (node of its scene), without the offset it has in the prop's scene.
@@ -756,47 +1045,60 @@ func _prop_mesh(scene: String, node: String) -> Array:
 func prop_piece(scene: String, node: String, xf: Transform3D, far_too := true) -> void:
 	var pm := _prop_mesh(scene, node)
 	var m: Mesh = pm[0]
+	var at: Transform3D = xf * pm[1]
+	var bid := _basis_id(at.basis)
 	for s in m.get_surface_count():
 		var mat: Material = m.surface_get_material(s)
 		var key := "p_" + mat.resource_name
 		if not mats.has(key):
 			mats[key] = mat
-		_kst(near, key).append_from(m, s, xf * pm[1])
+		var pid := _part(m, s)
+		_put(near, key, pid, bid, at.origin)
 		if far_too:
-			_kst(far, key).append_from(m, s, xf * pm[1])
+			if scene == AIRCON_SCENE:
+				# beyond the near mesh an air conditioner is a pale box of its size
+				if s == 0:
+					_put(far, "k_acbox", _box_part(m), bid, at.origin)
+				continue
+			_put(far, key, pid, bid, at.origin)
 			if scene == SHUTTER_SCENE:
-				_kst(vfar, key).append_from(m, s, xf * pm[1])
+				_put(vfar, key, pid, bid, at.origin)
 
 
-## The buildings made so far, as a near mesh, a far one and a very far one that take turns by distance.
+## The buildings made so far, as a near mesh, a far one and a very far one that take turns by distance. The far
+## ones are made now; the near one when the camera comes towards it (see _stream).
 func commit_kit(shadows := true, far_shadows := false, reach := 0.0) -> void:
 	# reach: half the size of a big building (the distances are measured from its middle)
-	for level in [near, far, vfar]:
+	var far_mi: MeshInstance3D = null
+	for li in [1, 2]:
+		var level: Dictionary = far if li == 1 else vfar
 		if level.is_empty():
 			continue
 		var am := ArrayMesh.new()
 		for key in level:
-			var st: SurfaceTool = level[key]
-			st.commit(am, Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES)
+			_buf_slice(am, level[key])
 			am.surface_set_material(am.get_surface_count() - 1, mats[key])
 		var mi := MeshInstance3D.new()
 		mi.mesh = am
-		if level == near:
-			mi.visibility_range_end = (KIT_SWAP + reach)
-			mi.visibility_range_end_margin = 3.0
-			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		elif level == far:
-			mi.visibility_range_begin = (KIT_SWAP + reach)
-			mi.visibility_range_begin_margin = 3.0
+		if li == 1:
+			# (drawn from right up close until the near mesh is there)
 			mi.visibility_range_end = (KIT_FAR + reach)
 			mi.visibility_range_end_margin = 5.0
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if far_shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			far_mi = mi
 		else:
 			mi.visibility_range_begin = (KIT_FAR + reach)
 			mi.visibility_range_begin_margin = 5.0
 			mi.visibility_range_end = KIT_GONE
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		main.add_child(mi)
+	if not near.is_empty() and far_mi != null:
+		blocks.append({"bufs": near, "far": far_mi, "c": far_mi.mesh.get_aabb().get_center(), "reach": reach, "shadows": shadows,
+			"near": null, "am": null, "keys": []})
+		if not watching:
+			watching = true
+			main.set_meta("city", self)
+			main.get_tree().process_frame.connect(_stream)
 	near = {}
 	far = {}
 	vfar = {}
@@ -810,6 +1112,70 @@ func commit_kit(shadows := true, far_shadows := false, reach := 0.0) -> void:
 	occluders.clear()
 
 
+# ---- near meshes when they are needed ----
+## A block's detailed (near) mesh is only ever drawn inside KIT_SWAP, and it is the heavy one: two thirds of a
+## city's vertices. So it is not made with the level. It is put together when the camera comes towards the block,
+## a slice a frame, and let go when the camera is well away again. Until it is there the far mesh stands in.
+const NEAR_LEAD := 14.0      # begin this far outside the swap distance
+const NEAR_DROP := 30.0      # let go this far outside it
+const SLICE := 10000         # vertices put together in one frame, about
+var blocks: Array = []       # {bufs, far (its mesh instance), c (its middle), reach, shadows, near, am, keys}
+var making := -1
+var watching := false
+
+
+func _stream() -> void:
+	if not is_instance_valid(main) or not main.is_inside_tree():
+		return
+	var cam: Camera3D = main.get_viewport().get_camera_3d()
+	if cam != null:
+		stream(cam.global_position)
+
+
+## Make (a slice of) the near mesh the camera at `at` needs next. all: every one it needs, now.
+func stream(at: Vector3, all := false) -> void:
+	while true:
+		if making < 0:
+			var best_d := NEAR_LEAD
+			for i in blocks.size():
+				var k: Dictionary = blocks[i]
+				var d: float = at.distance_to(k.c) - k.reach - KIT_SWAP
+				if k.near != null:
+					if d > NEAR_DROP:
+						(k.near as Node).queue_free()
+						k.near = null
+						(k.far as MeshInstance3D).visibility_range_begin = 0.0
+						(k.far as MeshInstance3D).visibility_range_begin_margin = 0.0
+				elif d < best_d:
+					best_d = d
+					making = i
+			if making < 0:
+				return
+			blocks[making].am = ArrayMesh.new()
+			blocks[making].keys = (blocks[making].bufs as Dictionary).keys()
+		var b: Dictionary = blocks[making]
+		var am: ArrayMesh = b.am
+		var key: String = b.keys[0]
+		if _buf_slice(am, b.bufs[key], SLICE):
+			(b.keys as Array).pop_front()
+		am.surface_set_material(am.get_surface_count() - 1, mats[key])
+		if (b.keys as Array).is_empty():
+			var reach: float = b.reach
+			var mi := MeshInstance3D.new()
+			mi.mesh = am
+			mi.visibility_range_end = (KIT_SWAP + reach)
+			mi.visibility_range_end_margin = 3.0
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if b.shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			main.add_child(mi)
+			b.near = mi
+			b.am = null
+			(b.far as MeshInstance3D).visibility_range_begin = (KIT_SWAP + reach)
+			(b.far as MeshInstance3D).visibility_range_begin_margin = 3.0
+			making = -1
+		if not all:
+			return
+
+
 const ROOM_LIGHT := [Color(1.0, 0.7, 0.4), Color(1.0, 0.82, 0.6), Color(0.82, 0.88, 1.0), Color(0.35, 0.5, 0.95)]
 var lit_share := 0.3
 var ac_share := 0.14
@@ -820,7 +1186,7 @@ func _lit() -> Color:
 		return Color(0, 0, 0)
 	var r := rng.randf()
 	var c: Color = ROOM_LIGHT[0 if r < 0.45 else (1 if r < 0.7 else (2 if r < 0.88 else 3))]
-	return c * rng.randf_range(0.45, 0.85)
+	return c * snappedf(rng.randf_range(0.45, 0.85), 0.1)      # (a few brightnesses: lit panes of one kind join as one)
 
 
 func _wname(kind: String, row: int, i: int) -> String:

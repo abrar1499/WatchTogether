@@ -95,6 +95,8 @@ func _ready() -> void:
 	ui.player = player
 	layer.add_child(ui)
 	ui.set_anchors_preset(Control.PRESET_FULL_RECT)
+	if mission and loader:
+		await mission.muster()
 	if test_mode != "":
 		start_game()
 		var tpath := "res://scripts/%s.gd" % test_mode
@@ -106,6 +108,8 @@ func _ready() -> void:
 		else:
 			_run_test()
 		return
+	if has_meta("city"):
+		get_meta("city").stream(spawn, true)        # the detailed buildings round the start, before the screen opens
 	fx.prewarm(get_viewport().get_camera_3d())
 	if loader:
 		await get_tree().create_timer(0.25).timeout
