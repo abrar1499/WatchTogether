@@ -1871,11 +1871,17 @@ var aim_k := 0.0
 ## Chest. Relaxed: lean a little with the camera pitch. Aiming or firing: turn the chest so the barrel lies on the
 ## crosshair line whatever the legs are doing (the strafe and run clips twist and tip the hips, which used to
 ## carry the rifle off to the side and down).
+const STRAIGHTEN := 0.32
+
+
 func _bend_spine(dt: float) -> void:
 	var aim_now: bool = (aiming or firing or t - last_shot < 2.5) and not dead and not holstered and throw_t < 0.0 and hol_t < 0.0 and climb_t < 0.0 and act_t < 0.0
 	aim_k = lerp(aim_k, 1.0 if aim_now else 0.0, min(1.0, dt * 10.0))
 	var sk_inv: Basis = skel.global_transform.basis.orthonormalized().inverse()
 	var lean: float = clamp(pitch, -0.9, 0.9) * 0.35 * (1.0 - aim_k)
+	# walking fast and running: the run clips lean the chest well forward; held up straighter (the rifle is up)
+	if is_on_floor() and not crouch:
+		lean += STRAIGHTEN * clamp((speed - 1.2) / 1.6, 0.0, 1.0) * (1.0 - aim_k * 0.5)
 	if abs(lean) > 0.001 and not dead:
 		turn_chest(skel, Quaternion((sk_inv * global_transform.basis.x).normalized(), lean))
 	aim_chest(skel, aim_dir_now(), aim_k * (1.0 - rl_w) * (1.0 - act_w))
