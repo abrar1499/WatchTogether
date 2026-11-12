@@ -1814,7 +1814,8 @@ func _animate(dt: float) -> void:
 		scale = 1.0 if (firing or t - last_shot < 0.3) else 0.0
 	tree.set("parameters/speed/scale", scale)
 	# arms and chest: aim pose (or reload) while the legs keep walking; grenade and holster clips over all of it
-	var want_up := 1.0 if (moving and (aim_now or reloading > 0) and st != "jump" and not dead) else 0.0
+	# (moving with a gun in hand: always held up in front, ready, not swinging at the side)
+	var want_up := 1.0 if (moving and (aim_now or reloading > 0 or not holstered) and st != "jump" and not dead) else 0.0
 	if reloading > 0 and not moving:
 		want_up = 1.0
 	if acting and not dead and climb_t < 0.0:
