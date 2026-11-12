@@ -48,12 +48,11 @@ func build(num: int) -> Vector3:
 func ready_player() -> void:
 	var p = main.player
 	p.infinite = false
+	# every gun is carried, each with a full magazine and its reserve
 	for w in p.weapons:
-		w["own"] = w["gun"] in ["pistol", "ak"]
-	p.weapons[0]["mag"] = 12
-	p.weapons[0]["res"] = 36
-	p.weapons[2]["mag"] = 30
-	p.weapons[2]["res"] = 90
+		w["own"] = true
+		w["mag"] = w["size"]
+		w["res"] = w["res0"]
 	p.wi = 2
 	p.grenades = 3
 	p.yaw = start_yaw
@@ -526,7 +525,7 @@ func _m1() -> Vector3:
 	briefing = "A militia unit has taken a radio relay station on the old desert road and is using it to pass orders " + \
 		"to its fighters across the border.\n\nYou start behind a ruined wall west of the station. Get through the outer " + \
 		"yard and the inner wall, take the relay codes from the command hut, knock out the generator that powers the mast, " + \
-		"and get out through the east gate to the pickup point.\n\nYou carry an AK-47, an SD-9 pistol, a knife and three " + \
+		"and get out through the east gate to the pickup point.\n\nYou carry every gun in the armoury, a knife and three " + \
 		"grenades. Take what you need from the guards. If a guard raises the alarm, more soldiers will come up the road."
 	main.flat_c = Vector2(0, -25)
 	main.flat_r = 80.0
@@ -798,7 +797,7 @@ func _m2() -> Vector3:
 		"of the town. On the market street one shop has its shutter up and its light on: the informant has left you a message " + \
 		"on its counter. Blow the transformer at the clock tower square: the streets round the hotel go dark and their alarm " + \
 		"loses its power. Kill the Courier in the hotel forecourt, take his laptop, and get out through the back of the hotel " + \
-		"to the helicopter in the rail yard.\n\nYou carry an AK-47, an SD-9 pistol, a knife and three grenades. A sniper watches " + \
+		"to the helicopter in the rail yard.\n\nYou carry every gun in the armoury, a knife and three grenades. A sniper watches " + \
 		"from the clock tower, another from the water tower by the bus terminal, a third from the hotel roof."
 	main.flat_c = Vector2(0, 0)
 	main.flat_r = 205.0
@@ -1326,8 +1325,8 @@ func _m3() -> Vector3:
 		"The car park under the mall plaza on your left is a way past it out of sight.\n\nA wounded officer was treated " + \
 		"in the city hospital and left his codebook in the operating room: take it. In the headquarters, destroy the " + \
 		"radio set in the signals room upstairs and take the war plans from the commander's office beside it. Then get " + \
-		"to the pickup point among the containers in the industrial yard, south-east of the crossroads.\n\nYou carry an " + \
-		"AK-47, an SD-9 pistol, a knife and three grenades. Snipers watch from the headquarters' tower and a warehouse roof."
+		"to the pickup point among the containers in the industrial yard, south-east of the crossroads.\n\nYou carry every gun in the " + \
+		"armoury, a knife and three grenades. Snipers watch from the headquarters' tower and a warehouse roof."
 	main.flat_c = Vector2(0, 0)
 	main.flat_r = 230.0
 	main.area = Rect2(-146, -146, 292, 292)
