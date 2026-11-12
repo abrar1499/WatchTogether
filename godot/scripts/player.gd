@@ -17,11 +17,11 @@ const GRAVITY := 12.0
 # natural speed (m/s) of each clip, measured from its root motion
 # the ground speed each clip's feet really walk at (measured: the planted foot must not slide)
 const NAT := {"walk": 0.8, "walkBack": 0.95, "walkR": 1.75, "walkL": 1.78, "run": 2.45, "runBack": 1.8,
-	"runStrafeR": 2.2, "runStrafeL": 1.7, "crouchWalk2": 1.06, "crouchBack": 1.17, "crouchRun": 1.3}
+	"runStrafeR": 2.2, "runStrafeL": 1.7, "crouchWalk2": 1.06, "crouchWalk": 0.95, "crouchBack": 1.17, "crouchRun": 1.3}
 const STATES := {"idle": "idle", "aim": "aim", "kneel": "kneel", "kneel_aim": "crouchFire", "jump": "jump",
 	"walk": "walk", "walk_b": "walkBack", "walk_r": "walkR", "walk_l": "walkL",
 	"run": "run", "run_b": "runBack", "run_r": "runStrafeR", "run_l": "runStrafeL",
-	"c_walk": "crouchWalk2", "c_back": "crouchBack", "c_run": "crouchWalk2", "c_r": "crouchWalk2", "c_l": "crouchWalk2",
+	"c_walk": "crouchWalk", "c_back": "crouchBack", "c_run": "crouchWalk", "c_r": "crouchWalk", "c_l": "crouchWalk",
 	"dead": "dieFront", "kick": "kick"}
 # (the "crouchRun" clip has its hips 1.8 m behind the body, which put the soldier behind the camera: crouch-running
 # plays the crouch walk faster instead)
@@ -164,6 +164,7 @@ var end_t := 0.0                # how long the stick has pushed past the end of 
 var cover_reach := 0.0          # how far he steps to clear the end of the wall
 var act_doing := ""
 var act_obj: Node = null
+var take_new := -1                 # a gun just taken, to be held when he stands up
 var act_t := -1.0                   # doing it: time into it
 var act_check := 0.0
 var do_w := 0.0
@@ -239,7 +240,7 @@ func _build_model() -> void:
 	_cut_clip("knockout", "knockback", 2.05, 0.25)    # about 1 m back
 	_cut_clip("knockout", "fallback", 2.05, 0.12)     # half a metre: shot from further off
 	_cut_clip("knockout", "blastback", 2.05, 0.55)    # thrown by an explosion
-	for n in ["idle", "aim", "kneel", "crouchFire", "walk", "walkBack", "walkR", "walkL", "run", "runBack", "runStrafeR", "runStrafeL", "crouchWalk2", "crouchBack", "reload"]:
+	for n in ["idle", "aim", "kneel", "crouchFire", "walk", "walkBack", "walkR", "walkL", "run", "runBack", "runStrafeR", "runStrafeL", "crouchWalk2", "crouchWalk", "crouchBack", "reload"]:
 		if ap.has_animation(n):
 			ap.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	_calibrate_and_attach()
@@ -649,6 +650,30 @@ func _ground_below() -> float:
 	q.exclude = [get_rid()]
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	return float(hit["position"].y) if hit else global_position.y
+
+
+## Taking a dead man's gun: kneeling by him, the right arm reaches down to it and comes back with it.
+func _reach(_dt: float) -> void:
+	if act_t < 0.0 or act_doing != "take" or not is_instance_valid(act_obj):
+		return
+	var k: float = sin(PI * clamp(act_t / 1.15, 0.0, 1.0))
+	if k < 0.01:
+		return
+	var b := skel.find_bone("mixamorigRightArm")
+	var e := skel.find_bone("mixamorigRightForeArm")
+	var sh: Vector3 = skel.get_bone_global_pose(b).origin
+	var el: Vector3 = skel.get_bone_global_pose(e).origin
+	var target: Vector3 = skel.global_transform.affine_inverse() * (act_obj.global_position + Vector3(0, 0.25, 0))
+	var now_d := (el - sh).normalized()
+	var want_d := (target - sh).normalized()
+	var axis := now_d.cross(want_d)
+	if axis.length() < 0.001:
+		return
+	var ang: float = now_d.angle_to(want_d) * k * 0.85
+	var pg: Basis = skel.get_bone_global_pose(skel.get_bone_parent(b)).basis.orthonormalized()
+	skel.set_bone_pose_rotation(b, Quaternion((pg.inverse() * axis.normalized()).normalized(), ang) * skel.get_bone_pose_rotation(b))
+	# the forearm straightens out as it reaches
+	skel.set_bone_pose_rotation(e, skel.get_bone_pose_rotation(e).slerp(Quaternion.IDENTITY, k * 0.6))
 
 
 func _show_gun(dt: float) -> void:
@@ -1642,6 +1667,7 @@ func _physics_process(dt: float) -> void:
 	_bend_spine(dt)
 	_low_ready(dt)
 	_show_gun(dt)
+	_reach(dt)
 	_feet_out_of_walls(dt)
 	if not sole_fit and t > 0.6 and speed < 0.1 and is_on_floor() and not crouch and not dead:
 		sole_fit = true
@@ -1800,6 +1826,10 @@ func action() -> void:
 	reloading = 0.0
 	firing = false
 	snd.stop_auto()
+	if act_doing in ["take", "item"] and is_instance_valid(act_obj):
+		var tb: Vector3 = act_obj.global_position - global_position
+		if Vector2(tb.x, tb.z).length() > 0.2:
+			yaw = atan2(-tb.x, -tb.z)
 	if act_doing == "kick" and is_instance_valid(act_obj):
 		var to: Vector3 = act_obj.global_position - global_position
 		yaw = atan2(-to.x, -to.z)
@@ -1823,6 +1853,10 @@ func _act_step(dt: float) -> void:
 				_gain(str(act_obj.get_meta("got", "")))
 			if act_t >= 1.25:
 				act_t = -1.0
+				if take_new >= 0:
+					var i := take_new
+					take_new = -1
+					select_weapon(i)          # stands up with the gun he took in his hands
 		"item":
 			if at.call(0.5) and is_instance_valid(act_obj):
 				fx.get_parent().mission.take_item(act_obj)
@@ -1838,6 +1872,7 @@ func _gain(gun: String) -> void:
 			continue
 		var ui: Node = fx.get_parent().ui
 		if not w.get("own", true):
+			take_new = weapons.find(w)
 			w["own"] = true
 			w["mag"] = w["size"]
 			w["res"] = w["size"]
@@ -2045,8 +2080,9 @@ func _animate(dt: float) -> void:
 	ik_w = lerp(ik_w, 0.0 if free else 1.0, min(1.0, dt * 10.0))
 	ik.interpolation = ik_w
 	var in_hand := not holstered and throw_t < 0.0 and knife_t < 0.0
+	var reaching := doing and act_doing == "take" and act_t > 0.2 and act_t < 1.0
 	for g in guns:
-		guns[g].visible = g == w["gun"] and switching < 0.2 and view != 2 and in_hand
+		guns[g].visible = g == w["gun"] and switching < 0.2 and view != 2 and in_hand and not reaching
 		back_guns[g].visible = g == w["gun"] and holstered
 	nade_hand.visible = throw_t >= 0.0 and not thrown and view != 2
 	knife_hand.visible = knife_t >= 0.0 and view != 2
@@ -2305,16 +2341,23 @@ func _cover_step(dt: float) -> void:
 		ends[sgn] = (ray.call(ahead, ahead - n * 1.7) as Dictionary).is_empty()
 		blocked[sgn] = not (ray.call(base + Vector3(0, 0.55, 0), ahead + n * 0.2) as Dictionary).is_empty()
 		gap[sgn] = 99.0
-		for st in [0.3, 0.55, 0.8, 1.05, 1.3]:
+		for st in [0.3, 0.55, 0.8, 1.05, 1.3, 1.6, 1.9, 2.2, 2.5]:
 			var q2: Vector3 = base + tan * (sgn * st) + Vector3(0, 0.55, 0)
 			if (ray.call(q2, q2 - n * 1.7) as Dictionary).is_empty():
 				gap[sgn] = st
 				break
 	if cover_peek <= 0.0:
-		if gap[-1] < 99.0 and gap[1] < 99.0:
-			cover_edge = 1 if fwd.dot(tan) > 0.0 else -1      # a narrow pillar: the side he is looking past
+		# lean out of the end on the side he is looking (left or right); behind something low, or with no end
+		# that side within reach, he rises and shoots over the top instead
+		var look := 1 if fwd.dot(tan) > 0.0 else -1
+		if abs(fwd.dot(tan)) < 0.25 and cover_low:
+			cover_edge = 0                                     # looking straight out over it
+		elif gap[look] < 99.0 and (not cover_low or gap[look] <= 1.35):
+			cover_edge = look
+		elif cover_low:
+			cover_edge = 0
 		else:
-			cover_edge = -1 if gap[-1] < 99.0 else (1 if gap[1] < 99.0 else 0)
+			cover_edge = -look if gap[-look] < 99.0 else 0
 		cover_reach = (float(gap[cover_edge]) + 0.3) if cover_edge != 0 else 0.0
 	var v_t := 0.0
 	if not shooting:

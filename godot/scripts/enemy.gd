@@ -36,6 +36,7 @@ var blobs: Array = []        # soft shadow spots under him (see player.make_blob
 var wall_k := 0.0              # his rifle pointed down out of a wall in front of him
 var home := Vector3.ZERO
 var lod_n := randi() % 6
+var lod_every := 1
 var ik_off := false
 var beat := Vector3.ZERO       # the other end of his beat (same as home: stands guard)
 var to_beat := true
@@ -74,6 +75,12 @@ var flank := 1.0               # which way he works round the player
 var home_yaw := 0.0            # which way he faces at his post
 var t_life := 0.0
 var gun := "ak"                # the AK-47, or a Dragunov for a sniper (slow, single, accurate, hard-hitting)
+var stroll := Vector3.INF      # on duty: the spot he is strolling to (INF: standing)
+var stroll_n := 0
+var stroll_cd := randf_range(2.0, 9.0)
+var home_yaw_now := 0.0        # the way he looks from his post just now
+var body_at := Vector3.ZERO    # a dead comrade he is going to look at
+var body_t := -1.0             # how long he has been crouched by him (-1: still on his way)
 var route := []                # guard: points he walks round in turn (else between home and beat)
 var route_i := 0
 # wounds: a leg hit makes him limp (no running), both legs (or one heavy round) put him on the ground where he
@@ -136,6 +143,7 @@ func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasma
 	beat = beat_pos
 	yaw = face
 	home_yaw = face
+	home_yaw_now = face
 	rotation.y = yaw
 	kneels = false        # (always on his feet: kneeling and standing again looked odd)
 	perch = pos.y > 1.5
@@ -249,6 +257,9 @@ func _physics_process(dt: float) -> void:
 		if lod_n % every != 0:
 			return
 		dt *= every
+		lod_every = every
+	if mode == "combat" or far2 <= 40.0 * 40.0:
+		lod_every = 1
 	grace = max(0.0, grace - dt)
 	t_life += dt
 	hit_t = max(0.0, hit_t - dt)
@@ -268,7 +279,7 @@ func _physics_process(dt: float) -> void:
 	if mode == "guard":
 		if wait_t > 0.0:
 			wait_t -= dt
-			face = home_yaw + sin(t_life * 0.35 + flank) * 0.6      # standing: looking slowly round his sector
+			face = home_yaw_now + sin(t_life * 0.35 + flank) * 0.5   # standing: looking slowly round his sector
 		elif route.size() > 1 or beat.distance_to(home) > 0.5:
 			var goal: Vector3 = route[route_i] if route.size() > 1 else (beat if to_beat else home)
 			var to := goal - global_position
@@ -281,14 +292,47 @@ func _physics_process(dt: float) -> void:
 			else:
 				target_v = to.normalized() * WALK
 				face = atan2(-to.x, -to.z)
-		elif Vector2(global_position.x - home.x, global_position.z - home.z).length() > 0.8:
-			# after a fight or a search: back to his post
+		elif not perch and stroll != Vector3.INF:
+			# on duty: a few steps about his post now and then, a look round, back again
+			var to_w := stroll - global_position
+			to_w.y = 0.0
+			if to_w.length() < 0.35:
+				stroll = Vector3.INF
+				wait_t = randf_range(3.0, 7.0)
+				home_yaw_now = home_yaw + randf_range(-1.2, 1.2)
+			else:
+				target_v = to_w.normalized() * WALK * 0.8
+				face = atan2(-to_w.x, -to_w.z)
+		elif Vector2(global_position.x - home.x, global_position.z - home.z).length() > 0.8 and not perch and stroll_n % 2 == 0:
+			# after a fight or a search, or a stroll: back to his post
 			var th := home - global_position
 			th.y = 0.0
 			target_v = th.normalized() * WALK
 			face = atan2(-th.x, -th.z)
 		else:
-			face = home_yaw + sin(t_life * 0.35 + flank) * 0.6
+			face = home_yaw_now + sin(t_life * 0.35 + flank) * 0.5
+			stroll_cd -= dt
+			if not perch and stroll_cd <= 0.0:
+				stroll_cd = randf_range(5.0, 11.0)
+				_next_stroll()
+	elif mode == "body":
+		# a comrade lying dead: go over, crouch by him and look, then look round the place
+		var to_b := body_at - global_position
+		to_b.y = 0.0
+		want_aim = body_t < 0.0
+		if to_b.length() > 1.3 and body_t < 0.0:
+			target_v = to_b.normalized() * WALK * 1.3
+			face = atan2(-to_b.x, -to_b.z)
+		else:
+			if body_t < 0.0:
+				body_t = 0.0
+			body_t += dt
+			face = atan2(-to_b.x, -to_b.z)
+			if body_t > 3.2:
+				body_t = -1.0
+				main.enemy_alarm(self)                 # tells the ones near him
+				investigate(body_at)
+				search_t = randf_range(7.0, 10.0)
 	elif mode == "search":
 		# heard shots or a call: walk over with the rifle up and look round; back on guard if nothing turns up
 		search_t -= dt
@@ -398,9 +442,11 @@ func _physics_process(dt: float) -> void:
 		vel.y = 0.0
 	else:
 		vel.y -= 12.0 * dt
-	velocity = vel
+	# (thinking at a fraction of the frames when far off: each step then covers the frames skipped, or he would
+	# walk at a crawl)
+	velocity = vel * float(lod_every)
 	move_and_slide()
-	vel = velocity
+	vel = velocity / float(lod_every)
 	var hs := Vector2(vel.x, vel.z).length()
 	if target_v.length() > 0.5 and hs < 0.25:
 		stuck_t += dt
@@ -452,6 +498,8 @@ func _physics_process(dt: float) -> void:
 		st = "run"
 	elif hs > 0.3:
 		st = "walk"
+	elif mode == "body" and body_t >= 0.0:
+		st = "kneel"
 	elif mode == "combat" and spot_cover and not peek_up:
 		st = "kneel"
 	elif want_aim or mode == "combat" or perch:
@@ -619,6 +667,19 @@ func _perceive(dt: float) -> void:
 	if grace > 0.0:
 		return
 	var eye := _eye()
+	# a dead comrade in sight, that nobody has gone to yet
+	if mode == "guard" or mode == "search":
+		var fwd0 := Vector3(-sin(yaw), 0, -cos(yaw))
+		for b in main.bodies:
+			if not is_instance_valid(b) or b.has_meta("looked_at"):
+				continue
+			var tb: Vector3 = b.global_position - global_position
+			if tb.length() > 24.0 or fwd0.dot(Vector3(tb.x, 0, tb.z).normalized()) < 0.2:
+				continue
+			if _clear(eye, b.global_position + Vector3(0, 0.3, 0)):
+				b.set_meta("looked_at", true)
+				see_body(b.global_position)
+				break
 	var target: Vector3 = player.global_position + Vector3(0, 0.9 if player.crouch else 1.35, 0)
 	var to := target - eye
 	var d := to.length()
@@ -643,6 +704,37 @@ func _perceive(dt: float) -> void:
 		lost_t += dt
 		if mode != "combat":
 			alert = max(0.0, alert - dt * 0.2)
+
+
+## A few steps about his post: a point a little way off it that he can walk to in a straight line.
+func _next_stroll() -> void:
+	stroll_n += 1
+	if stroll_n % 2 == 0:
+		return                               # every other time: just back to the post
+	for k in 6:
+		var a := randf() * TAU
+		var p := home + Vector3(cos(a), 0, sin(a)) * randf_range(1.5, 4.5)
+		if _sight(global_position + Vector3(0, 0.5, 0), p + Vector3(0, 0.5, 0)):
+			stroll = p
+			return
+
+
+## A dead comrade seen: go and look.
+func see_body(p: Vector3) -> void:
+	if dead or mode == "combat" or mode == "body":
+		return
+	mode = "body"
+	body_at = p
+	body_t = -1.0
+	alert = max(alert, 0.6)
+
+
+## A comrade near him hit or killed: he turns to it and comes to look (not knowing where the shot came from).
+func comrade_hit(p: Vector3) -> void:
+	if dead or mode == "combat":
+		return
+	investigate(p)
+	wait_t = randf_range(0.2, 0.6)
 
 
 ## Into combat, looking toward pos. Tells the soldiers near him unless they told him.
@@ -735,6 +827,7 @@ func take_hit(dmg: float, pos: Vector3, dir: Vector3, power := 1.0, part := "tor
 		grunt_t = randf_range(0.5, 0.9)
 		main.snd.grunt(global_position + Vector3(0, 1.5, 0))
 	alarm(player.global_position, true)
+	main.comrade_down(self)
 	# hit: often gets out of there
 	if not moving and randf() < 0.5:
 		shots_left = 0
@@ -900,6 +993,7 @@ func _die(headshot: bool, blasted := false, push := Vector3.ZERO, force := 0.0, 
 	rig["ik"].interpolation = 0.0
 	main.snd.death(global_position, "blast" if blasted else ("head" if (headshot or silent_death) else "body"))
 	main.on_enemy_killed(self, headshot)
+	main.comrade_down(self)
 
 
 ## Torn apart by a close explosion: an arm or leg (or two) comes off and flies, blood everywhere.

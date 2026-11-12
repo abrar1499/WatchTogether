@@ -1977,8 +1977,25 @@ func enemy_alarm(src: Node) -> void:
 			e.investigate(src.last_seen)
 
 
+## A soldier hit or killed: the ones close by, or who can see him, notice and come to look.
+func comrade_down(src: Node) -> void:
+	var p: Vector3 = src.global_position
+	for e in enemies:
+		if e == src or e.dead or e.mode == "combat":
+			continue
+		var d: float = e.global_position.distance_to(p)
+		if d < 10.0 or (d < 28.0 and e.can_see(p + Vector3(0, 1.0, 0))):
+			e.comrade_hit(p)
+
+
+## Dead soldiers lying where they fell, for the living to find.
+var bodies: Array = []
+
+
 func on_enemy_killed(_e: Node, headshot: bool) -> void:
 	kills += 1
+	if is_instance_valid(_e):
+		bodies.append(_e)
 	if headshot:
 		headshots += 1
 	ui.kill_note("HEADSHOT" if headshot else "KILL")
