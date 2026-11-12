@@ -1126,7 +1126,7 @@ func _clock_tower(c: Vector3) -> void:
 	city.apartment(c.x - 3.0, c.z - 3.0, c.x + 3.0, c.z + 3.0, 5, [], [], {"tone": 7, "wins": ["centered_small"], "row": 3, "bare_roof": true})
 	city.commit_kit()
 	city.lit_share = 0.3
-	city.ac_share = 0.14
+	city.ac_share = 0.06
 	var top := 15.0
 	city.box("kq_plaster7", c + Vector3(0, top + 1.9, 0), Vector3(3.6, 3.8, 3.6))
 	for y in [top + 0.1, top + 3.85]:

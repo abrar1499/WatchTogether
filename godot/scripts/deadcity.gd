@@ -1857,7 +1857,7 @@ func build() -> Vector3:
 	city.make_mats3()
 	city.night = false
 	city.lit_share = 0.0
-	city.ac_share = 0.2
+	city.ac_share = 0.08
 	city.broken_share = 0.55
 	city.soot_share = 0.12
 	prop_body = StaticBody3D.new()

@@ -108,8 +108,6 @@ func _ready() -> void:
 		else:
 			_run_test()
 		return
-	if has_meta("city"):
-		get_meta("city").stream(spawn, true)        # the detailed buildings round the start, before the screen opens
 	fx.prewarm(get_viewport().get_camera_3d())
 	if loader:
 		await get_tree().create_timer(0.25).timeout
@@ -1694,7 +1692,7 @@ func _warm_roots(n: int) -> Array:
 	# really uses are ever in memory)
 	var roots: Array = WARM_COMMON.duplicate()
 	if n >= 2:
-		roots += ["res://scripts/city.gd", "res://assets/city/kit"]
+		roots += ["res://scripts/city.gd"]
 	if n >= 3:
 		roots += ["res://scripts/deadcity.gd"]
 	return roots
