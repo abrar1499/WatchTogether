@@ -468,6 +468,19 @@ func aim_chest(sk: Skeleton3D, want: Vector3, w: float, d := {}) -> void:
 	turn_chest(sk, Quaternion.IDENTITY.slerp(Quaternion(gun_dir, want_s), w))
 
 
+## Moving with the gun up but not aiming: the chest turned a little to the right, so the rifle shows beside him
+## from the camera behind (straight ahead it was hidden by his own back).
+var show_k := 0.0
+const SHOW_TWIST := -0.85
+
+
+func _show_gun(dt: float) -> void:
+	var want := 1.0 if (speed > 0.25 and is_on_floor() and not aiming and not holstered and not crouch and reloading <= 0.0 and not dead) else 0.0
+	show_k = lerp(show_k, want, min(1.0, dt * 6.0))
+	if show_k > 0.01:
+		turn_chest(skel, Quaternion(Vector3.UP, SHOW_TWIST * show_k))
+
+
 func turn_chest(sk: Skeleton3D, q: Quaternion) -> void:
 	var ang := q.get_angle()
 	if ang < 0.0005:
@@ -1451,6 +1464,7 @@ func _physics_process(dt: float) -> void:
 	_pose_hands()
 	_bend_spine(dt)
 	_low_ready(dt)
+	_show_gun(dt)
 	place_left_target(skel, ik_tgt, weapons[wi]["gun"], {}, pump_slide())
 	_update_camera(dt)
 	_footsteps(dt)
@@ -1873,7 +1887,7 @@ func aim_dir_now() -> Vector3:
 
 
 func _update_camera(dt: float) -> void:
-	var lens := [[2.0, 0.55, 1.6], [1.35, 0.45, 1.62], [0.0, 0.0, 1.62]]
+	var lens := [[2.2, 0.85, 1.68], [1.35, 0.45, 1.62], [0.0, 0.0, 1.62]]
 	var cfg: Array = lens[view]
 	var tl: float = cfg[0]
 	var ts: float = cfg[1]
