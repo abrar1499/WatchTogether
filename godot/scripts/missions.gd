@@ -15,6 +15,9 @@ var lz_smoke := 0.0
 var alarm := false
 var alarm_src: Node = null
 var alarm_t := -1.0           # a soldier who has seen the player gets to the alarm in a few seconds
+const ALARM_TIME := 5.0       # how long he takes to call it in (shown on the screen: kill him first)
+var seen := false             # some soldier has seen the player for certain (the mission is no longer a ghost's)
+var silenced := 0             # callers killed before they finished
 var reinf_t := -1.0
 var siren: AudioStreamPlayer3D
 var siren_pos := Vector3.ZERO
@@ -101,6 +104,7 @@ func muster() -> void:
 
 func begin() -> void:
 	start_t = t
+	Engine.time_scale = 1.0
 	if not mustered:
 		mustered = true
 		for ps in posts:
@@ -176,7 +180,11 @@ func _win() -> void:
 	over = true
 	main.unlock(n + 1)
 	var secs := int(t - start_t)
-	var stats := "Time %d:%02d   Kills %d   Headshots %d" % [secs / 60, secs % 60, main.kills, main.headshots]
+	# how it was done: unseen from start to finish, seen but never reported, or with the whole place awake
+	var rank := "GHOST" if not seen else ("SILENT" if not alarm else "LOUD")
+	var stats := "%s   Time %d:%02d   Kills %d   Headshots %d" % [rank, secs / 60, secs % 60, main.kills, main.headshots]
+	if silenced > 0:
+		stats += "   Calls cut short %d" % silenced
 	main.ui.show_result(true, "MISSION COMPLETE", stats, n)
 
 
@@ -194,11 +202,19 @@ func _process(dt: float) -> void:
 			for e in main.enemies:
 				if not e.dead and e.mode == "combat":
 					alarm_src = e
-					alarm_t = 4.0
+					alarm_t = ALARM_TIME
+					seen = true
 					break
 		else:
 			alarm_t -= dt
 			if alarm_src == null or alarm_src.dead:
+				# the man calling it in is dead before he finished: the nearer the end, the closer the call
+				if alarm_t < 1.3:
+					main.ui.message("CLOSE CALL", "He never finished the call.", 2.2)
+					_slow_motion(0.7)
+				else:
+					main.ui.message("RADIO SILENCED", "No one heard him.", 1.8)
+				silenced += 1
 				alarm_t = -1.0
 			elif alarm_t <= 0.0:
 				_raise_alarm()
@@ -226,6 +242,12 @@ var far_cull := 150.0
 func _far_cull(e: Node) -> void:
 	for g in e.find_children("*", "GeometryInstance3D", true, false):
 		g.visibility_range_end = far_cull
+
+
+## A moment of slow motion (real seconds), for a close call.
+func _slow_motion(secs: float) -> void:
+	Engine.time_scale = 0.35
+	get_tree().create_timer(secs, true, false, true).timeout.connect(func(): Engine.time_scale = 1.0)
 
 
 func _raise_alarm() -> void:

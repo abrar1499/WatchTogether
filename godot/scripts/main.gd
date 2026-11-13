@@ -3425,14 +3425,25 @@ class Music extends Node:
 				if not e.dead and e.mode != "combat" and e.global_position.distance_to(pl.global_position) < 9.0:
 					near_unseen = true
 					break
+		# the heartbeat rises with the danger: a soldier growing sure of what he sees, and loudest and fastest while
+		# one is calling the alarm in
+		var tense := 0.0
+		if main.mission and not dead:
+			for e in main.enemies:
+				if not e.dead and e.mode != "combat" and e.alert > 0.1 and e.global_position.distance_to(pl.global_position) < 60.0:
+					tense = max(tense, float(e.alert))
+			if main.mission.alarm_t >= 0.0 and not main.mission.alarm:
+				tense = 1.3
+				near_unseen = true
 		var want := {"amb": 0.0 if dead else (0.04 if fight else (0.14 if quiet_start else 0.09)),
 			"night": 0.0 if dead else (0.06 if fight else 0.18),
-			"heart": (0.1 + clamp((30.0 - pl.hp) / 30.0, 0.0, 1.0) * 0.35) if (not dead and pl.hp < 30.0) else (0.12 if near_unseen else 0.0),
+			"heart": (0.1 + clamp((30.0 - pl.hp) / 30.0, 0.0, 1.0) * 0.35) if (not dead and pl.hp < 30.0) else max(0.12 if near_unseen else 0.0, 0.3 * tense),
 			# the background music follows what is happening: light while moving about, nearly gone when creeping up
 			# on a soldier (the heartbeat takes over) or badly hurt, up in a fight, out when dead
 			"bgm": 0.0 if dead else (0.24 if fight else (0.035 if (near_unseen or pl.hp < 30.0) else 0.09))}
+		(layers["heart"] as AudioStreamPlayer).pitch_scale = lerp((layers["heart"] as AudioStreamPlayer).pitch_scale, 1.0 + 0.3 * clamp(tense, 0.0, 1.3), min(1.0, dt * 2.0))
 		for k in LOOPS:
-			var rate := 0.25 if want[k] > level[k] else 0.12
+			var rate := (0.9 if k == "heart" else 0.25) if want[k] > level[k] else 0.12
 			level[k] = move_toward(level[k], want[k], rate * dt)
 			var p: AudioStreamPlayer = layers[k]
 			if level[k] > 0.002:
