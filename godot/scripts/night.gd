@@ -13,8 +13,6 @@ const RAIN_T := 70.0            # then the rain begins
 const RAIN_RAMP := 25.0         # and gets heavy over this long
 
 var sky_mat: ShaderMaterial
-var rain_mi: MultiMeshInstance3D
-var rain_mat: ShaderMaterial
 var rain_snd: AudioStreamPlayer
 var thunders: Array = []
 var thunder_snd: AudioStreamPlayer
@@ -116,14 +114,20 @@ func _make_sky() -> void:
 
 
 # =============== rain: streaks round the camera, moved on the graphics chip ===============
+## Two layers: close drops (seen as thin streaks, a few to a metre) and the far rain, a fine grey haze of hair-thin
+## lines; both lean with the wind. Splashes on the ground round the player: a bright fleck and a ring spreading.
 const RAIN_SHADER := """
 shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled, world_vertex_coords, blend_mix;
 uniform float amount = 0.0;
 uniform vec3 box = vec3(26.0, 16.0, 26.0);
-uniform float speed = 12.0;
+uniform float speed = 9.0;
 uniform float flash = 0.0;
 uniform vec2 wind = vec2(0.6, 0.25);
+uniform float len = 0.6;
+uniform float width = 0.005;
+uniform float strength = 0.2;
+uniform float near_cut = 0.5;
 varying float vis;
 varying float along;
 
@@ -131,57 +135,137 @@ void vertex() {
 	vec4 r = INSTANCE_CUSTOM;
 	vec3 cam = (INV_VIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 	vec3 base = r.xyz * box;
-	float fall = TIME * speed * (0.85 + 0.3 * r.w);
+	float sp = speed * (0.8 + 0.4 * r.w);
+	float fall = TIME * sp;
 	vec3 w;
-	w.y = cam.y - box.y * 0.45 + mod(base.y - fall, box.y);
-	vec2 sway = wind * (fall / speed);
-	w.x = cam.x + mod(base.x + sway.x - cam.x, box.x) - box.x * 0.5;
-	w.z = cam.z + mod(base.z + sway.y - cam.z, box.z) - box.z * 0.5;
-	vec3 to = vec3(cam.x - w.x, 0.0, cam.z - w.z);
+	w.y = cam.y - box.y * 0.4 + mod(base.y - fall, box.y);
+	vec2 drift = wind * TIME;
+	w.x = cam.x + mod(base.x + drift.x - cam.x, box.x) - box.x * 0.5;
+	w.z = cam.z + mod(base.z + drift.y - cam.z, box.z) - box.z * 0.5;
+	vec3 to = cam - w;
 	float dist = length(to);
-	to = to / max(dist, 0.001);
-	vec3 side = vec3(to.z, 0.0, -to.x);
-	float len = 0.55;
-	vec3 down = normalize(vec3(-wind.x * 0.06, -1.0, -wind.y * 0.06));
-	VERTEX = w + side * VERTEX.x * (0.010 + dist * 0.0012) - down * VERTEX.y * len;
+	vec3 down = normalize(vec3(wind.x, -sp, wind.y));
+	vec3 side = normalize(cross(down, to));
+	// as long as the drop falls in a sixtieth of a second or so (it is seen smeared), thin as a hair
+	float l = len * (0.75 + 0.5 * fract(r.w * 7.13));
+	VERTEX = w + side * VERTEX.x * (width + dist * 0.0009) + down * VERTEX.y * l;
 	along = UV.y;
-	vis = step(r.w, amount) * (1.0 - smoothstep(box.x * 0.3, box.x * 0.5, dist)) * smoothstep(0.4, 1.4, dist);
+	vis = step(fract(r.w * 3.71), amount) * (1.0 - smoothstep(box.x * 0.3, box.x * 0.5, dist)) * smoothstep(near_cut, near_cut + 1.0, dist);
 }
 
 void fragment() {
-	float a = vis * (1.0 - abs(along * 2.0 - 1.0));
-	ALBEDO = vec3(0.62, 0.66, 0.74) + flash * vec3(0.6);
-	ALPHA = a * (0.16 + flash * 0.25);
+	float k = 1.0 - abs(along * 2.0 - 1.0);
+	ALBEDO = vec3(0.7, 0.74, 0.8) + flash * vec3(0.5);
+	ALPHA = vis * k * k * (strength + flash * strength * 1.5);
 }
 """
 
+const SPLASH_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled, world_vertex_coords, blend_mix;
+uniform float amount = 0.0;
+uniform float floor_y = 0.0;
+uniform vec2 box = vec2(16.0, 16.0);
+uniform float flash = 0.0;
+varying float ph;
+varying float vis;
+varying vec2 uv;
 
-func _make_rain() -> void:
+void vertex() {
+	vec4 r = INSTANCE_CUSTOM;
+	vec3 cam = (INV_VIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+	float tt = TIME * (1.3 + r.w * 1.2) + r.z * 13.0;
+	float cyc = floor(tt);
+	ph = fract(tt);
+	vec2 h = fract(sin(vec2(cyc * 12.9898 + r.x * 78.233, cyc * 39.346 + r.y * 11.135)) * 43758.5453);
+	vec2 base = fract(r.xy + h) * box;
+	vec2 p;
+	p.x = cam.x + mod(base.x - cam.x, box.x) - box.x * 0.5;
+	p.y = cam.z + mod(base.y - cam.z, box.y) - box.y * 0.5;
+	float size = 0.03 + 0.11 * ph;
+	VERTEX = vec3(p.x + VERTEX.x * size * 2.0, floor_y, p.y + VERTEX.y * size * 2.0);
+	float dist = distance(vec2(cam.x, cam.z), p);
+	vis = step(fract(r.w * 5.3), amount) * (1.0 - smoothstep(box.x * 0.3, box.x * 0.5, dist));
+	uv = UV;
+}
+
+void fragment() {
+	float d = length(uv - vec2(0.5)) * 2.0;
+	float ring = smoothstep(0.7, 0.88, d) * (1.0 - smoothstep(0.88, 1.0, d)) * (1.0 - ph);
+	float fleck = (1.0 - smoothstep(0.0, 0.3, d)) * (1.0 - smoothstep(0.0, 0.18, ph));
+	ALBEDO = vec3(0.72, 0.76, 0.82) + flash * vec3(0.4);
+	ALPHA = vis * (ring * 0.45 + fleck * 0.7);
+}
+"""
+
+var rain_layers: Array = []      # [MultiMeshInstance3D, ShaderMaterial]
+var splash_mi: MultiMeshInstance3D
+var splash_mat: ShaderMaterial
+var wet_mats: Array = []         # [material, roughness, colour, specular]
+var fog_d := 0.006
+var fog_c := Color()
+var wind := Vector2(0.6, 0.25)
+var last_wet := 0.0
+
+
+func _wet(wet: float) -> void:
+	for w in wet_mats:
+		var m: StandardMaterial3D = w[0]
+		m.roughness = lerp(float(w[1]), float(w[1]) * 0.32, wet)
+		m.albedo_color = (w[2] as Color) * lerp(1.0, 0.68, wet)
+		m.albedo_color.a = (w[2] as Color).a
+		m.metallic_specular = lerp(float(w[3]), 0.85, wet)
+
+
+func _drops(n: int, seed_: int) -> MultiMesh:
 	var q := QuadMesh.new()
 	q.size = Vector2(1, 1)
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_custom_data = true
 	mm.mesh = q
-	var n := 1800
 	mm.instance_count = n
 	var rng := RandomNumberGenerator.new()
-	rng.seed = 7
+	rng.seed = seed_
 	for i in n:
 		mm.set_instance_transform(i, Transform3D.IDENTITY)
 		mm.set_instance_custom_data(i, Color(rng.randf(), rng.randf(), rng.randf(), rng.randf()))
+	return mm
+
+
+func _layer(code: String, mm: MultiMesh, params: Dictionary) -> Array:
 	var sh := Shader.new()
-	sh.code = RAIN_SHADER
-	rain_mat = ShaderMaterial.new()
-	rain_mat.shader = sh
-	rain_mat.set_shader_parameter("amount", 0.0)
-	rain_mi = MultiMeshInstance3D.new()
-	rain_mi.multimesh = mm
-	rain_mi.material_override = rain_mat
-	rain_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	rain_mi.custom_aabb = AABB(Vector3(-5000, -5000, -5000), Vector3(10000, 10000, 10000))
-	rain_mi.visible = false
-	add_child(rain_mi)
+	sh.code = code
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	for k in params:
+		m.set_shader_parameter(k, params[k])
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.custom_aabb = AABB(Vector3(-5000, -5000, -5000), Vector3(10000, 10000, 10000))
+	mi.visible = false
+	add_child(mi)
+	return [mi, m]
+
+
+func _make_rain() -> void:
+	# close: thin streaks; far: hair-thin, fainter, longer (further off they blur together into a grey veil)
+	rain_layers.append(_layer(RAIN_SHADER, _drops(2200, 7), {"box": Vector3(12, 10, 12), "len": 0.5, "width": 0.004, "strength": 0.3, "near_cut": 0.6}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(3200, 11), {"box": Vector3(46, 24, 46), "len": 0.9, "width": 0.006, "strength": 0.16, "near_cut": 5.0}))
+	var sl := _layer(SPLASH_SHADER, _drops(1000, 13), {"box": Vector2(14, 14)})
+	splash_mi = sl[0]
+	splash_mat = sl[1]
+	fog_d = main.world_env.fog_density
+	fog_c = main.world_env.fog_light_color
+	# the streets and pavements get wet: darker and shinier, the lamps glinting in them
+	var c = main.mission.get("city") if main.mission else null
+	if c != null:
+		for k in c.mats:
+			var m = c.mats[k]
+			if m is StandardMaterial3D and (str(k).begins_with("g_") or str(k) in ["k_base", "dark", "panel"]):
+				wet_mats.append([m, m.roughness, m.albedo_color, m.metallic_specular])
 
 
 func _make_sound() -> void:
@@ -379,9 +463,15 @@ func _weather(dt: float) -> void:
 		roof_t = 0.4
 		var cam := get_viewport().get_camera_3d()
 		if cam:
-			var q := PhysicsRayQueryParameters3D.create(cam.global_position, cam.global_position + Vector3(0, 25, 0))
-			q.collision_mask = 1
-			indoors = 1.0 if not get_world_3d().direct_space_state.intersect_ray(q).is_empty() else 0.0
+			# a roof: something overhead here and a little way off each side (not just a sign or an awning)
+			var hits := 0
+			for off in [Vector3.ZERO, Vector3(1.6, 0, 0.9), Vector3(-1.4, 0, -1.2)]:
+				var from: Vector3 = cam.global_position + off
+				var q := PhysicsRayQueryParameters3D.create(from, from + Vector3(0, 25, 0))
+				q.collision_mask = 1
+				if not get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+					hits += 1
+			indoors = 1.0 if hits == 3 else 0.0
 	# lightning: now and then once the clouds are thick, more often in the rain
 	if mt > next_bolt and cover > 0.6:
 		_bolt()
@@ -399,9 +489,25 @@ func _weather(dt: float) -> void:
 	sky_mat.set_shader_parameter("cover", cover)
 	sky_mat.set_shader_parameter("flash", flash)
 	sky_mat.set_shader_parameter("drift", drift)
-	rain_mi.visible = rain > 0.0 and indoors < 0.5
-	rain_mat.set_shader_parameter("amount", rain)
-	rain_mat.set_shader_parameter("flash", flash)
+	# the wind comes in gusts
+	wind = Vector2(0.6, 0.25) * (0.7 + 0.45 * sin(mt * 0.37) + 0.25 * sin(mt * 1.31 + 1.0))
+	var show_rain: bool = rain > 0.0 and indoors < 0.5
+	for ly in rain_layers:
+		(ly[0] as Node3D).visible = show_rain
+		(ly[1] as ShaderMaterial).set_shader_parameter("amount", rain)
+		(ly[1] as ShaderMaterial).set_shader_parameter("flash", flash)
+		(ly[1] as ShaderMaterial).set_shader_parameter("wind", wind)
+	splash_mi.visible = show_rain
+	splash_mat.set_shader_parameter("amount", rain)
+	splash_mat.set_shader_parameter("flash", flash)
+	splash_mat.set_shader_parameter("floor_y", main.player.global_position.y + 0.025)
+	# wet ground, and the rain's haze hiding what is far off
+	var wet: float = clamp((mt - RAIN_T - 5.0) / 40.0, 0.0, 1.0)
+	if abs(wet - last_wet) > 0.02 or (wet == 1.0 and last_wet != 1.0):
+		last_wet = wet
+		_wet(wet)
+	main.world_env.fog_density = fog_d + 0.014 * rain
+	main.world_env.fog_light_color = fog_c.lerp(Color(0.1, 0.105, 0.12), rain * 0.7) + Color(0.5, 0.55, 0.65) * flash * 0.3
 	# the town lit up by the stroke
 	main.sun.light_energy = sun_e + flash * 1.8
 	main.world_env.ambient_light_energy = amb_e * (1.0 - 0.15 * cover) + flash * 0.6
