@@ -762,7 +762,15 @@ func _feet_out_of_walls(dt: float) -> void:
 				push.y = 0.0
 				if push.length() > want.length():
 					want = push
-	wall_push = wall_push.lerp(want, min(1.0, dt * 14.0))
+	if cover and not dead:
+		# in cover his body is drawn up against the wall (his own round shape cannot get as near as a shoulder can):
+		# right against a tall wall, a little less behind something low (his rifle is toward it), and eased off
+		# while he leans out or shoots
+		var hug := 0.16 if not cover_low else 0.1
+		if aiming or firing or cover_peek > 0.05 or t - last_shot < 1.2:
+			hug *= 0.35
+		want = -cover_n * hug
+	wall_push = wall_push.lerp(want, min(1.0, dt * (6.0 if cover else 14.0)))
 	model.global_position = Vector3(global_position.x + wall_push.x, model.global_position.y, global_position.z + wall_push.z)
 
 
@@ -2628,7 +2636,7 @@ func _cover_step(dt: float) -> void:
 	var v_n := 0.0
 	if not wall.is_empty():
 		var off: float = (global_position - (wall["position"] as Vector3)).dot(n)
-		v_n = clamp((0.54 - off) * 10.0, -3.0, 3.0)
+		v_n = clamp((0.44 - off) * 10.0, -3.0, 3.0)      # (as near as his shape allows)
 	vel.x = tan.x * v_t + n.x * v_n
 	vel.z = tan.z * v_t + n.z * v_n
 	vel.y = 0.0 if is_on_floor() else vel.y - GRAVITY * dt
