@@ -952,45 +952,11 @@ func _islets() -> void:
 func _launch() -> Node3D:
 	var root := Node3D.new()
 	add_child(root)
-	var stn := [[-6.0, 1.45], [-5.0, 1.7], [1.5, 1.7], [3.5, 1.35], [5.0, 0.75], [6.0, 0.05]]
-	for i in stn.size() - 1:
-		for sg in [1.0, -1.0]:
-			var m := Vector3(1, 1, sg)
-			var r := []
-			for e in [stn[i], stn[i + 1]]:
-				var x: float = e[0]
-				var w: float = e[1]
-				var bow: float = clamp((x - 1.5) / 4.5, 0.0, 1.0)
-				r.append([Vector3(x - bow * 0.8, -0.5, w * lerp(0.55, 0.1, bow)), Vector3(x - bow * 0.3, 0.25, w * 0.9), Vector3(x, 1.15 + bow * 0.35, w)])
-			var out := Vector3(0.3 if stn[i][0] > 1.0 else 0.0, 0, sg)
-			quad("sh_black", r[0][0] * m, r[1][0] * m, r[1][1] * m, r[0][1] * m, out)
-			quad("sh_grey", r[0][1] * m, r[1][1] * m, r[1][2] * m, r[0][2] * m, out, Color(0.62, 0.66, 0.7))
-			quad("sh_plate", Vector3(stn[i][0], 1.0, 0), Vector3(stn[i + 1][0], 1.0, 0), r[1][2] * m * Vector3(1, 0, 1) + Vector3(0, 1.0, 0),
-				r[0][2] * m * Vector3(1, 0, 1) + Vector3(0, 1.0, 0), Vector3.UP, Color(0.5, 0.5, 0.5))
-	quad("sh_grey", Vector3(-6, -0.5, -0.8), Vector3(-6, -0.5, 0.8), Vector3(-6, 1.15, 1.45), Vector3(-6, 1.15, -1.45), Vector3(-1, 0, 0), Color(0.62, 0.66, 0.7))
-	# the wheelhouse with lit windows, a mast, a gun on the foredeck, fenders down the side
-	city.box("sh_grey", Vector3(-0.6, 1.95, 0), Vector3(3.4, 1.9, 2.5), 0.0, Color(0.72, 0.75, 0.78))
-	city.box("sh_grey", Vector3(-0.6, 2.95, 0), Vector3(3.8, 0.1, 2.8), 0.0, Color(0.6, 0.62, 0.65))
-	city.box("sh_lit", Vector3(1.11, 2.3, 0), Vector3(0.02, 0.6, 2.0), 0.0, Color(0.8, 0.9, 1.0))
-	for sg in [-1.0, 1.0]:
-		city.box("sh_lit", Vector3(-0.3, 2.3, sg * 1.26), Vector3(2.2, 0.55, 0.02), 0.0, Color(0.8, 0.9, 1.0))
-		for fx in [-3.5, -1.0, 1.5]:
-			bar("sh_rubber", Vector3(fx, 0.9, sg * 1.78), Vector3(fx, 0.2, sg * 1.74), 0.16, 7)
-		rail(Vector3(-5.8, 1.0, sg * 1.5), Vector3(-2.6, 1.0, sg * 1.6), 0.8, gray)
-	bar("sh_grey", Vector3(-1.4, 3.0, 0), Vector3(-1.4, 5.2, 0), 0.06, 6)
-	bar("sh_grey", Vector3(-1.4, 4.4, -0.9), Vector3(-1.4, 4.4, 0.9), 0.03, 5)
-	city.box("sh_red", Vector3(-1.4, 5.2, 0), Vector3(0.1, 0.12, 0.1))
-	bar("sh_black", Vector3(3.4, 1.0, 0), Vector3(3.4, 1.9, 0), 0.12, 7)
-	city.box("sh_black", Vector3(3.5, 2.0, 0), Vector3(0.5, 0.3, 0.3))
-	bar("sh_black", Vector3(3.6, 2.05, 0), Vector3(4.9, 2.2, 0), 0.035, 6)
-	bar("sh_black", Vector3(0.6, 3.0, 0), Vector3(0.6, 3.5, 0), 0.07, 6)
-	city.box("sh_black", Vector3(0.6, 3.6, 0), Vector3(0.45, 0.4, 0.4))
-	var mi: MeshInstance3D = city.commit(false)
-	main.remove_child(mi)
-	root.add_child(mi)
+	var box := _boat_model(root, "res://assets/boats/fisher_boat.glb", FISHER_BOW, 9.0, 0.8)
+	var roof: float = box.position.y + box.size.y * FISHER_ROOF
 	var body := StaticBody3D.new()
 	body.set_meta("surf", "metal")
-	for e in [[Vector3(-0.5, 0.3, 0), Vector3(11.0, 1.6, 3.2)], [Vector3(-0.6, 2.0, 0), Vector3(3.4, 2.0, 2.5)]]:
+	for e in [[Vector3(0, 0.5, 0), Vector3(9.0, 1.9, 3.2)], [Vector3(FISHER_CABIN, 2.0, 0), Vector3(2.6, 2.0, 2.4)]]:
 		var cs := CollisionShape3D.new()
 		var bs := BoxShape3D.new()
 		bs.size = e[1]
@@ -1007,7 +973,13 @@ func _launch() -> Node3D:
 	sl.spot_attenuation = 0.4
 	sl.shadow_enabled = main.ultra
 	root.add_child(sl)
-	sl.position = Vector3(0.85, 3.65, 0)
+	sl.position = Vector3(FISHER_CABIN, roof + 0.35, 0)
+	root.set_meta("light", sl)
+	bar("sh_black", Vector3(FISHER_CABIN, roof, 0), Vector3(FISHER_CABIN, roof + 0.3, 0), 0.06, 6)
+	city.box("sh_black", Vector3(FISHER_CABIN, roof + 0.36, 0), Vector3(0.4, 0.36, 0.36))
+	var lm: MeshInstance3D = city.commit(false)
+	main.remove_child(lm)
+	root.add_child(lm)
 	var beam := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
 	cm.top_radius = 0.12
@@ -1053,8 +1025,8 @@ func _boat_foam(root: Node3D, line: Array) -> void:
 func _launches() -> void:
 	for i in 2:
 		var n := _launch()
-		_boat_foam(n, [[Vector3(5.5, 0, 0), 0.6, 0.9], [Vector3(-5.0, 0, 0), 2.6, 0.9], [Vector3(-16.0, 0, 0), 3.6, 0.6], [Vector3(-42.0, 0, 0), 6.0, 0.0]])
-		launches.append([n, i * 2.4 + 0.4, 37.0 if i == 0 else -34.0, n.get_child(2)])
+		_boat_foam(n, [[Vector3(4.2, 0, 0), 0.6, 0.9], [Vector3(-4.2, 0, 0), 2.2, 0.9], [Vector3(-14.0, 0, 0), 3.2, 0.6], [Vector3(-38.0, 0, 0), 5.5, 0.0]])
+		launches.append([n, i * 2.4 + 0.4, 37.0 if i == 0 else -34.0, n.get_meta("light")])
 	_move_launches(0.0)
 	for i in 3:
 		_skiff(i)
@@ -1075,9 +1047,44 @@ func _move_launches(_dt: float) -> void:
 		sl.look_at(aim, Vector3.UP)
 
 
+## A downloaded boat model set on a node the way the game wants it: its bow toward +x, `length` long, centred, its
+## keel `draft` under the node. bow: which way its bow points in the model's own scene. paint: [old colour, new].
+func _boat_model(parent: Node3D, path: String, bow: Vector3, length: float, draft: float, paint := []) -> AABB:
+	var inner: Node3D = load(path).instantiate()
+	var hold := Node3D.new()
+	parent.add_child(hold)
+	hold.add_child(inner)
+	inner.rotation.y = atan2(bow.z, bow.x)
+	var box := AABB()
+	var first := true
+	var to_hold := hold.global_transform.affine_inverse()
+	for mi in inner.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var b: AABB = (to_hold * m.global_transform) * m.get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+		for si in m.mesh.get_surface_count():
+			var mat := m.mesh.surface_get_material(si) as BaseMaterial3D
+			if mat != null and not paint.is_empty():
+				var c: Color = mat.albedo_color
+				if abs(c.r - paint[0].r) + abs(c.g - paint[0].g) + abs(c.b - paint[0].b) < 0.25:
+					var nm: BaseMaterial3D = mat.duplicate()
+					nm.albedo_color = paint[1]
+					m.set_surface_override_material(si, nm)
+	var k := length / box.size.x
+	hold.scale = Vector3.ONE * k
+	hold.position = -Vector3(box.get_center().x, box.position.y, box.get_center().z) * k - Vector3(0, draft, 0)
+	return AABB((box.position - Vector3(box.get_center().x, box.position.y, box.get_center().z)) * k - Vector3(0, draft, 0), box.size * k)
+
+
 ## A jet ski with two men on it: one rides, the one behind him shoots. They come in ones, twos and threes all
 ## through the mission, race round the ship and fall away again. They can be shot to pieces.
-const SKI_TINT := [Color(0.95, 0.85, 0.1), Color(0.25, 0.9, 0.3), Color(0.2, 0.35, 0.9)]
+const SKI_TINT := [Color(0.75, 0.06, 0.05), Color(0.08, 0.16, 0.42), Color(0.16, 0.2, 0.14)]
+var SPRINT_BOW := Vector3(0.906, 0, 0.423)
+var FISHER_BOW := Vector3(0, 0, 1)
+var FISHER_ROOF := 0.62      # the cabin roof, as a share of the model's height (its masts stand above it)
+var FISHER_CABIN := 1.2      # where along her the cabin is
 var wave_cd := 14.0
 var wave_n := 0
 
@@ -1131,47 +1138,17 @@ func _point_bone(sk: Skeleton3D, b: int, dir: Vector3) -> void:
 func _skiff(i: int) -> void:
 	var root := Node3D.new()
 	add_child(root)
-	var tint: Color = SKI_TINT[i % 3]
-	# the hull: a deep V forward, flat aft; white below, dark above the rubbing band
-	var stn := [[-1.65, 0.5], [-1.2, 0.58], [0.3, 0.6], [1.0, 0.46], [1.5, 0.24], [1.75, 0.03]]
-	for k in stn.size() - 1:
-		for sg in [1.0, -1.0]:
-			var m := Vector3(1, 1, sg)
-			var r := []
-			for e in [stn[k], stn[k + 1]]:
-				var x: float = e[0]
-				var w: float = e[1]
-				var bow: float = clamp((x - 0.3) / 1.45, 0.0, 1.0)
-				r.append([Vector3(x - bow * 0.25, -0.18, w * lerp(0.45, 0.05, bow)), Vector3(x, 0.28 + bow * 0.12, w), Vector3(x - bow * 0.12, 0.5 + bow * 0.1, w * 0.72)])
-			var out := Vector3(0.3 if stn[k][0] > 0.2 else 0.0, 0, sg)
-			quad("sh_gloss", r[0][0] * m, r[1][0] * m, r[1][1] * m, r[0][1] * m, out, Color(0.9, 0.9, 0.92))
-			quad("sh_gloss", r[0][1] * m, r[1][1] * m, r[1][2] * m, r[0][2] * m, out + Vector3(0, 1, 0), Color(0.12, 0.13, 0.16))
-			quad("sh_gloss", r[0][2] * m, r[1][2] * m, r[1][2] * Vector3(1, 1, 0), r[0][2] * Vector3(1, 1, 0), Vector3.UP, Color(0.12, 0.13, 0.16))
-			bar("sh_rubber", r[0][1] * m, r[1][1] * m, 0.035, 5)
-	quad("sh_gloss", Vector3(-1.65, -0.18, -0.22), Vector3(-1.65, -0.18, 0.22), Vector3(-1.65, 0.28, 0.5), Vector3(-1.65, 0.28, -0.5), Vector3(-1, 0, 0))
-	quad("sh_grey", Vector3(-1.65, 0.28, -0.5), Vector3(-1.65, 0.28, 0.5), Vector3(-1.65, 0.5, 0.36), Vector3(-1.65, 0.5, -0.36), Vector3(-1, 0, 0), Color(0.3, 0.32, 0.36))
-	# the cowl in the ski's colour, rising to the bars; a dark screen; the bars; the long seat; the footwells
-	tbox("sh_gloss", Vector3(1.0, 0.62, 0), Vector3(1.15, 0.2, 0.6), Basis(Vector3(0, 0, 1), -0.22), tint)
-	tbox("sh_gloss", Vector3(0.5, 0.82, 0), Vector3(0.5, 0.3, 0.5), Basis(Vector3(0, 0, 1), -0.7), tint)
-	tbox("sh_dark", Vector3(0.52, 1.02, 0), Vector3(0.03, 0.2, 0.42), Basis(Vector3(0, 0, 1), 0.6))
-	bar("sh_black", Vector3(0.42, 0.9, 0), Vector3(0.32, 1.06, 0), 0.05, 6)
-	bar("sh_black", Vector3(0.32, 1.06, -0.36), Vector3(0.32, 1.06, 0.36), 0.022, 6)
-	tbox("sh_rubber", Vector3(-0.45, 0.7, 0), Vector3(1.45, 0.3, 0.4), Basis.IDENTITY, Color(2.2, 2.2, 2.4))
-	tbox("sh_rubber", Vector3(-1.05, 0.78, 0), Vector3(0.5, 0.3, 0.42), Basis(Vector3(0, 0, 1), 0.12), Color(2.2, 2.2, 2.4))
-	for sg in [-1.0, 1.0]:
-		tbox("sh_gloss", Vector3(-0.2, 0.52, sg * 0.43), Vector3(2.2, 0.05, 0.1), Basis.IDENTITY, tint)
-	city.box("sh_grey", Vector3(-1.72, 0.1, 0), Vector3(0.16, 0.2, 0.24), 0.0, Color(0.3, 0.3, 0.3))
-	var mi: MeshInstance3D = city.commit(false)
-	main.remove_child(mi)
-	root.add_child(mi)
-	_boat_foam(root, [[Vector3(1.4, 0, 0), 0.3, 0.9], [Vector3(-1.6, 0, 0), 1.1, 1.0], [Vector3(-7.0, 0, 0), 1.8, 0.7], [Vector3(-22.0, 0, 0), 3.0, 0.0]])
+	var box := _boat_model(root, "res://assets/boats/sprint_boat.glb", SPRINT_BOW, 5.6, 0.26, [Color(1, 0, 0), SKI_TINT[i % 3]])
+	if i == 0:
+		pass
+	_boat_foam(root, [[Vector3(1.8, 0, 0), 0.4, 0.9], [Vector3(-2.1, 0, 0), 1.4, 1.0], [Vector3(-8.0, 0, 0), 2.2, 0.7], [Vector3(-26.0, 0, 0), 3.4, 0.0]])
 	var body := StaticBody3D.new()
 	body.set_meta("surf", "metal")
 	body.set_meta("kind", "machine")
 	body.set_meta("hp", 170.0)
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = Vector3(3.3, 1.9, 1.1)
+	bs.size = Vector3(5.6, 1.9, 1.9)
 	cs.shape = bs
 	cs.position = Vector3(0, 0.8, 0)
 	body.add_child(cs)
@@ -1190,11 +1167,11 @@ func _make_riders() -> void:
 	var kinds := ["olive", "blue", "gasmask"]
 	for i in skiffs.size():
 		var root: Node3D = skiffs[i]["n"]
-		_rider(root, kinds[i % 3], Vector3(-0.18, RIDE_Y, 0), false)
-		skiffs[i]["gun"] = _rider(root, kinds[(i + 1) % 3], Vector3(-0.95, RIDE_Y + 0.08, 0), true)
+		_rider(root, kinds[i % 3], Vector3(0.3, RIDE_Y, 0), false)
+		skiffs[i]["gun"] = _rider(root, kinds[(i + 1) % 3], Vector3(-1.2, RIDE_Y + 0.14, 0), true)
 
 
-var RIDE_Y := -0.05
+var RIDE_Y := -0.5
 ## Send the next few in from astern.
 func _wave() -> void:
 	var n: int = [2, 3, 1, 2, 1, 3, 2][wave_n % 7]
