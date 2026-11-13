@@ -248,6 +248,20 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, vs), Color(0.7, 0.0, 0.0, 0.22 * a))
 		var ang: float = player.hurt_dir - PI * 0.5
 		draw_arc(c, 110 * s, ang - 0.35, ang + 0.35, 16, Color(1, 0.15, 0.1, 0.85 * a), 7.0 * s)
+	# wounded: the edges of the screen darken red, more the less health he has (a slow pulse when it is very low)
+	if not player.dead and player.hp < 60.0 and main.fx.blood_on:
+		var k: float = clamp((60.0 - player.hp) / 60.0, 0.0, 1.0)
+		if player.hp < 25.0:
+			k *= 0.8 + 0.2 * sin(Time.get_ticks_msec() * 0.006)
+		var band: float = vs.y * 0.28
+		for i in 20:
+			var t: float = float(i) / 20.0
+			var col := Color(0.36, 0.0, 0.01, 0.2 * k * (1.0 - t) * (1.0 - t))
+			var w: float = band / 20.0
+			draw_rect(Rect2(0, i * w, vs.x, w), col)
+			draw_rect(Rect2(0, vs.y - (i + 1) * w, vs.x, w), col)
+			draw_rect(Rect2(i * w, 0, w, vs.y), col)
+			draw_rect(Rect2(vs.x - (i + 1) * w, 0, w, vs.y), col)
 	if player.dead:
 		draw_rect(Rect2(Vector2.ZERO, vs), Color(0.35, 0.0, 0.0, 0.35))
 	# crosshair (red dot while aiming); the SVD's PSO-1 or the RPG's PGO-7 when looking through them
@@ -551,6 +565,12 @@ func _build_panels() -> void:
 	rb.name = "Restart"
 	var qb := _button(pv, "Quit to menu", func(): main.go_level(""))
 	qb.name = "Quit"
+	var bb := _button(pv, "Blood: On", func(): pass)
+	bb.name = "Blood"
+	bb.text = "Blood: On" if main.fx.blood_on else "Blood: Off"
+	bb.pressed.connect(func():
+		main.set_blood(not main.fx.blood_on)
+		bb.text = "Blood: On" if main.fx.blood_on else "Blood: Off")
 	_button(pv, "Check for update", func(): main.check_update_now(); _hint("Checking for update"))
 	_button(pv, "Exit", func(): get_tree().quit())
 	pause_panel.visible = false

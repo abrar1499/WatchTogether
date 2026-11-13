@@ -30,6 +30,7 @@ var head_b := -1
 var hp := 120.0
 var dead := false
 var dead_t := 0.0
+var pooled := false
 var rag: PhysicalBoneSimulator3D = null      # his body falling (see player.ragdoll)
 var hit_at := Vector3.ZERO     # where the last round struck him
 var sole_fit := false
@@ -243,6 +244,9 @@ func _physics_process(dt: float) -> void:
 			skel.set_bone_pose_scale(b, Vector3.ONE * 0.001)
 		if rag != null:
 			player.ragdoll_tame(rag)
+		if not pooled and dead_t > 1.6:
+			pooled = true
+			main.fx.blood_pool(body_pos())
 		if rag != null and dead_t > 5.0:
 			player.ragdoll_rest(skel, rag)       # at rest: the pose stays, the weights go
 			rag = null
@@ -821,6 +825,8 @@ func take_hit(dmg: float, pos: Vector3, dir: Vector3, power := 1.0, part := "tor
 	var headshot := part == "head"
 	main.fx.blood(pos, -dir)
 	var limb := part.begins_with("leg") or part.begins_with("arm")
+	# (a knife: little; a limb: less; a head shot or a shotgun: more)
+	main.fx.bleed(pos, dir, (1.8 if headshot else (0.6 if limb else 1.0)) * (1.5 if power >= 2.0 else (0.5 if power < 0.5 else 1.0)))
 	hp -= 999.0 if headshot else (dmg * (0.65 if limb else 1.0))
 	var d: float = player.global_position.distance_to(global_position)
 	var force: float = power * clamp(1.0 - (d - 3.0) / 9.0, 0.0, 1.0)
@@ -899,6 +905,7 @@ func blast(dmg: float, from: Vector3) -> void:
 	if dead:
 		return
 	main.fx.blood(global_position + Vector3(0, 1.1, 0), (global_position - from).normalized())
+	main.fx.bleed(global_position + Vector3(0, 1.1, 0), (global_position - from).normalized(), 2.2)
 	hp -= dmg
 	if hp <= 0.0:
 		_die(false, true, global_position - from, 1.0)

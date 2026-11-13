@@ -54,6 +54,9 @@ func _ready() -> void:
 		# a phone's screen is dense: fewer pixels to shade, the same picture; the HD app a little more
 		get_viewport().scaling_3d_scale = 0.85 if OS.has_feature("hd") else 0.8
 	add_child(fx)
+	var ocf := ConfigFile.new()
+	if ocf.load("user://progress.cfg") == OK:
+		fx.blood_on = bool(ocf.get_value("options", "blood", true))
 	add_child(snd)
 	var spawn := Vector3(0, 0.05, 6)
 	hd = RenderingServer.get_rendering_device() != null
@@ -1977,6 +1980,15 @@ func enemy_alarm(src: Node) -> void:
 			e.investigate(src.last_seen)
 
 
+## Blood on or off (kept between runs).
+func set_blood(on: bool) -> void:
+	fx.blood_on = on
+	var cf := ConfigFile.new()
+	cf.load("user://progress.cfg")
+	cf.set_value("options", "blood", on)
+	cf.save("user://progress.cfg")
+
+
 ## A soldier hit or killed: the ones close by, or who can see him, notice and come to look.
 func comrade_down(src: Node) -> void:
 	var p: Vector3 = src.global_position
@@ -2615,6 +2627,196 @@ class FX extends Node3D:
 			_big(p + d * (0.3 + i * 0.35), 0.8 + i * 0.25, 2.5, randf_range(1.0, 1.8), d * (2.0 + i) + Vector3(0, 0.4, 0),
 				Color(0.75, 0.68, 0.56, 0.6), Color(0.8, 0.74, 0.62, 0.0))
 
+	# ---- blood ----
+	## Drops thrown from a wound the way the round was going, falling and leaving stains where they land; a
+	## splatter on the wall or ground behind him; a pool that spreads under a body. Dark red, not bright. All of it
+	## from fixed pools (old stains are taken for new ones), flat quads, no lights: cheap on a phone.
+	var blood_on := true
+	var b_drops: Array = []        # {m, v, t}
+	var b_drop_i := 0
+	var b_stains: Array = []       # MeshInstance3D
+	var b_stain_i := 0
+	var b_pools: Array = []        # {m, t, size}
+	var b_pool_i := 0
+	var b_tex: Array = []
+	var b_ready := false
+
+
+	func _blot(seed_: int) -> ImageTexture:
+		var n := 64
+		var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+		var rg := RandomNumberGenerator.new()
+		rg.seed = seed_
+		var blobs := []
+		for i in rg.randi_range(5, 9):
+			blobs.append([Vector2(rg.randf_range(0.3, 0.7), rg.randf_range(0.3, 0.7)), rg.randf_range(0.1, 0.24)])
+		for i in rg.randi_range(6, 12):       # flecks thrown out round it
+			var a := rg.randf() * TAU
+			blobs.append([Vector2(0.5, 0.5) + Vector2(cos(a), sin(a)) * rg.randf_range(0.28, 0.46), rg.randf_range(0.02, 0.05)])
+		for y in n:
+			for x in n:
+				var q := Vector2((x + 0.5) / n, (y + 0.5) / n)
+				var v := 0.0
+				for b in blobs:
+					v = max(v, 1.0 - q.distance_to(b[0]) / float(b[1]))
+				img.set_pixel(x, y, Color(1, 1, 1, clamp(v * 3.0, 0.0, 1.0)))
+		return ImageTexture.create_from_image(img)
+
+
+	func _blood_setup() -> void:
+		b_ready = true
+		for i in 4:
+			b_tex.append(_blot(101 + i * 17))
+		var dm := StandardMaterial3D.new()
+		dm.albedo_color = Color(0.26, 0.008, 0.012)
+		dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		dm.albedo_texture = soft_tex
+		dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		for i in 48:
+			var mi := MeshInstance3D.new()
+			var q := QuadMesh.new()
+			q.size = Vector2(0.05, 0.05)
+			mi.mesh = q
+			mi.material_override = dm
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.visible = false
+			add_child(mi)
+			b_drops.append({"m": mi, "v": Vector3.ZERO, "t": 0.0})
+		for i in 36:
+			var mi := MeshInstance3D.new()
+			var q := QuadMesh.new()
+			q.size = Vector2(1, 1)
+			mi.mesh = q
+			var sm := StandardMaterial3D.new()
+			sm.albedo_texture = b_tex[i % b_tex.size()]
+			sm.albedo_color = Color(0.2, 0.006, 0.01, 0.92)
+			sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			sm.roughness = 0.35                        # wet: a little shine
+			sm.metallic_specular = 0.6
+			sm.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+			sm.render_priority = 1
+			mi.material_override = sm
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.visible = false
+			mi.visibility_range_end = 60.0
+			add_child(mi)
+			b_stains.append(mi)
+		for i in 10:
+			var mi := MeshInstance3D.new()
+			var q := QuadMesh.new()
+			q.size = Vector2(1, 1)
+			q.orientation = PlaneMesh.FACE_Y
+			mi.mesh = q
+			var pm := StandardMaterial3D.new()
+			pm.albedo_texture = b_tex[i % b_tex.size()]
+			pm.albedo_color = Color(0.17, 0.004, 0.008, 0.94)
+			pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			pm.roughness = 0.22
+			pm.metallic_specular = 0.7
+			pm.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+			mi.material_override = pm
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.visible = false
+			mi.visibility_range_end = 60.0
+			add_child(mi)
+			b_pools.append({"m": mi, "t": -1.0, "size": 1.0})
+
+
+	## A stain on a surface at p facing n.
+	func blood_stain(p: Vector3, n: Vector3, size: float) -> void:
+		if not blood_on:
+			return
+		if not b_ready:
+			_blood_setup()
+		var mi: MeshInstance3D = b_stains[b_stain_i % b_stains.size()]
+		b_stain_i += 1
+		var up := Vector3.UP if abs(n.y) < 0.9 else Vector3.RIGHT
+		var bz := n.normalized()
+		var bx := up.cross(bz).normalized()
+		var by := bz.cross(bx)
+		mi.global_transform = Transform3D(Basis(bx, by, bz).rotated(bz, randf() * TAU).scaled(Vector3.ONE * size), p + bz * (0.012 + 0.0004 * (b_stain_i % 20)))
+		mi.visible = true
+
+
+	## A wound: drops fly the way the round went (dir), more of them for `amount` (1 an ordinary hit; a head shot,
+	## a shotgun or a blast more, a limb or a knife less), and what is behind him within reach is spattered.
+	func bleed(p: Vector3, dir: Vector3, amount := 1.0) -> void:
+		if not blood_on:
+			return
+		if not b_ready:
+			_blood_setup()
+		var n := int(clamp(4.0 * amount, 2.0, 14.0))
+		for i in n:
+			var d: Dictionary = b_drops[b_drop_i % b_drops.size()]
+			b_drop_i += 1
+			var mi: MeshInstance3D = d["m"]
+			mi.global_position = p
+			mi.scale = Vector3.ONE * randf_range(0.5, 1.3)
+			mi.visible = true
+			d["v"] = (dir + Vector3(randf_range(-0.5, 0.5), randf_range(-0.1, 0.7), randf_range(-0.5, 0.5))).normalized() * randf_range(1.6, 4.2)
+			d["t"] = 1.6
+		# the wall or the ground behind him
+		var space := get_world_3d().direct_space_state
+		for k in (2 if amount >= 1.5 else 1):
+			var q := PhysicsRayQueryParameters3D.create(p, p + (dir + Vector3(randf_range(-0.25, 0.25), randf_range(-0.45, 0.05), randf_range(-0.25, 0.25))).normalized() * 3.2)
+			q.collision_mask = 1
+			var hit := space.intersect_ray(q)
+			if hit:
+				blood_stain(hit["position"], hit["normal"], randf_range(0.35, 0.7) * clamp(amount, 0.6, 1.6))
+
+
+	## The pool under a body lying at p: spreads over a couple of seconds.
+	func blood_pool(p: Vector3, size := 1.0) -> void:
+		if not blood_on:
+			return
+		if not b_ready:
+			_blood_setup()
+		var q := PhysicsRayQueryParameters3D.create(p + Vector3(0, 0.4, 0), p + Vector3(0, -1.5, 0))
+		q.collision_mask = 1
+		var hit := get_world_3d().direct_space_state.intersect_ray(q)
+		if not hit or (hit["normal"] as Vector3).y < 0.7:
+			return
+		var d: Dictionary = b_pools[b_pool_i % b_pools.size()]
+		b_pool_i += 1
+		var mi: MeshInstance3D = d["m"]
+		mi.global_position = (hit["position"] as Vector3) + Vector3(0, 0.016, 0)
+		mi.rotation = Vector3(0, randf() * TAU, 0)
+		mi.scale = Vector3.ONE * 0.15
+		mi.visible = true
+		d["t"] = 0.0
+		d["size"] = randf_range(1.5, 2.1) * size
+
+
+	func _blood_step(dt: float) -> void:
+		for d in b_drops:
+			if d["t"] <= 0.0:
+				continue
+			d["t"] -= dt
+			var mi: MeshInstance3D = d["m"]
+			var from := mi.global_position
+			d["v"] += Vector3(0, -9.8, 0) * dt
+			var to: Vector3 = from + d["v"] * dt
+			var q := PhysicsRayQueryParameters3D.create(from, to)
+			q.collision_mask = 1
+			var hit := get_world_3d().direct_space_state.intersect_ray(q)
+			if hit:
+				d["t"] = 0.0
+				mi.visible = false
+				if randf() < 0.6:
+					blood_stain(hit["position"], hit["normal"], randf_range(0.08, 0.2))
+			elif d["t"] <= 0.0:
+				mi.visible = false
+			else:
+				mi.global_position = to
+		for d in b_pools:
+			if d["t"] < 0.0 or d["t"] > 2.4:
+				continue
+			d["t"] += dt
+			var k: float = clamp(d["t"] / 2.2, 0.0, 1.0)
+			(d["m"] as MeshInstance3D).scale = Vector3.ONE * lerp(0.15, float(d["size"]), 1.0 - (1.0 - k) * (1.0 - k))
+
+
 	## A drop of blood on the ground under a wounded man.
 	func blood_drop(p: Vector3) -> void:
 		var h: MeshInstance3D = holes[hole_i % holes.size()]
@@ -2688,6 +2890,8 @@ class FX extends Node3D:
 		t["g"].global_transform = Transform3D(Basis().scaled(Vector3.ONE * clamp(hd * 0.018, 0.06, 0.7)), hp)
 
 	func _process(dt: float) -> void:
+		if b_ready:
+			_blood_step(dt)
 		for c in chip_list:
 			if c["t"] > 0.0:
 				c["t"] -= dt

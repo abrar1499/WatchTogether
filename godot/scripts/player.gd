@@ -164,6 +164,7 @@ var end_t := 0.0                # how long the stick has pushed past the end of 
 var cover_reach := 0.0          # how far he steps to clear the end of the wall
 var act_doing := ""
 var act_obj: Node = null
+var drip_t := 1.0
 var take_new := -1                 # a gun just taken, to be held when he stands up
 var act_t := -1.0                   # doing it: time into it
 var act_check := 0.0
@@ -1827,6 +1828,11 @@ func _physics_process(dt: float) -> void:
 	_low_ready(dt)
 	_show_gun(dt)
 	_reach(dt)
+	if hp < 35.0 and not dead:
+		drip_t -= dt
+		if drip_t <= 0.0:
+			drip_t = randf_range(1.2, 2.6)
+			fx.blood_stain(Vector3(global_position.x + randf_range(-0.2, 0.2), global_position.y, global_position.z + randf_range(-0.2, 0.2)), Vector3.UP, randf_range(0.07, 0.14))
 	_feet_out_of_walls(dt)
 	if not sole_fit and t > 0.6 and speed < 0.1 and is_on_floor() and not crouch and not dead:
 		sole_fit = true
@@ -2391,6 +2397,7 @@ func hit(dmg: float, from: Vector3, part := "") -> void:
 	hp -= dmg
 	hurt_t = 0.6
 	quiet_t = 0.0
+	fx.bleed(global_position + Vector3(0, 1.2, 0), (global_position - from).normalized(), 0.7 if dmg < 30.0 else 1.4)
 	shake = max(shake, 0.2 if dmg < 30.0 else 0.6)
 	if groan_t <= 0.0 and hp > 0.0:
 		groan_t = 0.12
