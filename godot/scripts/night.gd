@@ -47,7 +47,7 @@ func start(m: Node) -> void:
 	_make_rain()
 	_make_sound()
 	_make_lamp_parts()
-	for i in SPOTS:
+	for i in (6 if main.ultra else SPOTS):      # (the HD app: twice as many real lights)
 		var s := SpotLight3D.new()
 		s.light_color = Color(1.0, 0.93, 0.78)
 		s.light_energy = 3.5
@@ -320,10 +320,10 @@ func _layer(code: String, mm: MultiMesh, params: Dictionary) -> Array:
 
 func _make_rain() -> void:
 	# close: thin streaks; far: hair-thin, fainter, longer (further off they blur together into a grey veil)
-	rain_layers.append(_layer(RAIN_SHADER, _drops(6000, 7), {"box": Vector3(12, 10, 12), "len": 0.07, "width": 0.0005, "strength": 0.3, "near_cut": 1.5}))
-	rain_layers.append(_layer(RAIN_SHADER, _drops(3500, 11), {"box": Vector3(36, 20, 36), "len": 0.14, "width": 0.0008, "strength": 0.17, "near_cut": 5.0}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(12000 if main.ultra else 6000, 7), {"box": Vector3(12, 10, 12), "len": 0.07, "width": 0.0005, "strength": 0.3, "near_cut": 1.5}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(7000 if main.ultra else 3500, 11), {"box": Vector3(36, 20, 36), "len": 0.14, "width": 0.0008, "strength": 0.17, "near_cut": 5.0}))
 	_make_puddles()
-	var sl := _layer(SPLASH_SHADER, _drops(1000, 13), {"box": Vector2(14, 14)})
+	var sl := _layer(SPLASH_SHADER, _drops(2000 if main.ultra else 1000, 13), {"box": Vector2(14, 14)})
 	splash_mi = sl[0]
 	splash_mat = sl[1]
 	fog_d = main.world_env.fog_density

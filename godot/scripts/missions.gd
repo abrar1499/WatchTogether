@@ -838,7 +838,7 @@ func _m2() -> Vector3:
 	main.apply_night()
 	main.photo_sky("res://assets/sky/night.hdr", 0.08, 0.0, 0.0, false)
 	# no moon shadows in the town: at night they barely show, and they cost as much as the town itself
-	main.sun.shadow_enabled = false
+	main.sun.shadow_enabled = main.ultra      # (only the HD app pays for them)
 	main.extra_cover = []
 	city = load("res://scripts/city.gd").new(main, 26)
 	# the whole town paved

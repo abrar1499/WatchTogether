@@ -510,8 +510,9 @@ func ad_image(seed_: int) -> ImageTexture:
 ## Roller shutters and air conditioners (Poly Haven, CC0) join in as models.
 const PLASTER_KEY := ["k_plaster0", "k_plaster1", "k_plaster2", "k_plaster3", "k_plaster4", "k_plaster5", "k_plaster6", "k_plaster7"]
 const SMALL_KEYS := ["dark", "k_sign", "k_shop", "bulb"]
-const SMALL_GONE := 110.0
-const KIT_FAR := 75.0         # beyond this, a building is flat walls with its window panes on them
+# (the HD app draws both from twice as far)
+var SMALL_GONE: float = 220.0 if Engine.get_meta("ultra", false) else 110.0
+var KIT_FAR: float = 150.0 if Engine.get_meta("ultra", false) else 75.0         # beyond this, a building is flat walls with its window panes on them
 const KIT_GONE := 270.0       # and beyond this (deep in the haze) it is not drawn
 const PLASTER := [Color(0.93, 0.9, 0.84), Color(0.84, 0.83, 0.8), Color(0.96, 0.87, 0.74), Color(0.76, 0.75, 0.72),
 	Color(0.93, 0.83, 0.78), Color(0.8, 0.84, 0.86), Color(0.9, 0.9, 0.9), Color(0.82, 0.76, 0.66)]

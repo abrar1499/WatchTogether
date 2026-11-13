@@ -49,10 +49,16 @@ func _ready() -> void:
 			test_mode = a.substr(7)
 		if a.begins_with("--level="):
 			level = a.substr(8)
+	# the HD app is the game at its best, for the strongest phones: everything turned up (see _ultra)
+	ultra = OS.has_feature("hd") or OS.get_environment("DS_ULTRA") != ""
+	Engine.set_meta("ultra", ultra)
 	_build_environment()
+	if ultra:
+		_ultra()
 	if OS.has_feature("mobile"):
 		# a phone's screen is dense: fewer pixels to shade, the same picture; the HD app a little more
-		res_base = 0.85 if OS.has_feature("hd") else 0.8
+		res_base = 1.0 if ultra else 0.8
+		res_min = 0.85 if ultra else 0.55
 		res_scale = res_base
 		get_viewport().scaling_3d_scale = res_base
 	add_child(fx)
@@ -66,7 +72,7 @@ func _ready() -> void:
 	# stopped at 1 %. Every file is read the plain way, as the level is built.)
 	if WARM_AHEAD and (test_mode == "" or OS.get_environment("WARM") != ""):
 		warm_up(int(level.substr(1)) if level != "" else 0)
-	Engine.set_meta("hd_people", level == "")
+	Engine.set_meta("hd_people", level == "" or ultra)
 	if level == "":
 		spawn = _build_airfield()
 	else:
@@ -343,7 +349,7 @@ func scatter(stones: int, scrub: int, clear_r: float) -> void:
 	# (stones a hand across: a rough shape of 80 triangles each, not the boulders' 400; there are over a thousand)
 	var pebbles := []
 	for s_ in 3:
-		pebbles.append(_rock_mesh(40 + s_, 8, 5))
+		pebbles.append(_rock_mesh(40 + s_, 18, 10) if ultra else _rock_mesh(40 + s_, 8, 5))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 99
 	var rock_mat := _tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true)
@@ -2040,6 +2046,29 @@ func on_player_respawn() -> void:
 			e.grace = 3.0
 
 
+## The HD app: full resolution, 2x anti-aliasing with FXAA, real shadows from the sun (and the moon) with people casting
+## them, a soft glow round lamps, flashes and fire. The other scripts ask Engine.get_meta("ultra") for theirs:
+## full soldiers out to 45 m, buildings in detail twice as far, small things drawn from twice as far, twice the rain.
+func _ultra() -> void:
+	# (2x multisampling with FXAA over it: 4x crashed the Vulkan renderer in the two town missions when tried)
+	get_viewport().screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
+	get_viewport().use_debanding = true
+	sun.shadow_enabled = true
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	sun.directional_shadow_max_distance = 90.0
+	sun.shadow_blur = 1.2
+	RenderingServer.directional_shadow_atlas_set_size(4096, true)
+	RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH)
+	RenderingServer.positional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH)
+	world_env.glow_enabled = true
+	# (only what is truly bright glows: lamps, muzzle flashes, fire, lightning; not a daylight sky)
+	world_env.glow_intensity = 0.35
+	world_env.glow_strength = 0.85
+	world_env.glow_bloom = 0.0
+	world_env.glow_hdr_threshold = 1.6
+	world_env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
+
+
 ## The plain still boxes of a mission (walls, slabs, steps: a StaticBody3D with one BoxMesh and nothing special about
 ## it) are drawn together, one mesh for each material in each 28 m square of ground, not each on its own: a phone
 ## pays for every separate thing it draws. (In squares, so no one mesh has more lamps on it than it can be lit by.)
@@ -2120,11 +2149,13 @@ func far_cull_props() -> void:
 			if mi.mesh == null or mi.visibility_range_end > 0.0 or mi.visibility_range_begin > 0.0:
 				continue
 			var big: float = (mi.mesh.get_aabb().size * (mi.global_transform.basis.get_scale() as Vector3)).length()
-			mi.visibility_range_end = 70.0 if big < 1.6 else (120.0 if big < 4.0 else (190.0 if big < 14.0 else 0.0))
+			mi.visibility_range_end = (70.0 if big < 1.6 else (120.0 if big < 4.0 else (190.0 if big < 14.0 else 0.0))) * (1.8 if ultra else 1.0)
 			mi.visibility_range_end_margin = 4.0
 
 
 # ---- a steady frame rate: the 3D picture is drawn smaller when the phone cannot keep up, and larger again when it can ----
+var ultra := false               # the HD app: every setting at its highest
+var res_min := 0.55
 var res_base := 0.8
 var res_scale := 0.8
 var res_ft := 1.0 / 60.0         # frame time, smoothed
@@ -2142,9 +2173,9 @@ func _steady_frames(dt: float) -> void:
 	res_good = res_good + dt if res_ft < 1.0 / 56.0 else 0.0
 	if res_wait > 0.0:
 		return
-	if res_ft > 1.0 / 46.0 and res_scale > 0.56:
+	if res_ft > 1.0 / 46.0 and res_scale > res_min + 0.01:
 		# below about 46 frames a second: fewer pixels (the buttons and words stay sharp, only the 3D is smaller)
-		res_scale = max(0.55, res_scale - (0.1 if res_ft > 1.0 / 34.0 else 0.05))
+		res_scale = max(res_min, res_scale - (0.1 if res_ft > 1.0 / 34.0 else 0.05))
 		res_wait = 2.0
 		res_good = 0.0
 	elif res_good > 8.0 and res_scale < res_base:

@@ -370,10 +370,11 @@ func _far_version(sc: Node3D, kind: String) -> void:
 		else:
 			for i in min(lowm.get_surface_count(), m.mesh.get_surface_count()):
 				far.set_surface_override_material(i, m.get_active_material(i))
-		m.visibility_range_end = LOD_AT
+		var at: float = 45.0 if Engine.get_meta("ultra", false) else LOD_AT      # (the HD app: the full model much further)
+		m.visibility_range_end = at
 		m.visibility_range_end_margin = 1.0
 		m.set_meta("lod_near", true)
-		far.visibility_range_begin = LOD_AT
+		far.visibility_range_begin = at
 		far.visibility_range_begin_margin = 1.0
 
 
@@ -767,7 +768,7 @@ func make_blobs(who: Node3D) -> Array:
 		mi.material_override = _blob_shade(k[1])
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.top_level = true
-		mi.visibility_range_end = 28.0
+		mi.visibility_range_end = 60.0 if Engine.get_meta("ultra", false) else 28.0
 		who.add_child(mi)
 		out.append(mi)
 	return out
