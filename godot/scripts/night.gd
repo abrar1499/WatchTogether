@@ -310,8 +310,8 @@ func _layer(code: String, mm: MultiMesh, params: Dictionary) -> Array:
 
 func _make_rain() -> void:
 	# close: thin streaks; far: hair-thin, fainter, longer (further off they blur together into a grey veil)
-	rain_layers.append(_layer(RAIN_SHADER, _drops(4000, 7), {"box": Vector3(12, 10, 12), "len": 0.45, "width": 0.003, "strength": 0.42, "near_cut": 1.2}))
-	rain_layers.append(_layer(RAIN_SHADER, _drops(2600, 11), {"box": Vector3(36, 20, 36), "len": 0.8, "width": 0.004, "strength": 0.24, "near_cut": 5.0}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(7000, 7), {"box": Vector3(12, 10, 12), "len": 0.28, "width": 0.002, "strength": 0.5, "near_cut": 1.0}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(4500, 11), {"box": Vector3(36, 20, 36), "len": 0.5, "width": 0.003, "strength": 0.28, "near_cut": 5.0}))
 	_make_veils()
 	_make_puddles()
 	var sl := _layer(SPLASH_SHADER, _drops(1000, 13), {"box": Vector2(14, 14)})
@@ -387,7 +387,7 @@ func _make_veils() -> void:
 	var sh := Shader.new()
 	sh.code = VEIL_SHADER
 	var tex: Texture2D = load("res://assets/fx/rain_sheet.png")
-	for r in [[11.0, 7.0, 0.55, 0.9], [24.0, 12.0, 0.42, 0.75]]:
+	for r in [[11.0, 11.0, 0.55, 0.9], [24.0, 18.0, 0.42, 0.75]]:
 		var cm := CylinderMesh.new()
 		cm.top_radius = r[0]
 		cm.bottom_radius = r[0]
