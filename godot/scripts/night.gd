@@ -311,7 +311,9 @@ func _layer(code: String, mm: MultiMesh, params: Dictionary) -> Array:
 func _make_rain() -> void:
 	# close: thin streaks; far: hair-thin, fainter, longer (further off they blur together into a grey veil)
 	rain_layers.append(_layer(RAIN_SHADER, _drops(4000, 7), {"box": Vector3(12, 10, 12), "len": 0.45, "width": 0.003, "strength": 0.42, "near_cut": 1.2}))
-	rain_layers.append(_layer(RAIN_SHADER, _drops(5200, 11), {"box": Vector3(46, 24, 46), "len": 0.8, "width": 0.004, "strength": 0.24, "near_cut": 5.0}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(2600, 11), {"box": Vector3(36, 20, 36), "len": 0.8, "width": 0.004, "strength": 0.24, "near_cut": 5.0}))
+	_make_veils()
+	_make_puddles()
 	var sl := _layer(SPLASH_SHADER, _drops(1000, 13), {"box": Vector2(14, 14)})
 	splash_mi = sl[0]
 	splash_mat = sl[1]
@@ -324,6 +326,106 @@ func _make_rain() -> void:
 			var m = c.mats[k]
 			if m is StandardMaterial3D and (str(k).begins_with("g_") or str(k) in ["k_base", "dark", "panel"]):
 				wet_mats.append([m, m.roughness, m.albedo_color, m.metallic_specular])
+
+
+# ---- the rain picture (VRA, CC BY 4.0): far rain as falling sheets round the camera, ripples on the puddles ----
+const VEIL_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled, blend_add;
+uniform sampler2D sheet : filter_linear_mipmap, repeat_enable;
+uniform float amount = 0.0;
+uniform float flash = 0.0;
+uniform float speed = 0.55;
+uniform float tiles = 7.0;
+uniform float lean = 0.05;
+uniform vec3 tint = vec3(0.36, 0.38, 0.44);
+void fragment() {
+	vec2 uv = vec2(UV.x * tiles + UV.y * lean, UV.y * 1.6 - TIME * speed);
+	float r = texture(sheet, uv).r;
+	float r2 = texture(sheet, uv * vec2(1.37, 0.83) + vec2(0.31, -TIME * speed * 0.35)).r;
+	float edge = smoothstep(0.0, 0.18, UV.y) * (1.0 - smoothstep(0.82, 1.0, UV.y));
+	ALBEDO = (tint + flash * vec3(0.8)) * (r * 0.75 + r2 * 0.45) * edge * amount;
+}
+"""
+
+const PUDDLE_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_never, cull_back, shadows_disabled;
+uniform sampler2D ripples : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform sampler2D patches : filter_linear_mipmap, repeat_enable;
+uniform float wet = 0.0;
+uniform float rain = 0.0;
+varying vec3 wp;
+void vertex() {
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+void fragment() {
+	vec2 p = wp.xz;
+	// pools where the road dips: patches from a noise, growing as it gets wetter
+	float n = texture(patches, p * 0.045).r * 0.7 + texture(patches, p * 0.13 + 0.37).r * 0.3;
+	float mask = smoothstep(0.66 - wet * 0.08, 0.71 - wet * 0.08, n) * wet;
+	// the rain stirring them: the ripple picture twice, drifting different ways
+	vec3 a = texture(ripples, p * 0.55 + vec2(TIME * 0.031, TIME * 0.047)).rgb;
+	vec3 b = texture(ripples, p * 0.41 + vec2(-TIME * 0.043, TIME * 0.022) + 0.5).rgb;
+	NORMAL_MAP = mix(vec3(0.5, 0.5, 1.0), normalize(a + b - 1.0) * 0.5 + 0.5, 0.35 + 0.65 * rain);
+	NORMAL_MAP_DEPTH = 1.0;
+	// still water: a little darker than the wet road round it, a sharp shine where a lamp is caught
+	ALBEDO = vec3(0.03, 0.032, 0.038);
+	ROUGHNESS = 0.16;
+	METALLIC = 0.0;
+	SPECULAR = 1.0;
+	ALPHA = mask * 0.5;
+}
+"""
+
+var veils: Array = []            # [MeshInstance3D, ShaderMaterial]
+var puddle: MeshInstance3D
+var puddle_mat: ShaderMaterial
+
+
+func _make_veils() -> void:
+	var sh := Shader.new()
+	sh.code = VEIL_SHADER
+	var tex: Texture2D = load("res://assets/fx/rain_sheet.png")
+	for r in [[11.0, 7.0, 0.55, 0.9], [24.0, 12.0, 0.42, 0.75]]:
+		var cm := CylinderMesh.new()
+		cm.top_radius = r[0]
+		cm.bottom_radius = r[0]
+		cm.height = 22.0
+		cm.radial_segments = 28
+		cm.rings = 1
+		cm.cap_top = false
+		cm.cap_bottom = false
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("sheet", tex)
+		m.set_shader_parameter("tiles", r[1])
+		m.set_shader_parameter("speed", r[2])
+		m.set_shader_parameter("tint", Vector3(0.36, 0.38, 0.44) * float(r[3]))
+		var mi := MeshInstance3D.new()
+		mi.mesh = cm
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.visible = false
+		add_child(mi)
+		veils.append([mi, m])
+
+
+func _make_puddles() -> void:
+	var sh := Shader.new()
+	sh.code = PUDDLE_SHADER
+	puddle_mat = ShaderMaterial.new()
+	puddle_mat.shader = sh
+	puddle_mat.set_shader_parameter("ripples", load("res://assets/fx/rain_ripples.png"))
+	puddle_mat.set_shader_parameter("patches", load("res://assets/sky/clouds.png"))
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(40, 40)
+	puddle = MeshInstance3D.new()
+	puddle.mesh = pm
+	puddle.material_override = puddle_mat
+	puddle.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	puddle.visible = false
+	add_child(puddle)
 
 
 func _make_sound() -> void:
@@ -575,6 +677,20 @@ func _weather(dt: float) -> void:
 		(ly[1] as ShaderMaterial).set_shader_parameter("flash", flash)
 		(ly[1] as ShaderMaterial).set_shader_parameter("wind", wind)
 	splash_mi.visible = show_rain
+	var camn := get_viewport().get_camera_3d()
+	if camn:
+		var cp := camn.global_position
+		for v in veils:
+			(v[0] as Node3D).visible = show_rain
+			(v[0] as Node3D).global_position = Vector3(cp.x, cp.y + 4.0, cp.z)
+			(v[1] as ShaderMaterial).set_shader_parameter("amount", rain)
+			(v[1] as ShaderMaterial).set_shader_parameter("flash", flash)
+		# the puddles lie in the road (the town's paving, a few centimetres up): pavements and kerbs stand out of them
+		var gh: float = main.ground_height(cp.x, cp.z)
+		puddle.visible = last_wet > 0.02 and indoors < 0.5 and abs(gh) < 0.1
+		puddle.global_position = Vector3(snappedf(cp.x, 1.0), 0.03, snappedf(cp.z, 1.0))
+		puddle_mat.set_shader_parameter("wet", last_wet)
+		puddle_mat.set_shader_parameter("rain", rain)
 	light_t -= dt
 	if show_rain and light_t <= 0.0:
 		light_t = 0.2

@@ -98,6 +98,8 @@ Gun models in `godot/assets/guns2/`, from Sketchfab under CC BY 4.0, converted t
 
 The Land Rover (`godot/assets/city/props/land_rover/`) is "Land Rover Series III" by [m8mazay](https://sketchfab.com/m8mazay) on [Sketchfab](https://sketchfab.com/3d-models/land-rover-series-iii-ca52577d95004b1db1b0c10861bbf9cd), licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/); changed for this game: packed with `tools/citybuild/prop_pack.py` from 47,588 to about 5,200 triangles, its textures cut to 512 pixels and the roughness maps left out. It stands by the command hut in mission 1, outside the hotel in mission 2 and in the headquarters yard in mission 3.
 
+The rain pictures in `godot/assets/fx/` (`rain_sheet.png`, `rain_ripples.png`) come from "Rain drops circles" by [VRA](https://sketchfab.com/architect47) on [Sketchfab](https://sketchfab.com/3d-models/rain-drops-circles-download-like-please-50b52de9b9a94ac09afbbaf28f102081), licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/); changed for this game: the falling-rain picture cropped, brightened and made to repeat top to bottom, the ripple normal map cut to 512 pixels. In mission 2 the first falls as sheets of rain round the player and the second stirs the puddles.
+
 Sounds in `godot/assets/sfx/` are unedited sound effects from [Pixabay](https://pixabay.com/sound-effects/), used under the Pixabay Content License:
 - AK-47: "AK-47 sound effect" by sovetsky_rastov72
 - M4A1: "Gun fire" by foisal72 (475286)
