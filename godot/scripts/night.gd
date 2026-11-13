@@ -131,7 +131,7 @@ uniform float width = 0.005;
 uniform float strength = 0.2;
 uniform float near_cut = 0.5;
 uniform vec4 lights[8];             // xyz: a lamp near the camera, w: how far its light reaches
-uniform vec3 amb = vec3(0.15, 0.16, 0.19);
+uniform vec3 amb = vec3(0.075, 0.082, 0.1);
 varying float vis;
 varying float along;
 varying vec3 lit;
@@ -170,7 +170,7 @@ void vertex() {
 void fragment() {
 	float k = 1.0 - abs(along * 2.0 - 1.0);
 	float bright = clamp(max(lit.r, max(lit.g, lit.b)), 0.0, 1.0);
-	ALBEDO = lit / max(bright, 0.08);
+	ALBEDO = clamp(vec3(0.36, 0.39, 0.46) + (lit - amb) * 1.4, 0.0, 1.0);     // (water has no colour: grey-blue in the dark, warm by a lamp, never white of itself)
 	ALPHA = vis * k * strength * glint * clamp(0.5 + bright * 1.8, 0.0, 2.2);
 }
 """
@@ -183,7 +183,7 @@ uniform float floor_y = 0.0;
 uniform vec2 box = vec2(16.0, 16.0);
 uniform float flash = 0.0;
 uniform vec4 lights[8];
-uniform vec3 amb = vec3(0.15, 0.16, 0.19);
+uniform vec3 amb = vec3(0.075, 0.082, 0.1);
 varying float ph;
 varying float vis;
 varying vec2 uv;
@@ -218,7 +218,7 @@ void fragment() {
 	float ring = smoothstep(0.78, 0.9, d) * (1.0 - smoothstep(0.9, 1.0, d)) * (1.0 - ph) * (1.0 - ph);
 	float fleck = (1.0 - smoothstep(0.0, 0.3, d)) * (1.0 - smoothstep(0.0, 0.18, ph));
 	float bright = clamp(max(lit.r, max(lit.g, lit.b)), 0.0, 1.0);
-	ALBEDO = lit / max(bright, 0.08);
+	ALBEDO = clamp(vec3(0.36, 0.39, 0.46) + (lit - amb) * 1.4, 0.0, 1.0);     // (water has no colour: grey-blue in the dark, warm by a lamp, never white of itself)
 	ALPHA = vis * (ring * 0.3 + fleck * 0.45) * clamp(0.25 + bright * 2.0, 0.0, 1.5);
 }
 """
@@ -319,7 +319,6 @@ func _make_rain() -> void:
 	# close: thin streaks; far: hair-thin, fainter, longer (further off they blur together into a grey veil)
 	rain_layers.append(_layer(RAIN_SHADER, _drops(6000, 7), {"box": Vector3(12, 10, 12), "len": 0.15, "width": 0.0006, "strength": 0.5, "near_cut": 1.5}))
 	rain_layers.append(_layer(RAIN_SHADER, _drops(3500, 11), {"box": Vector3(36, 20, 36), "len": 0.3, "width": 0.001, "strength": 0.28, "near_cut": 5.0}))
-	_make_spray()
 	_make_puddles()
 	var sl := _layer(SPLASH_SHADER, _drops(1000, 13), {"box": Vector2(14, 14)})
 	splash_mi = sl[0]
@@ -366,53 +365,9 @@ void fragment() {
 }
 """
 
-const SPRAY_SHADER := """
-shader_type spatial;
-render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled, blend_mix;
-uniform sampler2D noise : filter_linear_mipmap, repeat_enable;
-uniform float amount = 0.0;
-uniform float flash = 0.0;
-uniform float tiles = 6.0;
-uniform vec3 tint = vec3(0.3, 0.31, 0.34);
-void fragment() {
-	// thickest on the ground, gone by knee height; stirred, never still
-	float h = 1.0 - UV.y;
-	float low = (1.0 - smoothstep(0.0, 1.0, h)) * smoothstep(0.0, 0.05, h);
-	float n = texture(noise, vec2(UV.x * tiles + TIME * 0.05, h * 0.6 - TIME * 0.11)).r;
-	float n2 = texture(noise, vec2(UV.x * tiles * 2.3 - TIME * 0.07, h * 1.1 + TIME * 0.05)).r;
-	ALBEDO = tint + flash * vec3(0.6);
-	ALPHA = amount * low * (0.5 * n + 0.5 * n2) * 0.16;
-}
-"""
 
-var sprays: Array = []
 var puddle: MeshInstance3D
 var puddle_mat: ShaderMaterial
-
-
-func _make_spray() -> void:
-	var sh := Shader.new()
-	sh.code = SPRAY_SHADER
-	for r in [[3.5, 5.0], [8.0, 9.0], [15.0, 14.0]]:
-		var cm := CylinderMesh.new()
-		cm.top_radius = r[0]
-		cm.bottom_radius = r[0]
-		cm.height = 1.1
-		cm.radial_segments = 24
-		cm.rings = 1
-		cm.cap_top = false
-		cm.cap_bottom = false
-		var m := ShaderMaterial.new()
-		m.shader = sh
-		m.set_shader_parameter("noise", load("res://assets/sky/clouds.png"))
-		m.set_shader_parameter("tiles", r[1])
-		var mi := MeshInstance3D.new()
-		mi.mesh = cm
-		mi.material_override = m
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mi.visible = false
-		add_child(mi)
-		sprays.append([mi, m])
 
 
 func _make_puddles() -> void:
@@ -682,11 +637,6 @@ func _weather(dt: float) -> void:
 	var camn := get_viewport().get_camera_3d()
 	if camn:
 		var cp := camn.global_position
-		for sp in sprays:
-			(sp[0] as Node3D).visible = show_rain
-			(sp[0] as Node3D).global_position = Vector3(cp.x, main.player.global_position.y + 0.55, cp.z)
-			(sp[1] as ShaderMaterial).set_shader_parameter("amount", rain)
-			(sp[1] as ShaderMaterial).set_shader_parameter("flash", flash)
 		# the puddles lie in the road (the town's paving, a few centimetres up): pavements and kerbs stand out of them
 		var gh: float = main.ground_height(cp.x, cp.z)
 		puddle.visible = last_wet > 0.02 and indoors < 0.5 and abs(gh) < 0.1

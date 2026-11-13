@@ -571,10 +571,13 @@ func ragdoll(sk: Skeleton3D, gun_node: Node3D, push: Vector3, at: Vector3) -> Ph
 		if d < best_d:
 			best_d = d
 			best = made[k]
+	# (shared over the body, mostly chest and hips: all of it on one limb flipped him over in the air)
 	if best != null:
-		best.apply_central_impulse(push)
+		best.apply_central_impulse(push * 0.2)
 	if made.has("Spine2"):
-		(made["Spine2"] as PhysicalBone3D).apply_central_impulse(push * 0.6)
+		(made["Spine2"] as PhysicalBone3D).apply_central_impulse(push * 0.45)
+	if made.has("Hips"):
+		(made["Hips"] as PhysicalBone3D).apply_central_impulse(push * 0.35)
 	return sim
 
 
@@ -616,8 +619,13 @@ func ragdoll_tame(sim: PhysicalBoneSimulator3D) -> void:
 	if not is_instance_valid(sim) or not sim.has_node("rag_Hips"):
 		return
 	var hips: PhysicalBone3D = sim.get_node("rag_Hips")
-	if hips.linear_velocity.length() > 9.0:
-		hips.linear_velocity = hips.linear_velocity.normalized() * 9.0
+	# thrown along the ground no faster than a stagger, never up into the air; falling off a roof falls as fast as it falls
+	var hv := Vector3(hips.linear_velocity.x, 0, hips.linear_velocity.z)
+	if hv.length() > 5.0:
+		hv = hv.normalized() * 5.0
+	hips.linear_velocity = Vector3(hv.x, min(hips.linear_velocity.y, 3.0), hv.z)
+	if hips.angular_velocity.length() > 6.0:
+		hips.angular_velocity = hips.angular_velocity.normalized() * 6.0
 	var hp := hips.global_position
 	for c in sim.get_children():
 		var pb := c as PhysicalBone3D
@@ -628,8 +636,12 @@ func ragdoll_tame(sim: PhysicalBoneSimulator3D) -> void:
 			pb.global_position = hp + d.normalized() * 0.9
 			pb.linear_velocity = hips.linear_velocity
 			pb.angular_velocity = Vector3.ZERO
-		elif pb.linear_velocity.length() > 10.0:
-			pb.linear_velocity = pb.linear_velocity.normalized() * 10.0
+		else:
+			var lv := pb.linear_velocity - hips.linear_velocity
+			if lv.length() > 6.0:
+				pb.linear_velocity = hips.linear_velocity + lv.normalized() * 6.0
+			if pb.angular_velocity.length() > 10.0:
+				pb.angular_velocity = pb.angular_velocity.normalized() * 10.0
 
 
 # ---- soft contact shadows ----
@@ -2447,7 +2459,7 @@ func _die() -> void:
 	away.y = 0.0
 	if last_hit_from == Vector3.ZERO or away.length() < 0.01:
 		away = -Vector3(-sin(yaw), 0, -cos(yaw))
-	my_rag = ragdoll(skel, guns[weapons[wi]["gun"]], away.normalized() * 55.0, global_position + Vector3(0, 1.2, 0))
+	my_rag = ragdoll(skel, guns[weapons[wi]["gun"]], away.normalized() * 40.0, global_position + Vector3(0, 1.2, 0))
 	if fx.get_parent().has_method("on_player_dead"):
 		fx.get_parent().on_player_dead()
 
