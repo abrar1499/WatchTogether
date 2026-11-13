@@ -809,8 +809,9 @@ func _reach(_dt: float) -> void:
 
 
 func _show_gun(dt: float) -> void:
-	var want := 1.0 if (speed > 0.25 and is_on_floor() and not aiming and not holstered and not crouch and reloading <= 0.0 and not dead) else 0.0
-	show_k = lerp(show_k, want, min(1.0, dt * 6.0))
+	# (never while he shoots or aims: the gun then points where the crosshair is)
+	var want := 1.0 if (speed > 0.25 and is_on_floor() and not firing and t - last_shot > 1.2 and not aiming and not holstered and not crouch and reloading <= 0.0 and not dead) else 0.0
+	show_k = lerp(show_k, want, min(1.0, dt * (22.0 if want < 0.5 else 5.0)))
 	if show_k > 0.01:
 		turn_chest(skel, Quaternion(Vector3.UP, SHOW_TWIST * show_k))
 
