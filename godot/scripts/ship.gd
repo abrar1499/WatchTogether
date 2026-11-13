@@ -1089,12 +1089,12 @@ func _skiff(i: int) -> void:
 				var bow: float = clamp((x - 0.6) / 2.5, 0.0, 1.0)
 				r.append([Vector3(x - bow * 0.5, -0.25, w * lerp(0.5, 0.08, bow)), Vector3(x, 0.55 + bow * 0.25, w)])
 			var out := Vector3(0.3 if stn[k][0] > 0.5 else 0.0, 0, sg)
-			quad("sh_black", r[0][0] * m, r[1][0] * m, r[1][1] * m, r[0][1] * m, out, Color(1.6, 1.7, 1.9))
+			quad("sh_grey", r[0][0] * m, r[1][0] * m, r[1][1] * m, r[0][1] * m, out, Color(0.75, 0.8, 0.85))
 			quad("sh_plate", Vector3(stn[k][0], 0.2, 0), Vector3(stn[k + 1][0], 0.2, 0), Vector3(stn[k + 1][0], 0.2, sg * stn[k + 1][1] * 0.9),
 				Vector3(stn[k][0], 0.2, sg * stn[k][1] * 0.9), Vector3.UP, Color(0.4, 0.4, 0.4))
 		bar("sh_rubber", Vector3(stn[k][0], 0.6, stn[k][1]), Vector3(stn[k + 1][0], 0.6 + (0.25 if k == 4 else 0.0), stn[k + 1][1]), 0.13, 6)
 		bar("sh_rubber", Vector3(stn[k][0], 0.6, -stn[k][1]), Vector3(stn[k + 1][0], 0.6 + (0.25 if k == 4 else 0.0), -stn[k + 1][1]), 0.13, 6)
-	quad("sh_black", Vector3(-2.8, -0.25, -0.45), Vector3(-2.8, -0.25, 0.45), Vector3(-2.8, 0.6, 0.85), Vector3(-2.8, 0.6, -0.85), Vector3(-1, 0, 0), Color(1.6, 1.7, 1.9))
+	quad("sh_grey", Vector3(-2.8, -0.25, -0.45), Vector3(-2.8, -0.25, 0.45), Vector3(-2.8, 0.6, 0.85), Vector3(-2.8, 0.6, -0.85), Vector3(-1, 0, 0), Color(0.75, 0.8, 0.85))
 	# the wheel's console with its screen, two outboards, the gun on its post behind a shield
 	city.box("sh_grey", Vector3(-0.6, 0.65, 0), Vector3(0.5, 0.9, 0.8), 0.0, Color(0.5, 0.5, 0.5))
 	tbox("sh_glass", Vector3(-0.38, 1.3, 0), Vector3(0.03, 0.45, 0.8), Basis(Vector3(0, 0, 1), -0.35))
