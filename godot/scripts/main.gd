@@ -2388,6 +2388,27 @@ class FX extends Node3D:
 		chips(p, Vector3.UP, "dark", 4, 2.0)
 		chips(p, Vector3.UP, "wood", 4, 2.0)
 		blood(p, Vector3.UP)
+		# the blood pieces are made now, not at the first hit, and drawn once out of sight so they are ready
+		_blood_setup()
+		for k in 2:
+			var bs: MeshInstance3D = b_stains[k]
+			bs.global_transform = Transform3D(Basis(), p)
+			bs.visible = true
+		var bp: MeshInstance3D = b_pools[0]["m"]
+		bp.global_position = p
+		bp.visible = true
+		var bd: MeshInstance3D = b_drops[0]["m"]
+		bd.global_position = p
+		bd.visible = true
+		b_drops[0]["t"] = 0.3
+		_drips(p, Vector3.FORWARD, 0.2)
+		get_tree().create_timer(0.3).timeout.connect(func():
+			for k in 2:
+				b_stains[k].visible = false
+			bp.visible = false
+			for d in b_drip:
+				(d["m"] as MeshInstance3D).visible = false
+				d["t"] = 9.0)
 		tracer(p, p + f * 6.0, true)
 		tracer(p, p + f * 6.0)
 		casing(p, Vector3.UP, "ak")
@@ -2686,9 +2707,12 @@ class FX extends Node3D:
 
 
 	func _blood_setup() -> void:
+		if b_ready:
+			return
 		b_ready = true
 		for i in 4:
-			b_tex.append(_blot(101 + i * 17))
+			# (drawn once by _blot and kept as files: drawing them in the game froze it at the first hit)
+			b_tex.append(load("res://assets/fx/blood_%d.png" % i))
 		var dm := StandardMaterial3D.new()
 		dm.albedo_color = Color(0.26, 0.008, 0.012)
 		dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
