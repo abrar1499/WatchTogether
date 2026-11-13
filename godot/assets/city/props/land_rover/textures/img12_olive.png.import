@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://tpx1su0pe1ja"
-path="res://.godot/imported/img12.png-9b6b3839204a1f9d48a6527ba9258af8.ctex"
+uid="uid://co2y7bf3ct052"
+path="res://.godot/imported/img12_olive.png-66775a4cd0c835efa00b904e7429bd08.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/city/props/land_rover/textures/img12.png"
-dest_files=["res://.godot/imported/img12.png-9b6b3839204a1f9d48a6527ba9258af8.ctex"]
+source_file="res://assets/city/props/land_rover/textures/img12_olive.png"
+dest_files=["res://.godot/imported/img12_olive.png-66775a4cd0c835efa00b904e7429bd08.ctex"]
 
 [params]
 

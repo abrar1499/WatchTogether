@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://cyajyseoancso"
-path="res://.godot/imported/land_rover_game.gltf-ac5b65423c2f5f438dd2adff1dd0255f.scn"
+uid="uid://b7kn7q2vfr67b"
+path="res://.godot/imported/land_rover_sand_game.gltf-33c6a891fe11bb4332fae040ffedf2e1.scn"
 
 [deps]
 
-source_file="res://assets/city/props/land_rover/land_rover_game.gltf"
-dest_files=["res://.godot/imported/land_rover_game.gltf-ac5b65423c2f5f438dd2adff1dd0255f.scn"]
+source_file="res://assets/city/props/land_rover/land_rover_sand_game.gltf"
+dest_files=["res://.godot/imported/land_rover_sand_game.gltf-33c6a891fe11bb4332fae040ffedf2e1.scn"]
 
 [params]
 

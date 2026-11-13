@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dp52tqxgud6v4"
-path="res://.godot/imported/img6.png-d31f94caa87aca26ee9c5e421be60b1a.ctex"
+uid="uid://cmgs4s55wqvfp"
+path="res://.godot/imported/img12_night.png-3ace7dae38f4fafb85df88bee8bc5600.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/city/props/land_rover/textures/img6.png"
-dest_files=["res://.godot/imported/img6.png-d31f94caa87aca26ee9c5e421be60b1a.ctex"]
+source_file="res://assets/city/props/land_rover/textures/img12_night.png"
+dest_files=["res://.godot/imported/img12_night.png-3ace7dae38f4fafb85df88bee8bc5600.ctex"]
 
 [params]
 
