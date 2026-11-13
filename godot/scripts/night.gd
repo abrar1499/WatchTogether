@@ -231,6 +231,9 @@ var fog_d := 0.006
 var fog_c := Color()
 var wind := Vector2(0.6, 0.25)
 var last_wet := 0.0
+var sat0 := 1.0
+var con0 := 1.0
+var sky_fog0 := 0.35
 var light_t := 0.0
 var tower_spots: Array = []      # the tower lamps' places
 
@@ -325,6 +328,9 @@ func _make_rain() -> void:
 	splash_mat = sl[1]
 	fog_d = main.world_env.fog_density
 	fog_c = main.world_env.fog_light_color
+	sat0 = main.world_env.adjustment_saturation
+	con0 = main.world_env.adjustment_contrast
+	sky_fog0 = main.world_env.fog_sky_affect
 	# the streets and pavements get wet: darker and shinier, the lamps glinting in them
 	var c = main.mission.get("city") if main.mission else null
 	if c != null:
@@ -655,8 +661,14 @@ func _weather(dt: float) -> void:
 	if abs(wet - last_wet) > 0.02 or (wet == 1.0 and last_wet != 1.0):
 		last_wet = wet
 		_wet(wet)
-	main.world_env.fog_density = fog_d + 0.008 * rain
-	main.world_env.fog_light_color = fog_c.lerp(Color(0.08, 0.085, 0.1), rain * 0.5) + Color(0.5, 0.55, 0.65) * flash * 0.12
+	# the look of a wet night: as the clouds close in and the rain comes the colours go dull and cold, the far
+	# streets sink into a dark blue-grey haze (not a white one) and the sky hazes over
+	var mood: float = max(rain, clamp((cover - 0.45) * 1.2, 0.0, 0.5))
+	main.world_env.fog_density = fog_d + 0.02 * mood
+	main.world_env.fog_light_color = fog_c.lerp(Color(0.075, 0.085, 0.105), mood) + Color(0.5, 0.55, 0.65) * flash * 0.12
+	main.world_env.fog_sky_affect = lerp(sky_fog0, 0.85, mood)
+	main.world_env.adjustment_saturation = sat0 * (1.0 - 0.4 * mood)
+	main.world_env.adjustment_contrast = con0 * (1.0 - 0.1 * mood)
 	# the town lit up by the stroke
 	main.sun.light_energy = sun_e + flash * 1.1
 	main.world_env.ambient_light_energy = amb_e * (1.0 - 0.15 * cover) + flash * 0.35
