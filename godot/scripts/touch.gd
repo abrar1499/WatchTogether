@@ -18,6 +18,7 @@ var buttons := [
 	{"id": "holster", "label": "HOLSTER", "c": Vector2(0.065, 0.2), "r": 34.0},
 	{"id": "act", "label": "ACTION", "c": Vector2(0.705, 0.62), "r": 42.0},
 	{"id": "knife", "label": "KNIFE", "c": Vector2(0.615, 0.87), "r": 36.0},
+	{"id": "prone", "label": "PRONE", "c": Vector2(0.625, 0.72), "r": 34.0},
 ]
 var mission_panel: PanelContainer
 var brief_panel: PanelContainer
@@ -84,6 +85,8 @@ func _press(id: String, down: bool) -> void:
 			player.aiming = down
 		"crouch":
 			if down: player.toggle_crouch()
+		"prone":
+			if down: player.toggle_prone()
 		"jump":
 			if down: player.jump()
 		"reload":
@@ -164,6 +167,7 @@ func _input(e: InputEvent) -> void:
 		if e.pressed:
 			match e.keycode:
 				KEY_C: player.toggle_crouch()
+				KEY_Z: player.toggle_prone()
 				KEY_SPACE: player.jump()
 				KEY_R: player.reload()
 				KEY_Q:
@@ -359,7 +363,7 @@ func _draw() -> void:
 			continue
 		var bc: Vector2 = b["c"] * vs
 		var r: float = b["r"] * s
-		var on: bool = active.has(b["id"]) or (b["id"] == "crouch" and player.crouch) or (b["id"] == "aim" and player.aiming) or (b["id"] == "holster" and player.holstered)
+		var on: bool = active.has(b["id"]) or (b["id"] == "crouch" and player.crouch) or (b["id"] == "prone" and player.prone) or (b["id"] == "aim" and player.aiming) or (b["id"] == "holster" and player.holstered)
 		var fill := Color(0.95, 0.7, 0.27, 0.55) if on else (Color(1, 0.35, 0.26, 0.22) if b["id"] == "fire" else Color(0.05, 0.06, 0.05, 0.3))
 		draw_circle(bc, r, fill)
 		draw_arc(bc, r, 0, TAU, 40, Color(1, 0.4, 0.3, 0.8) if b["id"] == "fire" else Color(0.92, 0.89, 0.8, 0.4), 1.5 * s)

@@ -567,7 +567,7 @@ func _physics_process(dt: float) -> void:
 	if nade_t < 0.0:
 		player.pose_rig_hands(skel, gun, rig["data"])
 	if aim_w > 0.01:
-		var chest: Vector3 = player.global_position + Vector3(0, 0.85 if player.crouch else 1.25, 0)
+		var chest: Vector3 = player.global_position + Vector3(0, 0.3 if player.prone else (0.85 if player.crouch else 1.25), 0)
 		if not sees:
 			chest = last_seen + Vector3(0, 1.2, 0)
 		player.aim_chest(skel, (chest - muzzle.global_position).normalized(), aim_w, rig["data"])
@@ -699,7 +699,7 @@ func _perceive(dt: float) -> void:
 				b.set_meta("looked_at", true)
 				see_body(b.body_pos())
 				break
-	var target: Vector3 = player.global_position + Vector3(0, 0.9 if player.crouch else 1.35, 0)
+	var target: Vector3 = player.global_position + Vector3(0, 0.3 if player.prone else (0.9 if player.crouch else 1.35), 0)
 	var to := target - eye
 	var d := to.length()
 	if d < (COMBAT_RANGE if mode == "combat" else SIGHT_RANGE):
@@ -713,7 +713,7 @@ func _perceive(dt: float) -> void:
 		seen_t += dt
 		last_seen = player.global_position
 		if mode != "combat":
-			var gain := (4.5 if d < 12.0 else 2.4) * (0.55 if player.crouch else 1.0) * (1.4 if player.speed > 2.5 else 1.0) * (2.5 if mode == "search" else 1.0)
+			var gain := (4.5 if d < 12.0 else 2.4) * (0.3 if player.prone else (0.55 if player.crouch else 1.0)) * (1.4 if player.speed > 2.5 else 1.0) * (2.5 if mode == "search" else 1.0)
 			alert += dt * gain
 			if alert >= 1.0:
 				alarm(player.global_position, true)
@@ -797,12 +797,14 @@ func can_see(p: Vector3) -> bool:
 
 func _shoot() -> void:
 	var from: Vector3 = muzzle.global_position + muzzle.global_transform.basis.z * 0.05
-	var chest: Vector3 = player.global_position + Vector3(0, 0.85 if player.crouch else 1.25, 0)
+	var chest: Vector3 = player.global_position + Vector3(0, 0.3 if player.prone else (0.85 if player.crouch else 1.25), 0)
 	var dir := (chest - from).normalized()
 	var d := from.distance_to(chest)
 	var sp: float = 0.026 * clamp(1.3 - seen_t * 0.3, 0.5, 1.3)    # (rounds must now meet the body itself, not a wide capsule)
 	sp *= 1.5 if player.speed > 2.5 else 1.0
 	sp *= 0.65 if player.crouch else 1.0
+	if player.prone:
+		sp *= 1.5          # (a man lying flat is a small mark)
 	sp *= 0.7 + d / 40.0
 	sp *= 2.2 if arm_hit else 1.0
 	if gun == "svd":

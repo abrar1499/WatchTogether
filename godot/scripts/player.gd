@@ -22,7 +22,7 @@ const STATES := {"idle": "idle", "aim": "aim", "kneel": "kneel", "kneel_aim": "c
 	"walk": "walk", "walk_b": "walkBack", "walk_r": "walkR", "walk_l": "walkL",
 	"run": "run", "run_b": "runBack", "run_r": "runStrafeR", "run_l": "runStrafeL",
 	"c_walk": "crouchWalk", "c_back": "crouchBack", "c_run": "crouchWalk", "c_r": "crouchWalk", "c_l": "crouchWalk",
-	"dead": "dieFront", "kick": "kick"}
+	"dead": "dieFront", "kick": "kick", "prone": "proneFire", "crawl": "proneFwd"}
 # (the "crouchRun" clip has its hips 1.8 m behind the body, which put the soldier behind the camera: crouch-running
 # plays the crouch walk faster instead)
 const UPPER := ["mixamorigSpine", "mixamorigSpine1", "mixamorigSpine2", "mixamorigNeck", "mixamorigHead",
@@ -82,6 +82,7 @@ var run_in := false
 var firing := false
 var aiming := false
 var crouch := false
+var prone := false               # lying flat: hard to see and to hit, steady to shoot from, slow to move
 var view := 0                      # 0 close, 1 closer, 2 first person
 
 var yaw := 0.0
@@ -242,7 +243,7 @@ func _build_model() -> void:
 	_cut_clip("knockout", "knockback", 2.05, 0.25)    # about 1 m back
 	_cut_clip("knockout", "fallback", 2.05, 0.12)     # half a metre: shot from further off
 	_cut_clip("knockout", "blastback", 2.05, 0.55)    # thrown by an explosion
-	for n in ["idle", "aim", "kneel", "crouchFire", "walk", "walkBack", "walkR", "walkL", "run", "runBack", "runStrafeR", "runStrafeL", "crouchWalk2", "crouchWalk", "crouchBack", "reload"]:
+	for n in ["idle", "aim", "kneel", "crouchFire", "walk", "walkBack", "walkR", "walkL", "run", "runBack", "runStrafeR", "runStrafeL", "crouchWalk2", "crouchWalk", "crouchBack", "reload", "proneFwd", "proneFire"]:
 		if ap.has_animation(n):
 			ap.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	_calibrate_and_attach()
@@ -884,7 +885,7 @@ func _reach(_dt: float) -> void:
 
 func _show_gun(dt: float) -> void:
 	# (never while he shoots or aims: the gun then points where the crosshair is)
-	var want := 1.0 if (speed > 0.25 and is_on_floor() and not firing and t - last_shot > 1.2 and not aiming and not holstered and not crouch and reloading <= 0.0 and not dead) else 0.0
+	var want := 1.0 if (speed > 0.25 and is_on_floor() and not firing and t - last_shot > 1.2 and not aiming and not holstered and not crouch and not prone and reloading <= 0.0 and not dead) else 0.0
 	show_k = lerp(show_k, want, min(1.0, dt * (22.0 if want < 0.5 else 5.0)))
 	if show_k > 0.01:
 		turn_chest(skel, Quaternion(Vector3.UP, SHOW_TWIST * show_k))
@@ -1473,11 +1474,25 @@ func look(dx: float, dy: float) -> void:
 
 
 func toggle_crouch() -> void:
+	if prone:
+		prone = false          # (up from lying to a crouch)
+		crouch = true
+		return
 	if cover:
 		cover_sit = not cover_sit
 		crouch = cover_sit
 		return
 	crouch = not crouch
+
+
+## PRONE: down flat on the ground, or back up onto his feet.
+func toggle_prone() -> void:
+	if dead or climb_t >= 0.0 or not is_on_floor():
+		return
+	if cover:
+		leave_cover()
+	prone = not prone
+	crouch = false
 
 
 ## JUMP: climbs onto (or over) whatever is just ahead if it can be climbed, else an ordinary jump.
@@ -1486,6 +1501,9 @@ func jump() -> void:
 		return
 	if cover:
 		leave_cover()
+	if prone:
+		prone = false          # (JUMP gets him up)
+		return
 	if _climb_probe(true):
 		return
 	if is_on_floor() and not crouch:
@@ -1765,7 +1783,9 @@ func _physics_process(dt: float) -> void:
 			# and every speed between (the clip, and how fast it plays, follow the speed)
 			var push: float = 1.0 if run_in else clamp((mag - 0.12) / 0.83, 0.0, 1.0)
 			var top: float
-			if crouch:
+			if prone:
+				top = 0.85         # (a crawl)
+			elif crouch:
 				top = CROUCH_RUN
 			elif aiming:
 				top = AIM_WALK
@@ -1822,7 +1842,7 @@ func _physics_process(dt: float) -> void:
 	climb_check_t -= dt
 	if climb_check_t <= 0.0:
 		climb_check_t = 0.25
-		can_climb = not busy() and is_on_floor() and _climb_probe(false)
+		can_climb = not busy() and not prone and is_on_floor() and _climb_probe(false)
 		_probe_action()
 	leg_t = max(0.0, leg_t - dt)
 	arm_t = max(0.0, arm_t - dt)
@@ -2022,6 +2042,8 @@ func _probe_action() -> void:
 		act_kind = "uncover"
 		act_label = "LEAVE"
 		return
+	if prone:
+		return          # (no cover or climbing from flat on the ground)
 	# a wall (or something solid and low) just ahead: take cover against it
 	if is_on_floor():
 		for hy in [1.0, 0.55]:
@@ -2141,7 +2163,7 @@ func _fire() -> void:
 	w["last"] = t
 	w["mag"] -= 1
 	last_shot = t
-	var kk: float = w["kick"] * (0.65 if aiming else 1.0) * (0.75 if crouch else 1.0)
+	var kk: float = w["kick"] * (0.65 if aiming else 1.0) * (0.5 if prone else (0.75 if crouch else 1.0))
 	recoil = min(recoil + (0.45 if w["auto"] else 0.8) * kk, 1.6)
 	yaw += randf_range(-0.003, 0.003) * kk
 	kick_p += 0.006 * kk
@@ -2153,7 +2175,7 @@ func _fire() -> void:
 	else:
 		snd.shot(gun)
 	# the shot goes through the crosshair (centre of the camera)
-	var sp: float = w["spread"] * (1.5 if speed > 2.6 else (1.2 if speed > 0.5 else 1.0)) * (0.6 if crouch else 1.0) * (0.35 if aiming else 1.0) * (1.0 + recoil * 0.6)
+	var sp: float = w["spread"] * (1.5 if speed > 2.6 else (1.2 if speed > 0.5 else 1.0)) * (0.4 if prone else (0.6 if crouch else 1.0)) * (0.35 if aiming else 1.0) * (1.0 + recoil * 0.6)
 	if scope_k > 0.5:
 		sp = w["spread"] * (1.0 + recoil * 0.3)
 	if arm_t > 0.0:
@@ -2235,6 +2257,8 @@ func _animate(dt: float) -> void:
 		moving = false
 	elif not is_on_floor() and vel.y > 0.5:
 		st = "jump"
+	elif prone:
+		st = "crawl" if moving else "prone"
 	elif moving:
 		# (a little hysteresis, so a speed held near the change does not flick between the clips)
 		var was_run: bool = state in ["run", "run_b", "run_r", "run_l", "c_run"]
@@ -2326,7 +2350,9 @@ func _bend_spine(dt: float) -> void:
 	var sk_inv: Basis = skel.global_transform.basis.orthonormalized().inverse()
 	var lean: float = clamp(pitch, -0.9, 0.9) * 0.35 * (1.0 - aim_k)
 	# walking fast and running: the run clips lean the chest well forward; held up straighter (the rifle is up)
-	if is_on_floor() and not crouch:
+	if prone:
+		lean = 0.0
+	if is_on_floor() and not crouch and not prone:
 		lean += STRAIGHTEN * clamp((speed - 1.2) / 1.6, 0.0, 1.0) * (1.0 - aim_k * 0.5)
 	if abs(lean) > 0.001 and not dead:
 		turn_chest(skel, Quaternion((sk_inv * global_transform.basis.x).normalized(), lean))
@@ -2351,6 +2377,8 @@ func _update_camera(dt: float) -> void:
 	var scoped := scope_k > 0.6
 	if crouch:
 		th -= 0.32
+	if prone:
+		th -= 0.9          # (low behind him, just over his back)
 	if aiming and view != 2:
 		tl = 0.95
 		ts = 0.42
@@ -2365,7 +2393,7 @@ func _update_camera(dt: float) -> void:
 	if scoped:
 		cam_len = 0.0
 		cam_side = 0.0
-		cam_h = 1.62 - (0.32 if crouch else 0.0)
+		cam_h = 0.42 if prone else (1.62 - (0.32 if crouch else 0.0))
 	cam_pivot.global_position = global_position + Vector3(0, cam_h, 0)
 	var shk := Vector2(sin(t * 37.0), sin(t * 53.0)) * shake * 0.05
 	cam_pivot.rotation = Vector3(pitch + kick_p + shk.y, yaw + shk.x, 0)
@@ -2501,6 +2529,7 @@ func _respawn() -> void:
 		my_rag = null
 		collision_layer = layer_alive
 		ik.start()
+	prone = false
 	dead = false
 	hp = 100.0
 	vel = Vector3.ZERO
