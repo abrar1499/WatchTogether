@@ -589,6 +589,17 @@ func _build_ground() -> void:
 	var sand := _tex_mat("res://assets/env/sand_albedo.jpg", "res://assets/env/sand_normal.png", 1.0, 1.0)
 	sand.vertex_color_use_as_albedo = true
 	sand.normal_scale = 0.8
+	if snow:
+		# snow lying over it: white, the sand's ripples now drifts, a soft sheen where the light grazes it
+		sand.albedo_texture = null
+		sand.albedo_color = Color(0.9, 0.93, 0.99)
+		sand.normal_scale = 1.3
+		sand.uv1_scale = Vector3(0.45, 0.45, 0.45)       # (drifts are broader than ripples of sand)
+		sand.roughness = 0.62
+		sand.metallic_specular = 0.55
+		sand.rim_enabled = true
+		sand.rim = 0.25
+		sand.rim_tint = 0.2
 	gm.material_override = sand
 	gm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var ground := StaticBody3D.new()
@@ -648,6 +659,8 @@ func _build_mountains() -> void:
 			var h := rise * (pow(n, 1.8) * 120.0 + 10.0 * sin(a * 3.0 + 1.0) + 22.0)
 			var rock: float = clamp(h / 45.0, 0.0, 1.0)
 			var c := Color(0.52, 0.45, 0.37).lerp(Color(0.34, 0.3, 0.27), rock)
+			if snow:
+				c = Color(0.9, 0.93, 0.98).lerp(Color(0.33, 0.34, 0.38), clamp(rock * 1.25 - 0.2, 0.0, 1.0))      # snow, bare rock where it is steep
 			st.set_color(c)
 			st.add_vertex(Vector3(x, h - 2.0, z))
 	var w := segs + 1
@@ -1521,6 +1534,28 @@ func apply_golden() -> void:
 	sun.light_energy = 1.9
 
 
+var snow := false               # the mission lies under snow (ground, hills, the look of the light)
+
+
+## A day of snow: a low white overcast that lights everything evenly, the sun a pale disc behind it, the far hills
+## lost in the falling snow.
+func apply_snow() -> void:
+	photo_sky("res://assets/sky/overcast.hdr", 2.6, 60.0, 0.3)
+	world_env.ambient_light_color = Color(0.8, 0.86, 0.96)
+	world_env.ambient_light_energy = 1.35         # (snow throws the light back up: no dark sides)
+	world_env.tonemap_exposure = 0.9
+	world_env.fog_enabled = true
+	world_env.fog_light_color = Color(0.8, 0.84, 0.9)
+	world_env.fog_density = 0.007
+	world_env.fog_sky_affect = 0.6
+	world_env.adjustment_enabled = true
+	world_env.adjustment_saturation = 0.82
+	world_env.adjustment_contrast = 1.04
+	sun.rotation_degrees = Vector3(-14, -60, 0)      # (low: it picks out the drifts)
+	sun.light_color = Color(1.0, 0.96, 0.92)
+	sun.light_energy = 1.25
+
+
 ## Missions progress: how many are open (the first always is).
 const OPEN_FOR_TESTING := 3               # missions open whatever the progress (1: only what has been earned)
 
@@ -2280,7 +2315,7 @@ class FX extends Node3D:
 		var surf := "sand"
 		if col and col.has_meta("surf"):
 			surf = str(col.get_meta("surf"))
-		var color = {"sand": Color(0.78, 0.66, 0.48), "wood": Color(0.72, 0.58, 0.4), "metal": Color(0.7, 0.68, 0.64), "concrete": Color(0.78, 0.76, 0.72), "rock": Color(0.7, 0.6, 0.48), "sandbag": Color(0.78, 0.68, 0.5)}.get(surf, Color(0.8, 0.75, 0.7))
+		var color = {"sand": Color(0.95, 0.96, 1.0) if get_parent().snow else Color(0.78, 0.66, 0.48), "wood": Color(0.72, 0.58, 0.4), "metal": Color(0.7, 0.68, 0.64), "concrete": Color(0.78, 0.76, 0.72), "rock": Color(0.7, 0.6, 0.48), "sandbag": Color(0.78, 0.68, 0.5)}.get(surf, Color(0.8, 0.75, 0.7))
 		var s: Sprite3D = puffs[puff_i % puffs.size()]
 		puff_i += 1
 		s.global_position = p + n * 0.05

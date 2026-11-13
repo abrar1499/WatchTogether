@@ -115,6 +115,10 @@ func begin() -> void:
 		e.set_process(true)
 		e.set_physics_process(true)
 		e.grace = 1.0
+	if main.snow:
+		var sn: Node3D = load("res://scripts/snow.gd").new()
+		main.add_child(sn)
+		sn.start(main)
 	if n == 2:
 		# the night: head lamps, tower lamps, and the weather turning to rain
 		var nt: Node3D = load("res://scripts/night.gd").new()
@@ -560,7 +564,7 @@ func _drum(p: Vector3, color := "red") -> void:
 ## starts west of it behind a ruined wall; the way out is the east gate.
 func _m1() -> Vector3:
 	title = "BROKEN RELAY"
-	briefing = "A militia unit has taken a radio relay station on the old desert road and is using it to pass orders " + \
+	briefing = "A militia unit has taken a radio relay station on the old mountain road, deep in the snow, and is using it to pass orders " + \
 		"to its fighters across the border.\n\nYou start behind a ruined wall west of the station. Get through the outer " + \
 		"yard and the inner wall, take the relay codes from the command hut, knock out the generator that powers the mast, " + \
 		"and get out through the east gate to the pickup point.\n\nYou carry a pistol, an AK-47, an M4A1, a knife and three " + \
@@ -568,13 +572,15 @@ func _m1() -> Vector3:
 	main.flat_c = Vector2(0, -25)
 	main.flat_r = 80.0
 	main.area = Rect2(-33, -54, 66, 58)
+	main.snow = true
+	Engine.set_meta("hd_people", true)        # (people drawn as on the training ground: deeper cloth, a sheen at the edges)
 	await main.breathe(3)
 	main._build_ground()
 	main._build_mountains()
 	await main.breathe(3)
 	main._build_rocks(main._tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true), 70.0, false)
-	main.scatter(1200, 260, 44.0)
-	main.apply_golden()
+	main.scatter(500, 70, 44.0)        # (most of the stones and scrub are under the snow)
+	main.apply_snow()
 	main.extra_cover = []
 	# the fence: west gate (the way in), east gate (the way out), a torn stretch in the south side
 	_fence(Vector2(-34, 5), Vector2(34, 5), [[54.0, 57.0]])
@@ -616,7 +622,7 @@ func _m1() -> Vector3:
 	# inner compound: command hut, barracks, a third tower, mast and generator
 	var hut_c := Vector3(8, 0, -12)
 	_hut(hut_c, 6.0, 5.0, 1.2, "x")
-	_car("land_rover_sand", hut_c + Vector3(6.2, 0, 1.5), 0.25)       # the commander's Land Rover by his hut
+	_car("land_rover_olive", hut_c + Vector3(6.2, 0, 1.5), 0.25)       # the commander's Land Rover by his hut
 	_block(hut_c + Vector3(-1.4, 0.4, -1.2), Vector3(1.6, 0.8, 0.8), "wood", "wood")
 	_block(hut_c + Vector3(-2.4, 0.35, -1.9), Vector3(0.5, 0.7, 0.5), "steel", "metal")
 	_block(hut_c + Vector3(2.2, 0.5, -1.8), Vector3(1.0, 1.0, 0.6), "green", "metal")
