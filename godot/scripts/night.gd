@@ -134,6 +134,7 @@ uniform vec3 amb = vec3(0.15, 0.16, 0.19);
 varying float vis;
 varying float along;
 varying vec3 lit;
+varying float glint;
 
 void vertex() {
 	vec4 r = INSTANCE_CUSTOM;
@@ -151,7 +152,8 @@ void vertex() {
 	vec3 down = normalize(vec3(wind.x, -sp, wind.y));
 	vec3 side = normalize(cross(down, to));
 	// as long as the drop falls in a sixtieth of a second or so (it is seen smeared), thin as a hair
-	float l = len * (0.75 + 0.5 * fract(r.w * 7.13));
+	float l = len * (0.5 + 1.1 * fract(r.w * 7.13));
+	glint = 0.35 + 1.05 * fract(r.w * 11.7 + r.x);      // (each drop catches the light its own way)
 	VERTEX = w + side * VERTEX.x * (width + dist * 0.00045) + down * VERTEX.y * l;
 	along = UV.y;
 	// water has no colour of its own: a drop is seen by the light it catches (dim grey in the dark, warm by a lamp)
@@ -168,7 +170,7 @@ void fragment() {
 	float k = 1.0 - abs(along * 2.0 - 1.0);
 	float bright = clamp(max(lit.r, max(lit.g, lit.b)), 0.0, 1.0);
 	ALBEDO = lit / max(bright, 0.08);
-	ALPHA = vis * k * strength * clamp(0.5 + bright * 1.8, 0.0, 2.2);
+	ALPHA = vis * k * strength * glint * clamp(0.5 + bright * 1.8, 0.0, 2.2);
 }
 """
 
@@ -313,6 +315,7 @@ func _make_rain() -> void:
 	rain_layers.append(_layer(RAIN_SHADER, _drops(21000, 7), {"box": Vector3(12, 10, 12), "len": 0.15, "width": 0.0006, "strength": 0.7, "near_cut": 1.5}))
 	rain_layers.append(_layer(RAIN_SHADER, _drops(13500, 11), {"box": Vector3(36, 20, 36), "len": 0.3, "width": 0.001, "strength": 0.4, "near_cut": 5.0}))
 	_make_veils()
+	_make_spray()
 	_make_puddles()
 	var sl := _layer(SPLASH_SHADER, _drops(1000, 13), {"box": Vector2(14, 14)})
 	splash_mi = sl[0]
@@ -378,6 +381,26 @@ void fragment() {
 }
 """
 
+const SPRAY_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled, blend_mix;
+uniform sampler2D noise : filter_linear_mipmap, repeat_enable;
+uniform float amount = 0.0;
+uniform float flash = 0.0;
+uniform float tiles = 6.0;
+uniform vec3 tint = vec3(0.3, 0.31, 0.34);
+void fragment() {
+	// thickest on the ground, gone by knee height; stirred, never still
+	float h = 1.0 - UV.y;
+	float low = (1.0 - smoothstep(0.0, 1.0, h)) * smoothstep(0.0, 0.05, h);
+	float n = texture(noise, vec2(UV.x * tiles + TIME * 0.05, h * 0.6 - TIME * 0.11)).r;
+	float n2 = texture(noise, vec2(UV.x * tiles * 2.3 - TIME * 0.07, h * 1.1 + TIME * 0.05)).r;
+	ALBEDO = tint + flash * vec3(0.6);
+	ALPHA = amount * low * (0.5 * n + 0.5 * n2) * 0.32;
+}
+"""
+
+var sprays: Array = []
 var veils: Array = []            # [MeshInstance3D, ShaderMaterial]
 var puddle: MeshInstance3D
 var puddle_mat: ShaderMaterial
@@ -409,6 +432,31 @@ func _make_veils() -> void:
 		mi.visible = false
 		add_child(mi)
 		veils.append([mi, m])
+
+
+func _make_spray() -> void:
+	var sh := Shader.new()
+	sh.code = SPRAY_SHADER
+	for r in [[3.5, 5.0], [8.0, 9.0], [15.0, 14.0]]:
+		var cm := CylinderMesh.new()
+		cm.top_radius = r[0]
+		cm.bottom_radius = r[0]
+		cm.height = 1.1
+		cm.radial_segments = 24
+		cm.rings = 1
+		cm.cap_top = false
+		cm.cap_bottom = false
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("noise", load("res://assets/sky/clouds.png"))
+		m.set_shader_parameter("tiles", r[1])
+		var mi := MeshInstance3D.new()
+		mi.mesh = cm
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.visible = false
+		add_child(mi)
+		sprays.append([mi, m])
 
 
 func _make_puddles() -> void:
@@ -669,7 +717,7 @@ func _weather(dt: float) -> void:
 	sky_mat.set_shader_parameter("flash", flash)
 	sky_mat.set_shader_parameter("drift", drift)
 	# the wind comes in gusts
-	wind = Vector2(0.6, 0.25) * (0.7 + 0.45 * sin(mt * 0.37) + 0.25 * sin(mt * 1.31 + 1.0))
+	wind = Vector2(0.35, 0.15) * (0.7 + 0.45 * sin(mt * 0.37) + 0.25 * sin(mt * 1.31 + 1.0))
 	var show_rain: bool = rain > 0.0 and indoors < 0.5
 	for ly in rain_layers:
 		(ly[0] as Node3D).visible = show_rain
@@ -685,6 +733,11 @@ func _weather(dt: float) -> void:
 			(v[0] as Node3D).global_position = Vector3(cp.x, cp.y + 4.0, cp.z)
 			(v[1] as ShaderMaterial).set_shader_parameter("amount", rain)
 			(v[1] as ShaderMaterial).set_shader_parameter("flash", flash)
+		for sp in sprays:
+			(sp[0] as Node3D).visible = show_rain
+			(sp[0] as Node3D).global_position = Vector3(cp.x, main.player.global_position.y + 0.55, cp.z)
+			(sp[1] as ShaderMaterial).set_shader_parameter("amount", rain)
+			(sp[1] as ShaderMaterial).set_shader_parameter("flash", flash)
 		# the puddles lie in the road (the town's paving, a few centimetres up): pavements and kerbs stand out of them
 		var gh: float = main.ground_height(cp.x, cp.z)
 		puddle.visible = last_wet > 0.02 and indoors < 0.5 and abs(gh) < 0.1
@@ -703,8 +756,8 @@ func _weather(dt: float) -> void:
 	if abs(wet - last_wet) > 0.02 or (wet == 1.0 and last_wet != 1.0):
 		last_wet = wet
 		_wet(wet)
-	main.world_env.fog_density = fog_d + 0.014 * rain
-	main.world_env.fog_light_color = fog_c.lerp(Color(0.1, 0.105, 0.12), rain * 0.7) + Color(0.5, 0.55, 0.65) * flash * 0.3
+	main.world_env.fog_density = fog_d + 0.032 * rain
+	main.world_env.fog_light_color = fog_c.lerp(Color(0.15, 0.155, 0.17), rain * 0.85) + Color(0.5, 0.55, 0.65) * flash * 0.3
 	# the town lit up by the stroke
 	main.sun.light_energy = sun_e + flash * 1.8
 	main.world_env.ambient_light_energy = amb_e * (1.0 - 0.15 * cover) + flash * 0.6
