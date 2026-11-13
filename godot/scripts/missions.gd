@@ -45,6 +45,8 @@ func build(num: int) -> Vector3:
 			return await _m2()
 		3:
 			return await _m3()
+		4:
+			return await _m4()
 	return Vector3(0, 0.05, 6)
 
 
@@ -1424,4 +1426,51 @@ func _m3() -> Vector3:
 	alarm_text = "The headquarters knows you are in the city. More soldiers are coming."
 	siren_pos = Vector3(42, 9.5, -50)
 	start_yaw = 0.0
+	return spawn
+
+
+# =============== MISSION 4: IRON TIDE (a freighter at anchor, boarded from the sea at night) ===============
+var ship
+func _m4() -> Vector3:
+	title = "IRON TIDE"
+	briefing = "The war plans name a ship: the freighter Northern Gannet, lying at anchor in a bay down the coast with " + \
+		"the militia's rockets in her containers. Two patrol launches circle her, sweeping her decks with their lights.\n\n" + \
+		"You come alongside in a small boat, at the foot of her ladder. Take the cargo manifest from the bridge, high at " + \
+		"her stern: it says which containers carry the rockets. Destroy the two marked containers on the fore deck. " + \
+		"Then get back down the ladder to your boat.\n\nYou carry a pistol, an AK-47, an M4A1, a knife and three " + \
+		"grenades. Keep out of the launches' lights, and do not go over the side."
+	main.flat_c = Vector2(0, 0)
+	main.flat_r = 900.0
+	main.area = Rect2(-60, -30, 120, 60)
+	main.sea = true
+	main.ground_collide = false
+	main.ground_holes.clear()
+	main.perch_y = 9.0
+	main._build_ground()
+	main.extra_cover = []
+	city = load("res://scripts/city.gd").new(main, 44)
+	ship = load("res://scripts/ship.gd").new()
+	ship.main = main
+	ship.mis = self
+	ship.city = city
+	ship.name = "Ship"
+	main.add_child(ship)
+	ship.night_look()
+	var spawn: Vector3 = await ship.build()
+	posts = ship.posts
+	far_cull = 120.0
+	lz = ship.boat_at
+	var book := _block(ship.manifest_at, Vector3(0.24, 0.03, 0.32), "red", "wood", 0.3, false)
+	book.set_meta("label", "TAKE MANIFEST")
+	book.set_meta("obj", 0)
+	items.append(book)
+	objectives = [
+		{"text": "Take the cargo manifest from the bridge", "done": false, "pos": ship.manifest_at},
+		{"text": "Destroy the marked container on the fore deck", "done": false, "pos": ship.marked[0].global_position + Vector3(0, 1.5, 0)},
+		{"text": "Destroy the marked container by the deckhouse", "done": false, "pos": ship.marked[1].global_position + Vector3(0, 1.5, 0)},
+		{"text": "Get back down the ladder to your boat", "done": false, "pos": lz + Vector3(0, 1, 0), "needs": [0, 1, 2], "lz": true}]
+	reinf_spots = [Vector3(-44, 5.0, 0), Vector3(-44, 5.0, 2), Vector3(29, 5.0, 0), Vector3(29, 5.0, 2)]
+	alarm_text = "The ship knows you are aboard. Every man is turning out."
+	siren_pos = Vector3(-33, 17, 0)
+	start_yaw = PI * 0.5
 	return spawn

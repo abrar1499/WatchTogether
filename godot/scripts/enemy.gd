@@ -149,7 +149,7 @@ func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasma
 	home_yaw_now = face
 	rotation.y = yaw
 	kneels = false        # (always on his feet: kneeling and standing again looked odd)
-	perch = pos.y > 1.5
+	perch = pos.y > main.perch_y
 	# (a guard up on a tower stands at the rail with his rifle up, watching: kneeling there he looked asleep)
 	has_nade = randf() < 0.75
 	flank = 1.0 if randf() < 0.5 else -1.0

@@ -35,7 +35,7 @@ var flat_c := Vector2(0, -8)               # the ground is flat round here, dune
 var flat_r := 58.0
 var extra_cover := []                      # low cover besides crates and drums: [position, half size]
 var doors := []
-const MISSIONS_BUILT := 3                  # missions that exist so far (of 30)
+const MISSIONS_BUILT := 4                  # missions that exist so far (of 30)
 
 
 func _ready() -> void:
@@ -548,6 +548,9 @@ func _build_ground() -> void:
 	tone2.frequency = 0.13
 	var w := n + 1
 	ground_h.resize(w * w)
+	if sea:
+		ground_h.fill(-12.0)
+		return
 	for j in w:
 		for i in w:
 			var x := -half + i * cell
@@ -1537,6 +1540,8 @@ func apply_golden() -> void:
 
 var snow := false               # the mission lies under snow (ground, hills, the look of the light)
 var snow_night := false         # and it is night: the flakes are seen by the lamps, not by daylight
+var sea := false                # the mission is afloat: no land under it (the level lays its own decks)
+var perch_y := 1.5              # a soldier posted higher than this holds his place (a tower, a roof)
 
 
 ## A day of snow: a low white overcast that lights everything evenly, the sun a pale disc behind it, the far hills
@@ -1594,7 +1599,7 @@ func apply_snow_night() -> void:
 
 
 ## Missions progress: how many are open (the first always is).
-const OPEN_FOR_TESTING := 3               # missions open whatever the progress (1: only what has been earned)
+const OPEN_FOR_TESTING := 4               # missions open whatever the progress (1: only what has been earned)
 
 
 func unlocked() -> int:
