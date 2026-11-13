@@ -342,12 +342,13 @@ uniform float speed = 0.55;
 uniform float tiles = 7.0;
 uniform float lean = 0.05;
 uniform vec3 tint = vec3(0.36, 0.38, 0.44);
+uniform float opacity = 2.1;
 void fragment() {
 	vec2 uv = vec2(UV.x * tiles + UV.y * lean, UV.y * 1.6 - TIME * speed);
 	float r = texture(sheet, uv).r;
 	float r2 = texture(sheet, uv * vec2(1.37, 0.83) + vec2(0.31, -TIME * speed * 0.35)).r;
 	float edge = smoothstep(0.0, 0.18, UV.y) * (1.0 - smoothstep(0.82, 1.0, UV.y));
-	ALBEDO = (tint + flash * vec3(0.8)) * (r * 0.75 + r2 * 0.45) * edge * amount;
+	ALBEDO = (tint + flash * vec3(0.8)) * (r * 0.75 + r2 * 0.45) * edge * amount * opacity;
 }
 """
 
