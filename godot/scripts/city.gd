@@ -147,6 +147,10 @@ func commit(shadows := true, gone := 0.0, layer := 1) -> MeshInstance3D:
 		var parts: PackedStringArray = (k as String).split("|")
 		var ch: String = parts[0] if parts.size() > 1 else ""
 		var key: String = parts[parts.size() - 1]
+		# (the small things of a block of buildings, roof clutter, shop boards and fronts, bulbs: a mesh of their
+		# own that is not drawn from far off, where they cannot be seen anyway)
+		if gone > SMALL_GONE and key in SMALL_KEYS:
+			ch += "~small"
 		if not groups.has(ch):
 			groups[ch] = ArrayMesh.new()
 		var am: ArrayMesh = groups[ch]
@@ -163,7 +167,7 @@ func commit(shadows := true, gone := 0.0, layer := 1) -> MeshInstance3D:
 		var mi := MeshInstance3D.new()
 		mi.mesh = groups[ch]
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mi.visibility_range_end = gone
+		mi.visibility_range_end = SMALL_GONE if (ch as String).ends_with("~small") else gone
 		mi.layers = layer
 		main.add_child(mi)
 		if first == null:
@@ -505,6 +509,8 @@ func ad_image(seed_: int) -> ImageTexture:
 ## moulded surrounds and small sash windows: forty times the vertices, and most of a mission's loading time.)
 ## Roller shutters and air conditioners (Poly Haven, CC0) join in as models.
 const PLASTER_KEY := ["k_plaster0", "k_plaster1", "k_plaster2", "k_plaster3", "k_plaster4", "k_plaster5", "k_plaster6", "k_plaster7"]
+const SMALL_KEYS := ["dark", "k_sign", "k_shop", "bulb"]
+const SMALL_GONE := 110.0
 const KIT_FAR := 75.0         # beyond this, a building is flat walls with its window panes on them
 const KIT_GONE := 270.0       # and beyond this (deep in the haze) it is not drawn
 const PLASTER := [Color(0.93, 0.9, 0.84), Color(0.84, 0.83, 0.8), Color(0.96, 0.87, 0.74), Color(0.76, 0.75, 0.72),

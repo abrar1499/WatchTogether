@@ -335,6 +335,48 @@ func _skin(sc: Node3D, tint: Color, fade_near := false) -> void:
 			m.material_override = mm
 
 
+## A soldier some way off is drawn from a light version of his model (about a third of the triangles, made by
+## tools/citybuild/skin_lod.py: same skeleton, same skin); close to, the full one. A street of them at full
+## detail was most of what a phone had to draw.
+const LOD_AT := 12.0
+static var low_meshes := {}
+
+
+func _far_version(sc: Node3D, kind: String) -> void:
+	var path: String = str(KINDS[kind]).replace(".glb", "_low.glb")
+	if not ResourceLoader.exists(path):
+		return
+	if not low_meshes.has(kind):
+		var ls: Node3D = load(path).instantiate()
+		var found := {}
+		for lm in ls.find_children("*", "MeshInstance3D", true, false):
+			found[str(lm.name)] = lm.mesh
+		low_meshes[kind] = found
+		ls.free()
+	for m in sc.find_children("*", "MeshInstance3D", true, false):
+		var lowm: Mesh = low_meshes[kind].get(str(m.name))
+		if lowm == null or m.skin == null:
+			continue
+		var far := MeshInstance3D.new()
+		far.name = str(m.name) + "_far"
+		far.mesh = lowm
+		far.skin = m.skin
+		far.transform = m.transform
+		m.get_parent().add_child(far)
+		far.skeleton = m.skeleton
+		far.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if m.material_override != null:
+			far.material_override = m.material_override
+		else:
+			for i in min(lowm.get_surface_count(), m.mesh.get_surface_count()):
+				far.set_surface_override_material(i, m.get_active_material(i))
+		m.visibility_range_end = LOD_AT
+		m.visibility_range_end_margin = 1.0
+		m.set_meta("lod_near", true)
+		far.visibility_range_begin = LOD_AT
+		far.visibility_range_begin_margin = 1.0
+
+
 ## Another soldier with the same grip on the given guns (first-person arms, enemies). Add r.root to the tree,
 ## then call start_rig(r).
 func make_rig(tint: Color, keys: Array, fade_near := false, kind := "soldier") -> Dictionary:
@@ -343,6 +385,7 @@ func make_rig(tint: Color, keys: Array, fade_near := false, kind := "soldier") -
 	sc.scale = Vector3.ONE * float(info["scale"])
 	sc.rotation.y = PI
 	_skin(sc, tint, fade_near)
+	_far_version(sc, kind)
 	var sk: Skeleton3D = sc.find_children("*", "Skeleton3D", true, false)[0]
 	var cap: AnimationPlayer = _rig_player(sc, kind)
 	var d: Dictionary = info["data"]
@@ -724,7 +767,7 @@ func make_blobs(who: Node3D) -> Array:
 		mi.material_override = _blob_shade(k[1])
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.top_level = true
-		mi.visibility_range_end = 45.0
+		mi.visibility_range_end = 28.0
 		who.add_child(mi)
 		out.append(mi)
 	return out

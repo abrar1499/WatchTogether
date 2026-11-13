@@ -52,7 +52,9 @@ func _ready() -> void:
 	_build_environment()
 	if OS.has_feature("mobile"):
 		# a phone's screen is dense: fewer pixels to shade, the same picture; the HD app a little more
-		get_viewport().scaling_3d_scale = 0.85 if OS.has_feature("hd") else 0.8
+		res_base = 0.85 if OS.has_feature("hd") else 0.8
+		res_scale = res_base
+		get_viewport().scaling_3d_scale = res_base
 	add_child(fx)
 	var ocf := ConfigFile.new()
 	if ocf.load("user://progress.cfg") == OK:
@@ -81,6 +83,8 @@ func _ready() -> void:
 		if WARM_AHEAD:
 			await warm_wait()
 		spawn = await mission.build(int(level.substr(1)))
+		merge_boxes()
+		far_cull_props()
 	music.main = self
 	add_child(music)
 	player = load("res://scripts/player.gd").new()
@@ -336,16 +340,17 @@ func apply_night() -> void:
 
 ## Small stones, partly sunk in the sand, and dry desert scrub (kept outside `clear_r` of the flat centre).
 func scatter(stones: int, scrub: int, clear_r: float) -> void:
-	if rock_meshes.is_empty():
-		for s_ in 3:
-			rock_meshes.append(_rock_mesh(40 + s_))
+	# (stones a hand across: a rough shape of 80 triangles each, not the boulders' 400; there are over a thousand)
+	var pebbles := []
+	for s_ in 3:
+		pebbles.append(_rock_mesh(40 + s_, 8, 5))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 99
 	var rock_mat := _tex_mat("res://assets/env/rock_albedo.jpg", "res://assets/env/rock_normal.png", 0.6, 0.95, true)
 	for k in 3:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = rock_meshes[k]
+		mm.mesh = pebbles[k]
 		var n := stones / 3
 		mm.instance_count = n
 		for i in n:
@@ -668,10 +673,10 @@ func _build_mountains() -> void:
 
 ## Boulders: a sphere pushed in and out by noise, flattened underneath, rock texture all round.
 var rock_meshes := []
-func _rock_mesh(seed: int) -> ArrayMesh:
+func _rock_mesh(seed: int, radial := 18, rings := 10) -> ArrayMesh:
 	var sm := SphereMesh.new()
-	sm.radial_segments = 18
-	sm.rings = 10
+	sm.radial_segments = radial
+	sm.rings = rings
 	var arr := sm.get_mesh_arrays()
 	var nz := FastNoiseLite.new()
 	nz.seed = seed
@@ -2035,8 +2040,125 @@ func on_player_respawn() -> void:
 			e.grace = 3.0
 
 
+## The plain still boxes of a mission (walls, slabs, steps: a StaticBody3D with one BoxMesh and nothing special about
+## it) are drawn together, one mesh for each material in each 28 m square of ground, not each on its own: a phone
+## pays for every separate thing it draws. (In squares, so no one mesh has more lamps on it than it can be lit by.)
+## Their bodies stay where they are for bullets and feet; only the pictures are joined.
+func merge_boxes(cell := 28.0) -> int:
+	var groups := {}
+	var joined := 0
+	for b in get_children():
+		# (and the boxes that are only pictures, with no body: fence wires, mast struts)
+		if not (b is StaticBody3D or b.get_class() == "Node3D") or b.get_script() != null or not b.get_groups().is_empty():
+			continue
+		var special := false
+		for k in b.get_meta_list():
+			if not (str(k) in ["surf", "pierce"]):
+				special = true
+		if special:
+			continue
+		var mi: MeshInstance3D = null
+		var n_mesh := 0
+		for c in b.get_children():
+			if c is MeshInstance3D:
+				n_mesh += 1
+				mi = c
+			elif not (c is CollisionShape3D):
+				n_mesh = 99           # (something else hangs on it: leave it be)
+		if n_mesh != 1 or not (mi.mesh is BoxMesh) or not mi.is_visible_in_tree() or mi.material_override == null or mi.get_child_count() > 0:
+			continue
+		var xf: Transform3D = mi.global_transform
+		var key := [mi.material_override, int(floor(xf.origin.x / cell)), int(floor(xf.origin.z / cell)), mi.visibility_range_end, mi.cast_shadow]
+		if not groups.has(key):
+			groups[key] = [PackedVector3Array(), PackedVector3Array(), PackedFloat32Array(), PackedVector2Array(), PackedInt32Array()]
+		var g: Array = groups[key]
+		var a: Array = (mi.mesh as BoxMesh).get_mesh_arrays()
+		var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+		var nr: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+		var tg: PackedFloat32Array = a[Mesh.ARRAY_TANGENT]
+		var uv: PackedVector2Array = a[Mesh.ARRAY_TEX_UV]
+		var ix: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+		var base: int = (g[0] as PackedVector3Array).size()
+		var rot := xf.basis.orthonormalized()
+		for i in v.size():
+			g[0].append(xf * v[i])
+			g[1].append(rot * nr[i])
+			var t3: Vector3 = rot * Vector3(tg[i * 4], tg[i * 4 + 1], tg[i * 4 + 2])
+			g[2].append(t3.x); g[2].append(t3.y); g[2].append(t3.z); g[2].append(tg[i * 4 + 3])
+			g[3].append(uv[i])
+		for i in ix:
+			g[4].append(base + i)
+		mi.queue_free()
+		joined += 1
+	for key in groups:
+		var g: Array = groups[key]
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = g[0]
+		arr[Mesh.ARRAY_NORMAL] = g[1]
+		arr[Mesh.ARRAY_TANGENT] = g[2]
+		arr[Mesh.ARRAY_TEX_UV] = g[3]
+		arr[Mesh.ARRAY_INDEX] = g[4]
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		var out := MeshInstance3D.new()
+		out.mesh = am
+		out.material_override = key[0]
+		out.visibility_range_end = key[3]
+		out.cast_shadow = key[4]
+		add_child(out)
+	return joined
+
+
+## Things standing about (planters, barriers, crates, cars) are not drawn from further off than they can be made
+## out: the smaller the thing, the nearer it stops being drawn. Only those with no such distance set already.
+func far_cull_props() -> void:
+	for b in get_children():
+		if not (b is StaticBody3D):
+			continue
+		for mi in b.find_children("*", "MeshInstance3D", true, false):
+			if mi.mesh == null or mi.visibility_range_end > 0.0 or mi.visibility_range_begin > 0.0:
+				continue
+			var big: float = (mi.mesh.get_aabb().size * (mi.global_transform.basis.get_scale() as Vector3)).length()
+			mi.visibility_range_end = 70.0 if big < 1.6 else (120.0 if big < 4.0 else (190.0 if big < 14.0 else 0.0))
+			mi.visibility_range_end_margin = 4.0
+
+
+# ---- a steady frame rate: the 3D picture is drawn smaller when the phone cannot keep up, and larger again when it can ----
+var res_base := 0.8
+var res_scale := 0.8
+var res_ft := 1.0 / 60.0         # frame time, smoothed
+var res_wait := 6.0              # no change for this long (loading, and after a change)
+var res_good := 0.0              # how long it has been running easily
+
+
+func _steady_frames(dt: float) -> void:
+	if not OS.has_feature("mobile") and OS.get_environment("DS_RES") == "":
+		return
+	if get_tree().paused or dt > 0.25:
+		return            # (a hitch or a pause is not the phone being slow)
+	res_ft = lerp(res_ft, dt, 0.06)
+	res_wait -= dt
+	res_good = res_good + dt if res_ft < 1.0 / 56.0 else 0.0
+	if res_wait > 0.0:
+		return
+	if res_ft > 1.0 / 46.0 and res_scale > 0.56:
+		# below about 46 frames a second: fewer pixels (the buttons and words stay sharp, only the 3D is smaller)
+		res_scale = max(0.55, res_scale - (0.1 if res_ft > 1.0 / 34.0 else 0.05))
+		res_wait = 2.0
+		res_good = 0.0
+	elif res_good > 8.0 and res_scale < res_base:
+		res_scale = min(res_base, res_scale + 0.05)
+		res_wait = 4.0
+		res_good = 0.0
+	else:
+		return
+	get_viewport().scaling_3d_scale = res_scale
+
+
 func _process(dt: float) -> void:
 	_warm_poll()
+	_steady_frames(dt)
 	if wave_t > 0.0:
 		wave_t -= dt
 		if wave_t <= 0.0:

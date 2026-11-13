@@ -225,6 +225,8 @@ var far_cull := 150.0
 
 func _far_cull(e: Node) -> void:
 	for g in e.find_children("*", "GeometryInstance3D", true, false):
+		if g.has_meta("lod_near"):
+			continue          # (the full model: already drawn only close to; his light version takes over)
 		g.visibility_range_end = far_cull
 
 
@@ -485,6 +487,7 @@ func _mast(c: Vector3, h := 22.0) -> void:
 	main.add_child(lamp)
 	lamp.global_position = c + Vector3(0, h + 0.2, 0)
 	var bulb := _block(c + Vector3(0, h + 0.1, 0), Vector3(0.18, 0.18, 0.18), "red", "metal", 0.0, false)
+	bulb.set_meta("keep", true)      # (changed later: not joined into the mission's merged boxes)
 	var bm: StandardMaterial3D = _m("red").duplicate()
 	bm.emission_enabled = true
 	bm.emission = Color(1, 0.1, 0.05)
@@ -662,6 +665,7 @@ var lights := []      # searchlights: {"n": SpotLight3D, "yaw": centre of its sw
 ## soldiers) is the one who sees what it lights.
 func _searchlight(top: Vector3, yaw: float, guard: int) -> void:
 	var head := _block(top + Vector3(0, 2.05, 0), Vector3(0.35, 0.3, 0.45), "dark", "metal", 0.0, false)
+	head.set_meta("keep", true)      # (changed later: not joined into the mission's merged boxes)
 	var sl := SpotLight3D.new()
 	sl.light_color = Color(0.86, 0.9, 1.0)
 	sl.light_energy = 9.0
@@ -678,12 +682,14 @@ func _searchlight(top: Vector3, yaw: float, guard: int) -> void:
 func _lamp(p: Vector3) -> void:
 	_block(p + Vector3(0, 2.0, 0), Vector3(0.1, 4.0, 0.1), "steel", "metal")
 	var bulb := _block(p + Vector3(0, 4.0, 0.25), Vector3(0.3, 0.12, 0.5), "dark", "metal", 0.0, false)
+	bulb.set_meta("keep", true)      # (changed later: not joined into the mission's merged boxes)
 	var lm := StandardMaterial3D.new()
 	lm.albedo_color = Color(1, 0.85, 0.6)
 	lm.emission_enabled = true
 	lm.emission = Color(1, 0.8, 0.55)
 	lm.emission_energy_multiplier = 4.0
 	var glow := _block(p + Vector3(0, 3.93, 0.3), Vector3(0.22, 0.03, 0.3), "dark", "metal", 0.0, false)
+	glow.set_meta("keep", true)      # (changed later: not joined into the mission's merged boxes)
 	glow.get_child(0).material_override = lm
 	var l := OmniLight3D.new()
 	l.light_color = Color(1.0, 0.8, 0.58)
@@ -1106,10 +1112,12 @@ func _courier_post(c: Vector3) -> void:
 		_block(c + Vector3(cx, 0.22, 0.75), Vector3(0.45, 0.45, 0.45), "steel", "metal")
 	_block(c + Vector3(0.55, 0.47, -0.1), Vector3(0.22, 0.12, 0.1), "dark", "metal", 0.0, false)
 	var lap := _block(c + Vector3(-0.2, 0.42, 0.05), Vector3(0.34, 0.03, 0.24), "dark", "metal", 0.0, false)
+	lap.set_meta("keep", true)      # (changed later: not joined into the mission's merged boxes)
 	lap.set_meta("label", "TAKE LAPTOP")
 	lap.set_meta("obj", 3)
 	items.append(lap)
 	var scr := _block(c + Vector3(-0.2, 0.53, -0.07), Vector3(0.34, 0.22, 0.02), "glass", "metal", 0.0, false)
+	scr.set_meta("keep", true)      # (changed later: not joined into the mission's merged boxes)
 	scr.reparent(lap)
 	city.box("frame", c + Vector3(0, 2.6, 0.3), Vector3(4.0, 0.08, 3.0), 0.0, Color(0.3, 0.32, 0.3))
 	for sx in [-1.9, 1.9]:

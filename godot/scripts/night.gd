@@ -468,6 +468,7 @@ func _lamp(parent: Node3D, beam: bool, glow_size := 0.32) -> Node3D:
 	bulb.mesh = sm
 	bulb.material_override = bulb_mat
 	bulb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	bulb.visibility_range_end = 18.0        # (a bulb the size of a coin: the glow round it is what is seen from afar)
 	l.add_child(bulb)
 	var g := MeshInstance3D.new()
 	var gq := QuadMesh.new()
@@ -492,7 +493,7 @@ func _lamp(parent: Node3D, beam: bool, glow_size := 0.32) -> Node3D:
 		b.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		# the cone's axis along the lamp's +z (forward of the head), its narrow end at the lamp
 		b.transform = Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(0, 0, 3.5))
-		b.visibility_range_end = 90.0
+		b.visibility_range_end = 55.0
 		# (in a holder at the lamp: shortened, as a whole, to stop at the first wall in its way)
 		var bp := Node3D.new()
 		bp.name = "beam"
