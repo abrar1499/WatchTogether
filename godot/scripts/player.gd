@@ -492,6 +492,14 @@ const RAG := [["Hips", "Spine1", 0.15, 14.0, 0.0], ["Spine2", "Neck", 0.16, 20.0
 	["LeftFoot", "LeftToeBase", 0.045, 1.0, 30.0], ["RightFoot", "RightToeBase", 0.045, 1.0, 30.0]]
 
 
+## Knees and elbows are hinges that bend one way only:
+##   [how the hinge is turned in the bone (its z is the axis), that axis in the bone, which way round it the joint
+##    bends naturally, the most it bends (degrees)].
+## (Measured from the kneeling, aiming pose: a knee turns about the bone's -x, the left elbow about +z, the right -z.)
+const HINGES := {"LeftLeg": [Basis(Vector3.UP, PI * 0.5), "x", -1.0, 130.0], "RightLeg": [Basis(Vector3.UP, PI * 0.5), "x", -1.0, 130.0],
+	"LeftForeArm": [Basis.IDENTITY, "z", 1.0, 140.0], "RightForeArm": [Basis.IDENTITY, "z", -1.0, 140.0]}
+
+
 ## Make the weights for skeleton sk and let them go. gun_node: the rifle in his right hand (its length rests on the
 ## ground too). push: the way he is thrown, with what force; at: where on him. Returns the simulator.
 func ragdoll(sk: Skeleton3D, gun_node: Node3D, push: Vector3, at: Vector3) -> PhysicalBoneSimulator3D:
@@ -530,7 +538,25 @@ func ragdoll(sk: Skeleton3D, gun_node: Node3D, push: Vector3, at: Vector3) -> Ph
 		sim.add_child(pb)
 		pb.body_offset = Transform3D(unscale, Vector3(0, len_ * 0.5 / sc, 0))      # the bone runs along its own y
 		pb.joint_offset = Transform3D(Basis.IDENTITY, Vector3(0, -len_ * 0.5, 0))
-		if float(r[4]) > 0.0:
+		if HINGES.has(r[0]):
+			# a knee or an elbow. The hinge counts from the pose he is in now, so how far it is bent already is
+			# measured: it may straighten that much and no further, and bend on up to its most
+			var hg: Array = HINGES[r[0]]
+			var dq: Quaternion = sk.get_bone_rest(b).basis.get_rotation_quaternion().inverse() * sk.get_bone_pose_rotation(b)
+			var turn: float = rad_to_deg(2.0 * atan2(dq.x if hg[1] == "x" else dq.z, dq.w))
+			turn = wrapf(turn, -180.0, 180.0)
+			var bent: float = clamp(turn * float(hg[2]), 0.0, float(hg[3]) - 5.0)
+			var more: float = float(hg[3]) - bent
+			# (the hinge's own angle runs the other way from a turn about its axis)
+			var lo: float = -bent if float(hg[2]) < 0.0 else -more
+			var hi: float = more if float(hg[2]) < 0.0 else bent
+			pb.joint_rotation = (hg[0] as Basis).get_euler()          # (before the type: the joint is built when the type is set)
+			pb.joint_type = PhysicalBone3D.JOINT_TYPE_HINGE
+			pb.set("joint_constraints/angular_limit_enabled", true)
+			pb.set("joint_constraints/angular_limit_lower", lo)
+			pb.set("joint_constraints/angular_limit_upper", hi)
+			pb.set("joint_constraints/angular_limit_softness", 0.5)
+		elif float(r[4]) > 0.0:
 			pb.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
 			pb.set("joint_constraints/swing_span", float(r[4]))
 			pb.set("joint_constraints/twist_span", 25.0)
