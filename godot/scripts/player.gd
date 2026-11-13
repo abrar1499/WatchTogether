@@ -161,7 +161,6 @@ var cover_hit := {}
 var cover_cool := 0.0           # after leaving cover: no automatic cover for a moment
 var touch_t := 0.0              # how long he has been walking into a wall
 var end_t := 0.0                # how long the stick has pushed past the end of the wall
-var cover_face := 1.0            # against a tall wall: which end he faces (+1 / -1 along it)
 var cover_sit := false          # in cover he sits only if the player chose to (CROUCH); rises to shoot over low cover
 var cover_reach := 0.0          # how far he steps to clear the end of the wall
 var act_doing := ""
@@ -766,9 +765,9 @@ func _feet_out_of_walls(dt: float) -> void:
 		# in cover his body is drawn up against the wall (his own round shape cannot get as near as a shoulder can):
 		# right against a tall wall, a little less behind something low (his rifle is toward it), and eased off
 		# while he leans out or shoots
-		var hug := 0.16 if not cover_low else 0.1
+		var hug := 0.27          # (his back flat against it)
 		if aiming or firing or cover_peek > 0.05 or t - last_shot < 1.2:
-			hug *= 0.35
+			hug = 0.08           # (turned to shoot: his rifle needs the room)
 		want = -cover_n * hug
 	wall_push = wall_push.lerp(want, min(1.0, dt * (6.0 if cover else 14.0)))
 	model.global_position = Vector3(global_position.x + wall_push.x, model.global_position.y, global_position.z + wall_push.z)
@@ -1812,17 +1811,10 @@ func _physics_process(dt: float) -> void:
 		_step_up(target, dt)
 	speed = Vector2(vel.x, vel.z).length()
 	if cover and not (aiming or firing or t - last_shot < 1.2):
-		# at rest in cover: behind something low he faces it (the enemy is over there, he rises to shoot over it);
-		# against a tall wall his shoulder is to it, facing the end he looks toward (where he leans out to shoot).
-		# Never the back to the wall: from there every burst over the top turned him right round and back again.
-		var rest := -cover_n
-		if not cover_low:
-			var tn := Vector3(cover_n.z, 0, -cover_n.x)
-			var lk: float = Vector3(-sin(yaw), 0, -cos(yaw)).dot(tn)
-			if abs(lk) > 0.3:
-				cover_face = 1.0 if lk > 0.0 else -1.0
-			rest = (tn * cover_face - cover_n * 0.3).normalized()
-		rotation.y = lerp_angle(rotation.y, atan2(-rest.x, -rest.z), min(1.0, dt * 6.0))
+		# at rest in cover his back is to the wall (asked for: the look of a man in cover). To shoot he turns to
+		# where he aims, and turns back a moment after the last round, not fast enough to look like a spin.
+		var rest := cover_n
+		rotation.y = lerp_angle(rotation.y, atan2(-rest.x, -rest.z), min(1.0, dt * 5.0))
 	elif cover:
 		rotation.y = lerp_angle(rotation.y, yaw, min(1.0, dt * 16.0))
 	else:
@@ -2595,7 +2587,7 @@ func _cover_step(dt: float) -> void:
 		ends[sgn] = (ray.call(ahead, ahead - n * 1.7) as Dictionary).is_empty()
 		blocked[sgn] = not (ray.call(base + Vector3(0, 0.55, 0), ahead + n * 0.2) as Dictionary).is_empty()
 		gap[sgn] = 99.0
-		for st in [0.3, 0.55, 0.8, 1.05, 1.3]:
+		for st in [0.3, 0.55, 0.8, 1.05, 1.3, 1.55, 1.8, 2.05, 2.3]:      # (he will go this far along a wall to its end to shoot)
 			var q2: Vector3 = base + tan * (sgn * st) + Vector3(0, 0.55, 0)
 			if (ray.call(q2, q2 - n * 1.7) as Dictionary).is_empty():
 				gap[sgn] = st
@@ -2612,7 +2604,7 @@ func _cover_step(dt: float) -> void:
 			cover_edge = 0
 		else:
 			cover_edge = -look if gap[-look] < 99.0 else 0
-		cover_reach = (float(gap[cover_edge]) + 0.3) if cover_edge != 0 else 0.0
+		cover_reach = (float(gap[cover_edge]) + 0.55) if cover_edge != 0 else 0.0      # (well clear of the corner: the round must not catch it)
 	var v_t := 0.0
 	if not shooting:
 		if cover_peek > 0.0:       # back in from the lean
@@ -2631,8 +2623,8 @@ func _cover_step(dt: float) -> void:
 		else:
 			end_t = 0.0
 	elif cover_edge != 0 and cover_peek < cover_reach:
-		v_t = float(cover_edge) * 3.5      # step out of the end to shoot
-		cover_peek += 3.5 * dt
+		v_t = float(cover_edge) * 4.5      # step out of the end to shoot
+		cover_peek += 4.5 * dt
 	var v_n := 0.0
 	if not wall.is_empty():
 		var off: float = (global_position - (wall["position"] as Vector3)).dot(n)
