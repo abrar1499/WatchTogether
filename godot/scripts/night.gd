@@ -129,8 +129,11 @@ uniform float len = 0.6;
 uniform float width = 0.005;
 uniform float strength = 0.2;
 uniform float near_cut = 0.5;
+uniform vec4 lights[8];             // xyz: a lamp near the camera, w: how far its light reaches
+uniform vec3 amb = vec3(0.15, 0.16, 0.19);
 varying float vis;
 varying float along;
+varying vec3 lit;
 
 void vertex() {
 	vec4 r = INSTANCE_CUSTOM;
@@ -151,13 +154,21 @@ void vertex() {
 	float l = len * (0.75 + 0.5 * fract(r.w * 7.13));
 	VERTEX = w + side * VERTEX.x * (width + dist * 0.0006) + down * VERTEX.y * l;
 	along = UV.y;
+	// water has no colour of its own: a drop is seen by the light it catches (dim grey in the dark, warm by a lamp)
+	lit = amb;
+	for (int i = 0; i < 8; i++) {
+		float f = clamp(1.0 - distance(w, lights[i].xyz) / max(lights[i].w, 0.01), 0.0, 1.0);
+		lit += vec3(1.0, 0.82, 0.6) * f * f * 2.2;
+	}
+	lit += flash * vec3(0.85, 0.9, 1.0);
 	vis = step(fract(r.w * 3.71), amount) * (1.0 - smoothstep(box.x * 0.3, box.x * 0.5, dist)) * smoothstep(near_cut, near_cut + 1.0, dist);
 }
 
 void fragment() {
 	float k = 1.0 - abs(along * 2.0 - 1.0);
-	ALBEDO = vec3(0.7, 0.74, 0.8) + flash * vec3(0.5);
-	ALPHA = vis * k * k * (strength + flash * strength * 1.5);
+	float bright = clamp(max(lit.r, max(lit.g, lit.b)), 0.0, 1.0);
+	ALBEDO = lit / max(bright, 0.08);
+	ALPHA = vis * k * strength * clamp(0.5 + bright * 1.8, 0.0, 2.2);
 }
 """
 
@@ -168,9 +179,12 @@ uniform float amount = 0.0;
 uniform float floor_y = 0.0;
 uniform vec2 box = vec2(16.0, 16.0);
 uniform float flash = 0.0;
+uniform vec4 lights[8];
+uniform vec3 amb = vec3(0.15, 0.16, 0.19);
 varying float ph;
 varying float vis;
 varying vec2 uv;
+varying vec3 lit;
 
 void vertex() {
 	vec4 r = INSTANCE_CUSTOM;
@@ -188,14 +202,21 @@ void vertex() {
 	float dist = distance(vec2(cam.x, cam.z), p);
 	vis = step(fract(r.w * 5.3), amount) * (1.0 - smoothstep(box.x * 0.3, box.x * 0.5, dist));
 	uv = UV;
+	lit = amb;
+	for (int i = 0; i < 8; i++) {
+		float f = clamp(1.0 - distance(vec3(p.x, floor_y, p.y), lights[i].xyz) / max(lights[i].w, 0.01), 0.0, 1.0);
+		lit += vec3(1.0, 0.82, 0.6) * f * f * 1.4;
+	}
+	lit += flash * vec3(0.7);
 }
 
 void fragment() {
 	float d = length(uv - vec2(0.5)) * 2.0;
 	float ring = smoothstep(0.78, 0.9, d) * (1.0 - smoothstep(0.9, 1.0, d)) * (1.0 - ph) * (1.0 - ph);
 	float fleck = (1.0 - smoothstep(0.0, 0.3, d)) * (1.0 - smoothstep(0.0, 0.18, ph));
-	ALBEDO = vec3(0.72, 0.76, 0.82) + flash * vec3(0.4);
-	ALPHA = vis * (ring * 0.3 + fleck * 0.45);
+	float bright = clamp(max(lit.r, max(lit.g, lit.b)), 0.0, 1.0);
+	ALBEDO = lit / max(bright, 0.08);
+	ALPHA = vis * (ring * 0.3 + fleck * 0.45) * clamp(0.25 + bright * 2.0, 0.0, 1.5);
 }
 """
 
@@ -207,6 +228,42 @@ var fog_d := 0.006
 var fog_c := Color()
 var wind := Vector2(0.6, 0.25)
 var last_wet := 0.0
+var light_t := 0.0
+var tower_spots: Array = []      # the tower lamps' places
+
+
+## The lamps nearest the camera (street lamps, tower lamps, head lamps) for the rain to catch their light.
+func _rain_lights() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var cp := cam.global_position
+	var cand := []
+	var c = main.mission.get("city") if main.mission else null
+	if c != null:
+		for lp in c.lamps:
+			var ol: Node3D = lp[1]
+			if is_instance_valid(ol):
+				cand.append([ol.global_position - Vector3(0, 3.2, 0), 8.5])     # (its light falls in a cone below it)
+	for tp in tower_spots:
+		cand.append([tp - Vector3(0, 1.2, 0), 6.5])
+	for e in lamped:
+		var l: Node3D = lamped[e]
+		if is_instance_valid(l) and l.visible:
+			# the drops lit are those in his beam, out in front of him
+			var r: float = float(reach_of.get(l, 7.0))
+			cand.append([l.global_position + l.global_transform.basis.z * min(2.2, r * 0.5), min(3.0, r * 0.6 + 0.6)])
+	cand.sort_custom(func(a, b): return (a[0] as Vector3).distance_squared_to(cp) < (b[0] as Vector3).distance_squared_to(cp))
+	var arr := PackedVector4Array()
+	for i in 8:
+		if i < cand.size():
+			var v: Vector3 = cand[i][0]
+			arr.append(Vector4(v.x, v.y, v.z, float(cand[i][1])))
+		else:
+			arr.append(Vector4(0, -9999, 0, 0.01))
+	for ly in rain_layers:
+		(ly[1] as ShaderMaterial).set_shader_parameter("lights", arr)
+	splash_mat.set_shader_parameter("lights", arr)
 
 
 func _wet(wet: float) -> void:
@@ -253,8 +310,8 @@ func _layer(code: String, mm: MultiMesh, params: Dictionary) -> Array:
 
 func _make_rain() -> void:
 	# close: thin streaks; far: hair-thin, fainter, longer (further off they blur together into a grey veil)
-	rain_layers.append(_layer(RAIN_SHADER, _drops(2400, 7), {"box": Vector3(12, 10, 12), "len": 0.4, "width": 0.0018, "strength": 0.24, "near_cut": 1.2}))
-	rain_layers.append(_layer(RAIN_SHADER, _drops(3200, 11), {"box": Vector3(46, 24, 46), "len": 0.75, "width": 0.003, "strength": 0.14, "near_cut": 5.0}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(2400, 7), {"box": Vector3(12, 10, 12), "len": 0.42, "width": 0.0028, "strength": 0.32, "near_cut": 1.2}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(3200, 11), {"box": Vector3(46, 24, 46), "len": 0.75, "width": 0.004, "strength": 0.18, "near_cut": 5.0}))
 	var sl := _layer(SPLASH_SHADER, _drops(1000, 13), {"box": Vector2(14, 14)})
 	splash_mi = sl[0]
 	splash_mat = sl[1]
@@ -400,6 +457,7 @@ func _tower_lamps() -> void:
 		var holder := Node3D.new()
 		add_child(holder)
 		holder.global_position = at
+		tower_spots.append(at)
 		_lamp(holder, false, 0.9)
 		var o := OmniLight3D.new()
 		o.light_color = Color(1.0, 0.78, 0.5)
@@ -517,6 +575,10 @@ func _weather(dt: float) -> void:
 		(ly[1] as ShaderMaterial).set_shader_parameter("flash", flash)
 		(ly[1] as ShaderMaterial).set_shader_parameter("wind", wind)
 	splash_mi.visible = show_rain
+	light_t -= dt
+	if show_rain and light_t <= 0.0:
+		light_t = 0.2
+		_rain_lights()
 	splash_mat.set_shader_parameter("amount", rain)
 	splash_mat.set_shader_parameter("flash", flash)
 	splash_mat.set_shader_parameter("floor_y", main.player.global_position.y + 0.025)
