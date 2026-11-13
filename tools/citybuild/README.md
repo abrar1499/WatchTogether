@@ -35,5 +35,4 @@ Needs Python 3 with numpy, Pillow and `meshoptimizer` (`pip install meshoptimize
   `forklift.glb`.
 - In the `.import` file of every texture: `compress/mode=2`, `mipmaps/generate=true`, and `compress/normal_map=1` for
   normal maps (compressed on the phone's graphics chip, a third of the memory).
-- Soldiers seen from far off: `python3 skin_lod.py ../../godot/assets/chars/<name>.glb 0.3` writes `<name>_low.glb`, the same skeleton and skin with about
-  a third of the triangles and no pictures; the game draws it beyond 12 m with the full model's materials.
+
