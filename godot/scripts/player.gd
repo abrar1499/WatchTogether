@@ -2408,6 +2408,7 @@ func hit(dmg: float, from: Vector3, part := "") -> void:
 		groan_t = 0.12
 		snd.hurt(dmg >= 30.0)
 	var to := from - global_position
+	last_hit_from = from
 	hurt_dir = atan2(to.dot(Vector3(cos(yaw), 0, -sin(yaw))), to.dot(Vector3(-sin(yaw), 0, -cos(yaw))))
 	if hp <= 0:
 		_die()
@@ -2415,6 +2416,7 @@ func hit(dmg: float, from: Vector3, part := "") -> void:
 
 var view_before := 0
 var my_rag: PhysicalBoneSimulator3D = null
+var last_hit_from := Vector3.ZERO
 var layer_alive := 1
 func _die() -> void:
 	dead = true
@@ -2429,7 +2431,12 @@ func _die() -> void:
 	layer_alive = collision_layer
 	collision_layer = 0
 	ik.stop()
-	my_rag = ragdoll(skel, guns[weapons[wi]["gun"]], Vector3(-sin(yaw), 0, -cos(yaw)) * -25.0, global_position + Vector3(0, 1.2, 0))
+	# thrown away from where the round came
+	var away := global_position - last_hit_from
+	away.y = 0.0
+	if last_hit_from == Vector3.ZERO or away.length() < 0.01:
+		away = -Vector3(-sin(yaw), 0, -cos(yaw))
+	my_rag = ragdoll(skel, guns[weapons[wi]["gun"]], away.normalized() * 55.0, global_position + Vector3(0, 1.2, 0))
 	if fx.get_parent().has_method("on_player_dead"):
 		fx.get_parent().on_player_dead()
 

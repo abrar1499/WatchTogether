@@ -1014,7 +1014,7 @@ func _die(headshot: bool, blasted := false, push := Vector3.ZERO, force := 0.0, 
 	rig["ik"].interpolation = 0.0
 	rig["ik"].stop()
 	# he falls as a body with weight (see player.ragdoll): let go where he was hit, thrown the way the round went
-	var throw_: Vector3 = flat * clamp(force, 0.6, 3.0) * 30.0
+	var throw_: Vector3 = flat * clamp(force, 1.0, 3.0) * 55.0
 	if blasted:
 		throw_ = flat * 260.0 + Vector3(0, 150.0, 0)
 	rag = player.ragdoll(skel, rig["guns"][gun], throw_, hit_at if hit_at != Vector3.ZERO else global_position + Vector3(0, 1.2, 0))

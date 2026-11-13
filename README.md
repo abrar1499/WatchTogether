@@ -105,6 +105,7 @@ Sounds in `godot/assets/sfx/` are unedited sound effects from [Pixabay](https://
 - Footsteps: "Footsteps in wet coarse sand" (freesound_community), "Running on the floor" (thumblegray)
 - Enemy rifles: "Machin gun AK47 sound effect 6" (beetpro)
 - Music and atmosphere (`godot/assets/music/`): "Cinematic action epic trailer: Iron Vanguard" (openmindaudio), "Descent whoosh" (viralaudio), "Tense suspense ambience" (absolutesound), "Mid nights sound" (ncprime), "Raven call" (freesound_community), "Scary sound effect" and "Heartbeat sound" (dragon-studio), "Action loop E 90 BPM" (brvhrtz), "Action trailer" (arctsound)
+- Rain and thunder in mission 2: "Gentle rain 07" (dragon-studio), made into a loop with a 3 s crossfade; four thunderclaps cut from "Rain and thunder" (freesound_community)
 - Deaths: "Male death scream horror", "Dramatic death collapse" and "Character fall impact" (universfield), "Male death sound" (vinodadora); the player's last breath is the player's own recording
 - The soldiers' grunts when hit are the player's own ElevenLabs recording; the RPG launch and the explosions are the player's own recordings
 - The SVD, shotgun and RPG fire the single shots from the AK-47 recording played lower and louder; the shotgun's pump is the rifle reload sound

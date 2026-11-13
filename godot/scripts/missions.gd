@@ -111,6 +111,11 @@ func begin() -> void:
 		e.set_process(true)
 		e.set_physics_process(true)
 		e.grace = 1.0
+	if n == 2:
+		# the night: head lamps, tower lamps, and the weather turning to rain
+		var nt: Node3D = load("res://scripts/night.gd").new()
+		main.add_child(nt)
+		nt.start(main)
 	main.ui.message("MISSION %d" % n, title, 3.5)
 
 
