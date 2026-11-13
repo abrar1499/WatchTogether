@@ -594,6 +594,7 @@ func _m1() -> Vector3:
 	# inner compound: command hut, barracks, a third tower, mast and generator
 	var hut_c := Vector3(8, 0, -12)
 	_hut(hut_c, 6.0, 5.0, 1.2, "x")
+	_car("land_rover", hut_c + Vector3(6.2, 0, 1.5), 0.25)       # the commander's Land Rover by his hut
 	_block(hut_c + Vector3(-1.4, 0.4, -1.2), Vector3(1.6, 0.8, 0.8), "wood", "wood")
 	_block(hut_c + Vector3(-2.4, 0.35, -1.9), Vector3(0.5, 0.7, 0.5), "steel", "metal")
 	_block(hut_c + Vector3(2.2, 0.5, -1.8), Vector3(1.0, 1.0, 0.6), "green", "metal")
@@ -790,12 +791,18 @@ func _road(r: Array, _col := Color()) -> void:
 func _car(kind: String, p: Vector3, yaw: float) -> void:
 	# parked cars under the curfew: the scanned covered car (Poly Haven, CC0)
 	var path := "res://assets/city/%s.glb" % kind
+	if kind == "land_rover":
+		# the old Land Rover (m8mazay, CC-BY 4.0), packed light for phones (its tyres a few centimetres up in the model)
+		path = "res://assets/city/props/land_rover/land_rover_game.gltf"
+		p.y -= 0.08
 	if kind.begins_with("sedan") or kind.begins_with("suv"):
 		path = "res://assets/city/props/covered_car/covered_car_game.gltf"
 		kind = "sedan"
-	var cb: StaticBody3D = _merged_prop(path, p, yaw, "metal") if kind == "sedan" else main._prop(path, p, yaw, Vector3.ZERO, "metal")
+	var cb: StaticBody3D = _merged_prop(path, p, yaw, "metal") if kind in ["sedan", "land_rover"] else main._prop(path, p, yaw, Vector3.ZERO, "metal")
 	var big := kind.begins_with("bus")
 	var size := Vector3(2.5, 3.0, 10.1) if big else (Vector3(1.9, 2.2, 5.1) if kind == "pickup" else Vector3(1.8, 1.45, 4.6))
+	if kind == "land_rover":
+		size = Vector3(1.55, 2.0, 3.95)
 	var cs := CollisionShape3D.new()
 	var sh := BoxShape3D.new()
 	sh.size = size
@@ -945,7 +952,7 @@ func _m2() -> Vector3:
 	city.commit()
 	_courier_post(S(893, 158))
 	_car("pickup", S(917, 204), PI * 0.6)
-	_car("pickup", S(885, 218), PI * 0.45)
+	_car("land_rover", S(885, 218), PI * 0.45)
 	_car("suv_black", S(842, 210), PI * 0.5)
 	# ---- the bus terminal, the checkpoint, the water tower ----
 	var da := S(112, 468)

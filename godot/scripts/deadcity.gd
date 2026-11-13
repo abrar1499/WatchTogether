@@ -199,7 +199,11 @@ func commit_props(gone := 130.0) -> void:
 
 
 func car(kind: String, p: Vector3, yaw: float, size := Vector3(1.8, 1.45, 4.6)) -> void:
-	var cb: StaticBody3D = main._prop("res://assets/city/%s.glb" % kind, p, yaw, Vector3.ZERO, "metal")
+	var path := "res://assets/city/%s.glb" % kind
+	if kind == "land_rover":
+		path = prop_path % [kind, kind]
+		p.y -= 0.08
+	var cb: StaticBody3D = main._prop(path, p, yaw, Vector3.ZERO, "metal")
 	var cs := CollisionShape3D.new()
 	var sh := BoxShape3D.new()
 	sh.size = size
@@ -1428,6 +1432,7 @@ func _hq() -> void:
 	car("truck_mil", Vector3(24.0, 0, -27.0), -0.05, Vector3(2.5, 3.0, 7.2))
 	car("apc", Vector3(52.0, 0, -24.0), 1.3, Vector3(2.9, 2.5, 6.6))
 	car("pickup", Vector3(60.0, 0, -32.0), 0.3, Vector3(1.9, 1.8, 5.2))
+	car("land_rover", Vector3(47.0, 0, -30.0), 0.6, Vector3(1.55, 2.0, 3.95))
 	stack("old_military_crate", Vector3(63.5, 0, -44.0), PI * 0.5, 1, 2, 3, Vector3(1.82, 0.28, 0.97))
 	stack("wooden_military_crate", Vector3(63.8, 0, -49.0), 0.0, 2, 2, 2, Vector3(1.25, 0.46, 0.53))
 	stack("wooden_crate_02", Vector3(19.0, 0, -52.0), 0.3, 2, 1, 2, Vector3(0.53, 0.45, 1.17))

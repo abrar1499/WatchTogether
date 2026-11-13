@@ -96,6 +96,8 @@ Gun models in `godot/assets/guns2/`, from Sketchfab under CC BY 4.0, converted t
 - Honey Badger: "Honey Badger Gun" by MDTOWERZ (https://sketchfab.com/3d-models/honey-badger-gun-ffeb419fcd054f979e3f2649a2552629)
 - SMG: "Submachine Gun" by J.J.West (https://sketchfab.com/3d-models/submachine-gun-85d319704eba40678af7e64df81ec58d)
 
+The Land Rover (`godot/assets/city/props/land_rover/`) is "Land Rover Series III" by [m8mazay](https://sketchfab.com/m8mazay) on [Sketchfab](https://sketchfab.com/3d-models/land-rover-series-iii-ca52577d95004b1db1b0c10861bbf9cd), licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/); changed for this game: packed with `tools/citybuild/prop_pack.py` from 47,588 to about 5,200 triangles, its textures cut to 512 pixels and the roughness maps left out. It stands by the command hut in mission 1, outside the hotel in mission 2 and in the headquarters yard in mission 3.
+
 Sounds in `godot/assets/sfx/` are unedited sound effects from [Pixabay](https://pixabay.com/sound-effects/), used under the Pixabay Content License:
 - AK-47: "AK-47 sound effect" by sovetsky_rastov72
 - M4A1: "Gun fire" by foisal72 (475286)
