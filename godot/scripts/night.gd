@@ -31,6 +31,7 @@ var roof_t := 0.0
 const SPOTS := 3                 # real lights for the nearest lamps (the rest only glow)
 var spots: Array = []
 var lamped := {}
+var reach_of := {}
 var beam_mat: ShaderMaterial
 var glow_mat: ShaderMaterial
 var bulb_mat: StandardMaterial3D
@@ -58,7 +59,7 @@ func start(m: Node) -> void:
 		spots.append(s)
 	_lamp_all()
 	_tower_lamps()
-	next_bolt = RAIN_T - 12.0
+	next_bolt = RAIN_T + 12.0      # (its sound has rain in it: none before the rain)
 
 
 # =============== sky: the night picture with clouds over it ===============
@@ -148,7 +149,7 @@ void vertex() {
 	vec3 side = normalize(cross(down, to));
 	// as long as the drop falls in a sixtieth of a second or so (it is seen smeared), thin as a hair
 	float l = len * (0.75 + 0.5 * fract(r.w * 7.13));
-	VERTEX = w + side * VERTEX.x * (width + dist * 0.0009) + down * VERTEX.y * l;
+	VERTEX = w + side * VERTEX.x * (width + dist * 0.0006) + down * VERTEX.y * l;
 	along = UV.y;
 	vis = step(fract(r.w * 3.71), amount) * (1.0 - smoothstep(box.x * 0.3, box.x * 0.5, dist)) * smoothstep(near_cut, near_cut + 1.0, dist);
 }
@@ -182,7 +183,7 @@ void vertex() {
 	vec2 p;
 	p.x = cam.x + mod(base.x - cam.x, box.x) - box.x * 0.5;
 	p.y = cam.z + mod(base.y - cam.z, box.y) - box.y * 0.5;
-	float size = 0.03 + 0.11 * ph;
+	float size = 0.012 + 0.045 * ph;
 	VERTEX = vec3(p.x + VERTEX.x * size * 2.0, floor_y, p.y + VERTEX.y * size * 2.0);
 	float dist = distance(vec2(cam.x, cam.z), p);
 	vis = step(fract(r.w * 5.3), amount) * (1.0 - smoothstep(box.x * 0.3, box.x * 0.5, dist));
@@ -191,10 +192,10 @@ void vertex() {
 
 void fragment() {
 	float d = length(uv - vec2(0.5)) * 2.0;
-	float ring = smoothstep(0.7, 0.88, d) * (1.0 - smoothstep(0.88, 1.0, d)) * (1.0 - ph);
+	float ring = smoothstep(0.78, 0.9, d) * (1.0 - smoothstep(0.9, 1.0, d)) * (1.0 - ph) * (1.0 - ph);
 	float fleck = (1.0 - smoothstep(0.0, 0.3, d)) * (1.0 - smoothstep(0.0, 0.18, ph));
 	ALBEDO = vec3(0.72, 0.76, 0.82) + flash * vec3(0.4);
-	ALPHA = vis * (ring * 0.45 + fleck * 0.7);
+	ALPHA = vis * (ring * 0.3 + fleck * 0.45);
 }
 """
 
@@ -252,8 +253,8 @@ func _layer(code: String, mm: MultiMesh, params: Dictionary) -> Array:
 
 func _make_rain() -> void:
 	# close: thin streaks; far: hair-thin, fainter, longer (further off they blur together into a grey veil)
-	rain_layers.append(_layer(RAIN_SHADER, _drops(2200, 7), {"box": Vector3(12, 10, 12), "len": 0.5, "width": 0.004, "strength": 0.3, "near_cut": 0.6}))
-	rain_layers.append(_layer(RAIN_SHADER, _drops(3200, 11), {"box": Vector3(46, 24, 46), "len": 0.9, "width": 0.006, "strength": 0.16, "near_cut": 5.0}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(2400, 7), {"box": Vector3(12, 10, 12), "len": 0.4, "width": 0.0018, "strength": 0.24, "near_cut": 1.2}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(3200, 11), {"box": Vector3(46, 24, 46), "len": 0.75, "width": 0.003, "strength": 0.14, "near_cut": 5.0}))
 	var sl := _layer(SPLASH_SHADER, _drops(1000, 13), {"box": Vector2(14, 14)})
 	splash_mi = sl[0]
 	splash_mat = sl[1]
@@ -367,7 +368,11 @@ func _lamp(parent: Node3D, beam: bool, glow_size := 0.32) -> Node3D:
 		# the cone's axis along the lamp's +z (forward of the head), its narrow end at the lamp
 		b.transform = Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(0, 0, 3.5))
 		b.visibility_range_end = 90.0
-		l.add_child(b)
+		# (in a holder at the lamp: shortened, as a whole, to stop at the first wall in its way)
+		var bp := Node3D.new()
+		bp.name = "beam"
+		l.add_child(bp)
+		bp.add_child(b)
 	return l
 
 
@@ -419,6 +424,7 @@ func _lamps(dt: float) -> void:
 		check_t = 1.0
 		_lamp_all()
 	var me: Vector3 = main.player.global_position
+	var space := get_world_3d().direct_space_state
 	var near := []
 	for e in lamped:
 		var l: Node3D = lamped[e]
@@ -434,8 +440,20 @@ func _lamps(dt: float) -> void:
 		f.y = 0.0
 		f = f.normalized()
 		var look := (f + Vector3(0, -0.17, 0)).normalized()
-		l.global_transform = Transform3D(Basis.looking_at(-look), head + Vector3(0, 0.12, 0) + f * 0.12)
+		var lp: Vector3 = head + Vector3(0, 0.12, 0) + f * 0.12
+		l.global_transform = Transform3D(Basis.looking_at(-look), lp)
 		var d: float = e.global_position.distance_to(me)
+		# the light stops at the first wall: the beam no further, and (spot) nothing lit on the far side of it
+		var reach := 7.0
+		if d < 70.0:
+			var q := PhysicsRayQueryParameters3D.create(lp, lp + look * 7.0)
+			q.collision_mask = 1
+			q.exclude = [e.get_rid()]
+			var h := space.intersect_ray(q)
+			if not h.is_empty():
+				reach = max(0.15, lp.distance_to(h["position"]))
+			(l.get_node("beam") as Node3D).scale = Vector3.ONE * (reach / 7.0)
+		reach_of[l] = reach
 		if d < 45.0:
 			near.append([d, l])
 	near.sort_custom(func(a, b): return a[0] < b[0])
@@ -444,6 +462,7 @@ func _lamps(dt: float) -> void:
 		if i < near.size():
 			var l: Node3D = near[i][1]
 			s.visible = true
+			s.spot_range = float(reach_of.get(l, 7.0)) + 0.6 if float(reach_of.get(l, 7.0)) < 6.9 else 17.0
 			# the light shines down its -z; the lamp looks along its +z
 			s.global_transform = l.global_transform.orthonormalized() * Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
 		else:
@@ -473,7 +492,7 @@ func _weather(dt: float) -> void:
 					hits += 1
 			indoors = 1.0 if hits == 3 else 0.0
 	# lightning: now and then once the clouds are thick, more often in the rain
-	if mt > next_bolt and cover > 0.6:
+	if mt > next_bolt and rain > 0.3:
 		_bolt()
 		next_bolt = mt + (randf_range(14.0, 30.0) if rain > 0.3 else randf_range(22.0, 40.0))
 	flash = 0.0
@@ -515,7 +534,7 @@ func _weather(dt: float) -> void:
 	if rain > 0.0 and not rain_snd.playing:
 		rain_snd.play(randf() * 60.0)
 	if rain_snd.playing:
-		var lin: float = rain * (0.55 if indoors > 0.5 else 1.0)
+		var lin: float = rain * rain * (0.55 if indoors > 0.5 else 1.0)    # (heard as it is seen: a few drops are not a downpour)
 		rain_snd.volume_db = lerp(rain_snd.volume_db, linear_to_db(max(lin, 0.0005)) + 2.0, min(1.0, dt * 2.0))
 
 
