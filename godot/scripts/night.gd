@@ -320,8 +320,8 @@ func _layer(code: String, mm: MultiMesh, params: Dictionary) -> Array:
 
 func _make_rain() -> void:
 	# close: thin streaks; far: hair-thin, fainter, longer (further off they blur together into a grey veil)
-	rain_layers.append(_layer(RAIN_SHADER, _drops(6000, 7), {"box": Vector3(12, 10, 12), "len": 0.15, "width": 0.0006, "strength": 0.5, "near_cut": 1.5}))
-	rain_layers.append(_layer(RAIN_SHADER, _drops(3500, 11), {"box": Vector3(36, 20, 36), "len": 0.3, "width": 0.001, "strength": 0.28, "near_cut": 5.0}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(6000, 7), {"box": Vector3(12, 10, 12), "len": 0.07, "width": 0.0005, "strength": 0.5, "near_cut": 1.5}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(3500, 11), {"box": Vector3(36, 20, 36), "len": 0.14, "width": 0.0008, "strength": 0.28, "near_cut": 5.0}))
 	_make_puddles()
 	var sl := _layer(SPLASH_SHADER, _drops(1000, 13), {"box": Vector2(14, 14)})
 	splash_mi = sl[0]
@@ -663,7 +663,8 @@ func _weather(dt: float) -> void:
 		_wet(wet)
 	# the look of a wet night: as the clouds close in and the rain comes the colours go dull and cold, the far
 	# streets sink into a dark blue-grey haze (not a white one) and the sky hazes over
-	var mood: float = max(rain, clamp((cover - 0.45) * 1.2, 0.0, 0.5))
+	# (it follows the clouds: a little duller with every cloud, the full rainy look by the time the rain falls)
+	var mood: float = max(rain, clamp((cover - CLOUD_START) / (CLOUD_FULL - CLOUD_START), 0.0, 1.0))
 	main.world_env.fog_density = fog_d + 0.02 * mood
 	main.world_env.fog_light_color = fog_c.lerp(Color(0.075, 0.085, 0.105), mood) + Color(0.5, 0.55, 0.65) * flash * 0.12
 	main.world_env.fog_sky_affect = lerp(sky_fog0, 0.85, mood)
