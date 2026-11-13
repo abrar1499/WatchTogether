@@ -342,7 +342,7 @@ uniform float speed = 0.55;
 uniform float tiles = 7.0;
 uniform float lean = 0.05;
 uniform vec3 tint = vec3(0.36, 0.38, 0.44);
-uniform float opacity = 2.1;
+uniform float opacity = 1.1;
 void fragment() {
 	vec2 uv = vec2(UV.x * tiles + UV.y * lean, UV.y * 1.6 - TIME * speed);
 	float r = texture(sheet, uv).r;
@@ -757,8 +757,8 @@ func _weather(dt: float) -> void:
 	if abs(wet - last_wet) > 0.02 or (wet == 1.0 and last_wet != 1.0):
 		last_wet = wet
 		_wet(wet)
-	main.world_env.fog_density = fog_d + 0.032 * rain
-	main.world_env.fog_light_color = fog_c.lerp(Color(0.15, 0.155, 0.17), rain * 0.85) + Color(0.5, 0.55, 0.65) * flash * 0.3
+	main.world_env.fog_density = fog_d + 0.024 * rain
+	main.world_env.fog_light_color = fog_c.lerp(Color(0.105, 0.11, 0.125), rain * 0.8) + Color(0.5, 0.55, 0.65) * flash * 0.3
 	# the town lit up by the stroke
 	main.sun.light_energy = sun_e + flash * 1.8
 	main.world_env.ambient_light_energy = amb_e * (1.0 - 0.15 * cover) + flash * 0.6
