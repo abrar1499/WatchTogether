@@ -161,6 +161,7 @@ var cover_hit := {}
 var cover_cool := 0.0           # after leaving cover: no automatic cover for a moment
 var touch_t := 0.0              # how long he has been walking into a wall
 var end_t := 0.0                # how long the stick has pushed past the end of the wall
+var cover_sit := false          # in cover he sits only if the player chose to (CROUCH); rises to shoot over low cover
 var cover_reach := 0.0          # how far he steps to clear the end of the wall
 var act_doing := ""
 var act_obj: Node = null
@@ -1426,6 +1427,10 @@ func look(dx: float, dy: float) -> void:
 
 
 func toggle_crouch() -> void:
+	if cover:
+		cover_sit = not cover_sit
+		crouch = cover_sit
+		return
 	crouch = not crouch
 
 
@@ -2470,6 +2475,7 @@ func _enter_cover(hit: Dictionary) -> void:
 	cover = true
 	var cn: Vector3 = hit["normal"]
 	cover_n = Vector3(cn.x, 0, cn.z).normalized()
+	cover_sit = crouch
 	cover_edge = 0
 	cover_peek = 0.0
 	touch_t = 0.0
@@ -2478,8 +2484,8 @@ func _enter_cover(hit: Dictionary) -> void:
 
 
 func leave_cover() -> void:
-	if cover and cover_low:
-		crouch = false
+	if cover:
+		crouch = cover_sit
 	cover = false
 	cover_peek = 0.0
 	cover_edge = 0
@@ -2506,9 +2512,8 @@ func _cover_step(dt: float) -> void:
 		return
 	cover_low = (ray.call(base + Vector3(0, 1.5, 0), base + Vector3(0, 1.5, 0) - n * 1.7) as Dictionary).is_empty()
 	var shooting := aiming or firing or throw_t >= 0.0
-	# behind something low he stays down; he only stands to shoot when there is no end near to lean round
-	if cover_low:
-		crouch = not (shooting and cover_edge == 0)
+	# he sits only if the player crouched; sitting behind something low he rises to shoot over it, then sits again
+	crouch = cover_sit and not (cover_low and shooting and cover_edge == 0)
 	var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
 	var right := Vector3(cos(yaw), 0, -sin(yaw))
 	var want := fwd * move_in.y + right * move_in.x
