@@ -310,8 +310,8 @@ func _layer(code: String, mm: MultiMesh, params: Dictionary) -> Array:
 
 func _make_rain() -> void:
 	# close: thin streaks; far: hair-thin, fainter, longer (further off they blur together into a grey veil)
-	rain_layers.append(_layer(RAIN_SHADER, _drops(2400, 7), {"box": Vector3(12, 10, 12), "len": 0.42, "width": 0.0028, "strength": 0.32, "near_cut": 1.2}))
-	rain_layers.append(_layer(RAIN_SHADER, _drops(3200, 11), {"box": Vector3(46, 24, 46), "len": 0.75, "width": 0.004, "strength": 0.18, "near_cut": 5.0}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(4000, 7), {"box": Vector3(12, 10, 12), "len": 0.45, "width": 0.003, "strength": 0.42, "near_cut": 1.2}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(5200, 11), {"box": Vector3(46, 24, 46), "len": 0.8, "width": 0.004, "strength": 0.24, "near_cut": 5.0}))
 	var sl := _layer(SPLASH_SHADER, _drops(1000, 13), {"box": Vector2(14, 14)})
 	splash_mi = sl[0]
 	splash_mat = sl[1]
@@ -596,7 +596,9 @@ func _weather(dt: float) -> void:
 	if rain > 0.0 and not rain_snd.playing:
 		rain_snd.play(randf() * 60.0)
 	if rain_snd.playing:
-		var lin: float = rain * rain * (0.55 if indoors > 0.5 else 1.0)    # (heard as it is seen: a few drops are not a downpour)
+		# heard as it is seen: the same amount drives the drops falling and the sound (a few drops, a whisper;
+		# a downpour, the full recording)
+		var lin: float = rain * (0.55 if indoors > 0.5 else 1.0)
 		rain_snd.volume_db = lerp(rain_snd.volume_db, linear_to_db(max(lin, 0.0005)) + 2.0, min(1.0, dt * 2.0))
 
 
