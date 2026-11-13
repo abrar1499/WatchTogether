@@ -152,7 +152,7 @@ void vertex() {
 	vec3 side = normalize(cross(down, to));
 	// as long as the drop falls in a sixtieth of a second or so (it is seen smeared), thin as a hair
 	float l = len * (0.75 + 0.5 * fract(r.w * 7.13));
-	VERTEX = w + side * VERTEX.x * (width + dist * 0.0006) + down * VERTEX.y * l;
+	VERTEX = w + side * VERTEX.x * (width + dist * 0.00045) + down * VERTEX.y * l;
 	along = UV.y;
 	// water has no colour of its own: a drop is seen by the light it catches (dim grey in the dark, warm by a lamp)
 	lit = amb;
@@ -310,8 +310,8 @@ func _layer(code: String, mm: MultiMesh, params: Dictionary) -> Array:
 
 func _make_rain() -> void:
 	# close: thin streaks; far: hair-thin, fainter, longer (further off they blur together into a grey veil)
-	rain_layers.append(_layer(RAIN_SHADER, _drops(7000, 7), {"box": Vector3(12, 10, 12), "len": 0.28, "width": 0.002, "strength": 0.5, "near_cut": 1.0}))
-	rain_layers.append(_layer(RAIN_SHADER, _drops(4500, 11), {"box": Vector3(36, 20, 36), "len": 0.5, "width": 0.003, "strength": 0.28, "near_cut": 5.0}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(7000, 7), {"box": Vector3(12, 10, 12), "len": 0.15, "width": 0.0006, "strength": 0.7, "near_cut": 1.5}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(4500, 11), {"box": Vector3(36, 20, 36), "len": 0.3, "width": 0.001, "strength": 0.4, "near_cut": 5.0}))
 	_make_veils()
 	_make_puddles()
 	var sl := _layer(SPLASH_SHADER, _drops(1000, 13), {"box": Vector2(14, 14)})
