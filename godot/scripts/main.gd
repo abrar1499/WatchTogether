@@ -1540,14 +1540,16 @@ var snow := false               # the mission lies under snow (ground, hills, th
 ## A day of snow: a low white overcast that lights everything evenly, the sun a pale disc behind it, the far hills
 ## lost in the falling snow.
 func apply_snow() -> void:
-	photo_sky("res://assets/sky/overcast.hdr", 2.6, 60.0, 0.3)
+	# (the Vulkan renderer shows the sky picture much brighter than the OpenGL one: there it is turned down, or the
+	# clouds burn out to plain white)
+	photo_sky("res://assets/sky/overcast.hdr", 0.75 if hd else 2.6, 60.0, 0.3)
 	world_env.ambient_light_color = Color(0.8, 0.86, 0.96)
 	world_env.ambient_light_energy = 1.35         # (snow throws the light back up: no dark sides)
 	world_env.tonemap_exposure = 0.9
 	world_env.fog_enabled = true
 	world_env.fog_light_color = Color(0.8, 0.84, 0.9)
 	world_env.fog_density = 0.007
-	world_env.fog_sky_affect = 0.6
+	world_env.fog_sky_affect = 0.2 if hd else 0.6
 	world_env.adjustment_enabled = true
 	world_env.adjustment_saturation = 0.82
 	world_env.adjustment_contrast = 1.04
