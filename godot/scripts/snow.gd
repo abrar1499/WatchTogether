@@ -79,6 +79,8 @@ func _caps() -> void:
 	var v := PackedVector3Array()
 	var nr := PackedVector3Array()
 	var ix := PackedInt32Array()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 17
 	for b in main.get_children():
 		if not (b is StaticBody3D) or not b.is_visible_in_tree():
 			continue
@@ -115,6 +117,47 @@ func _caps() -> void:
 				var b2: int = base + (k + 1) % 4
 				ix.append_array(PackedInt32Array([a, b2, b2 + 4, a, b2 + 4, a + 4]))
 			ix.append_array(PackedInt32Array([base + 4, base + 5, base + 6, base + 4, base + 6, base + 7]))
+			# a little on its sides too: snow clinging below the top edge, uneven, and a low drift blown against its
+			# foot where it stands on the ground
+			var bottom: float = xf.origin.y - sz.y * 0.5
+			for side in [[ax, az, hx, hz], [-ax, az, hx, hz], [az, ax, hz, hx], [-az, ax, hz, hx]]:
+				var out: Vector3 = side[0]
+				var along: Vector3 = side[1]
+				var d_out: float = float(side[2]) - 0.015
+				var half: float = float(side[3]) - 0.015
+				var steps: int = int(clamp(ceil(half * 2.0 / 0.2), 2.0, 80.0))
+				var prev_drop := rng.randf_range(0.03, 0.14)
+				var prev_h := rng.randf_range(0.08, 0.16)
+				var prev_r := rng.randf_range(0.24, 0.34)
+				for k in steps:
+					var u0: float = -half + (half * 2.0) * k / steps
+					var u1: float = -half + (half * 2.0) * (k + 1) / steps
+					# (each step a little more or less than the last: an uneven edge, not a saw's)
+					var drop: float = clamp(prev_drop + rng.randf_range(-0.05, 0.05), 0.02, 0.26)
+					if rng.randf() < 0.06:
+						drop = rng.randf_range(0.18, 0.34)
+					if sz.y > 0.5:
+						var b0: int = v.size()
+						var face: Vector3 = c + out * (d_out + 0.012)
+						v.append(face + along * u0); v.append(face + along * u1)
+						v.append(face + along * u1 - Vector3(0, drop, 0)); v.append(face + along * u0 - Vector3(0, prev_drop, 0))
+						for q in 4:
+							nr.append((out + Vector3(0, 0.35, 0)).normalized())
+						ix.append_array(PackedInt32Array([b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3]))
+					prev_drop = drop
+					if bottom < 0.2 and sz.y > 0.35:
+						var b1: int = v.size()
+						var foot: Vector3 = Vector3(c.x, bottom, c.z) + out * d_out
+						# (one unbroken bank: each step starts where the last one ended)
+						var hgt: float = clamp(prev_h + rng.randf_range(-0.03, 0.03), 0.06, 0.2)
+						var reach: float = clamp(prev_r + rng.randf_range(-0.05, 0.05), 0.2, 0.42)
+						v.append(foot + along * u0 + Vector3(0, prev_h, 0)); v.append(foot + along * u1 + Vector3(0, hgt, 0))
+						v.append(foot + along * u1 + out * reach + Vector3(0, 0.01, 0)); v.append(foot + along * u0 + out * prev_r + Vector3(0, 0.01, 0))
+						prev_h = hgt
+						prev_r = reach
+						for q in 4:
+							nr.append((Vector3.UP + out * 0.5).normalized())
+						ix.append_array(PackedInt32Array([b1, b1 + 1, b1 + 2, b1, b1 + 2, b1 + 3]))
 	if v.is_empty():
 		return
 	var arr := []
