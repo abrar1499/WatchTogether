@@ -96,6 +96,7 @@ func _mats() -> void:
 	_tri("sh_grey", hd + "painted_metal_shutter", Color(0.62, 0.66, 0.7), 0.4, 0.6, 0.2)
 	_tri("sh_rubber", t3 + "rough_linen", Color(0.07, 0.07, 0.08), 1.5, 0.85)
 	_flat("sh_steel", Color(1, 1, 1), 0.5)
+	_flat("sh_gloss", Color(1, 1, 1), 0.25)
 	_flat("sh_lit", Color(1.0, 0.8, 0.5), 0.3, 1.3)
 	_flat("sh_screen", Color(0.3, 0.9, 0.7), 0.3, 1.6)
 	_flat("sh_red", Color(1.0, 0.15, 0.1), 0.3, 3.0)
@@ -1074,11 +1075,65 @@ func _move_launches(_dt: float) -> void:
 		sl.look_at(aim, Vector3.UP)
 
 
-## A fast open boat with a helmsman and a gunner, racing round the ship. It can be shot to pieces.
+## A jet ski with two men on it: one rides, the one behind him shoots. They come in ones, twos and threes all
+## through the mission, race round the ship and fall away again. They can be shot to pieces.
+const SKI_TINT := [Color(0.95, 0.85, 0.1), Color(0.25, 0.9, 0.3), Color(0.2, 0.35, 0.9)]
+var wave_cd := 14.0
+var wave_n := 0
+
+
+func _rider(parent: Node3D, kind: String, at: Vector3, armed: bool) -> Dictionary:
+	var hold := Node3D.new()
+	parent.add_child(hold)
+	hold.position = at
+	hold.rotation.y = -PI * 0.5        # (the models look along -z; the ski's bow is +x)
+	var r: Dictionary = main.player.make_rig(Color(1, 1, 1), ["ak"], false, kind)
+	var root: Node3D = r["root"]
+	hold.add_child(root)
+	root.rotation.y = PI
+	(r["guns"]["ak"] as Node3D).visible = armed
+	var ap: AnimationPlayer = r["ap"]
+	ap.play("aim")
+	ap.advance(0.2)
+	ap.pause()
+	ap.active = false
+	# astride the seat: thighs forward and a little out, knees bent
+	var sk: Skeleton3D = r["skel"]
+	for sd in ["Left", "Right"]:
+		var sgn := 1.0 if sd == "Left" else -1.0
+		_point_bone(sk, sk.find_bone("mixamorig%sUpLeg" % sd), Vector3(sgn * 0.42, -0.22, LEG_FWD).normalized())
+		_point_bone(sk, sk.find_bone("mixamorig%sLeg" % sd), Vector3(sgn * 0.12, -1.0, -0.1 * LEG_FWD).normalized())
+		_point_bone(sk, sk.find_bone("mixamorig%sFoot" % sd), Vector3(sgn * 0.1, -0.25, LEG_FWD).normalized())
+	if not armed:
+		# his hands down on the bars
+		for sd in ["Left", "Right"]:
+			var sgn := 1.0 if sd == "Left" else -1.0
+			_point_bone(sk, sk.find_bone("mixamorig%sArm" % sd), Vector3(sgn * 0.3, -0.55, LEG_FWD).normalized())
+			_point_bone(sk, sk.find_bone("mixamorig%sForeArm" % sd), Vector3(-sgn * 0.12, -0.12, LEG_FWD).normalized())
+	r["hold"] = hold
+	return r
+
+
+var LEG_FWD := 1.0
+
+
+## Turn a bone so that it points along `dir` (in the skeleton's own space), by the shortest way.
+func _point_bone(sk: Skeleton3D, b: int, dir: Vector3) -> void:
+	if b < 0:
+		return
+	var g := sk.get_bone_global_pose(b).basis.orthonormalized()
+	var turned := Basis(Quaternion(g.y.normalized(), dir)) * g
+	var par := sk.get_bone_parent(b)
+	var pb := sk.get_bone_global_pose(par).basis.orthonormalized() if par >= 0 else Basis.IDENTITY
+	sk.set_bone_pose_rotation(b, (pb.inverse() * turned).get_rotation_quaternion())
+
+
 func _skiff(i: int) -> void:
 	var root := Node3D.new()
 	add_child(root)
-	var stn := [[-2.8, 0.85], [-2.2, 1.0], [0.6, 1.0], [1.8, 0.75], [2.6, 0.4], [3.1, 0.04]]
+	var tint: Color = SKI_TINT[i % 3]
+	# the hull: a deep V forward, flat aft; white below, dark above the rubbing band
+	var stn := [[-1.65, 0.5], [-1.2, 0.58], [0.3, 0.6], [1.0, 0.46], [1.5, 0.24], [1.75, 0.03]]
 	for k in stn.size() - 1:
 		for sg in [1.0, -1.0]:
 			var m := Vector3(1, 1, sg)
@@ -1086,96 +1141,169 @@ func _skiff(i: int) -> void:
 			for e in [stn[k], stn[k + 1]]:
 				var x: float = e[0]
 				var w: float = e[1]
-				var bow: float = clamp((x - 0.6) / 2.5, 0.0, 1.0)
-				r.append([Vector3(x - bow * 0.5, -0.25, w * lerp(0.5, 0.08, bow)), Vector3(x, 0.55 + bow * 0.25, w)])
-			var out := Vector3(0.3 if stn[k][0] > 0.5 else 0.0, 0, sg)
-			quad("sh_grey", r[0][0] * m, r[1][0] * m, r[1][1] * m, r[0][1] * m, out, Color(0.75, 0.8, 0.85))
-			quad("sh_plate", Vector3(stn[k][0], 0.2, 0), Vector3(stn[k + 1][0], 0.2, 0), Vector3(stn[k + 1][0], 0.2, sg * stn[k + 1][1] * 0.9),
-				Vector3(stn[k][0], 0.2, sg * stn[k][1] * 0.9), Vector3.UP, Color(0.4, 0.4, 0.4))
-		bar("sh_rubber", Vector3(stn[k][0], 0.6, stn[k][1]), Vector3(stn[k + 1][0], 0.6 + (0.25 if k == 4 else 0.0), stn[k + 1][1]), 0.13, 6)
-		bar("sh_rubber", Vector3(stn[k][0], 0.6, -stn[k][1]), Vector3(stn[k + 1][0], 0.6 + (0.25 if k == 4 else 0.0), -stn[k + 1][1]), 0.13, 6)
-	quad("sh_grey", Vector3(-2.8, -0.25, -0.45), Vector3(-2.8, -0.25, 0.45), Vector3(-2.8, 0.6, 0.85), Vector3(-2.8, 0.6, -0.85), Vector3(-1, 0, 0), Color(0.75, 0.8, 0.85))
-	# the wheel's console with its screen, two outboards, the gun on its post behind a shield
-	city.box("sh_grey", Vector3(-0.6, 0.65, 0), Vector3(0.5, 0.9, 0.8), 0.0, Color(0.5, 0.5, 0.5))
-	tbox("sh_glass", Vector3(-0.38, 1.3, 0), Vector3(0.03, 0.45, 0.8), Basis(Vector3(0, 0, 1), -0.35))
-	for sz in [-0.3, 0.3]:
-		city.box("sh_black", Vector3(-3.0, 0.7, sz), Vector3(0.4, 0.55, 0.3))
-		city.box("sh_black", Vector3(-3.0, 0.2, sz), Vector3(0.14, 0.7, 0.12))
-	bar("sh_black", Vector3(1.3, 0.2, 0), Vector3(1.3, 1.15, 0), 0.05, 6)
-	city.box("sh_black", Vector3(1.35, 1.25, 0), Vector3(0.5, 0.16, 0.12))
-	bar("sh_black", Vector3(1.6, 1.27, 0), Vector3(2.3, 1.3, 0), 0.025, 5)
-	tbox("sh_grey", Vector3(1.5, 1.3, 0), Vector3(0.03, 0.55, 0.7), Basis(Vector3(0, 0, 1), 0.2), Color(0.35, 0.37, 0.36))
-	# the two men, dark shapes: one at the wheel, one at the gun
-	for mp in [Vector3(-1.05, 0.2, 0), Vector3(0.85, 0.2, 0)]:
-		for sz in [-0.11, 0.11]:
-			bar("sh_rubber", mp + Vector3(0, 0, sz), mp + Vector3(0.05, 0.85, sz), 0.085, 6, Color(1.8, 2.0, 1.6))
-		bar("sh_rubber", mp + Vector3(0.05, 0.8, 0), mp + Vector3(0.14, 1.45, 0), 0.19, 8, Color(1.6, 1.9, 1.5), 0.16)
-		bar("sh_rubber", mp + Vector3(0.16, 1.47, 0), mp + Vector3(0.18, 1.72, 0), 0.105, 8, Color(1.2, 1.3, 1.2))
-		for sz in [-0.22, 0.22]:
-			bar("sh_rubber", mp + Vector3(0.14, 1.38, sz), mp + Vector3(0.48, 1.08, sz * 0.6), 0.055, 5, Color(1.6, 1.9, 1.5))
+				var bow: float = clamp((x - 0.3) / 1.45, 0.0, 1.0)
+				r.append([Vector3(x - bow * 0.25, -0.18, w * lerp(0.45, 0.05, bow)), Vector3(x, 0.28 + bow * 0.12, w), Vector3(x - bow * 0.12, 0.5 + bow * 0.1, w * 0.72)])
+			var out := Vector3(0.3 if stn[k][0] > 0.2 else 0.0, 0, sg)
+			quad("sh_gloss", r[0][0] * m, r[1][0] * m, r[1][1] * m, r[0][1] * m, out, Color(0.9, 0.9, 0.92))
+			quad("sh_gloss", r[0][1] * m, r[1][1] * m, r[1][2] * m, r[0][2] * m, out + Vector3(0, 1, 0), Color(0.12, 0.13, 0.16))
+			quad("sh_gloss", r[0][2] * m, r[1][2] * m, r[1][2] * Vector3(1, 1, 0), r[0][2] * Vector3(1, 1, 0), Vector3.UP, Color(0.12, 0.13, 0.16))
+			bar("sh_rubber", r[0][1] * m, r[1][1] * m, 0.035, 5)
+	quad("sh_gloss", Vector3(-1.65, -0.18, -0.22), Vector3(-1.65, -0.18, 0.22), Vector3(-1.65, 0.28, 0.5), Vector3(-1.65, 0.28, -0.5), Vector3(-1, 0, 0))
+	quad("sh_grey", Vector3(-1.65, 0.28, -0.5), Vector3(-1.65, 0.28, 0.5), Vector3(-1.65, 0.5, 0.36), Vector3(-1.65, 0.5, -0.36), Vector3(-1, 0, 0), Color(0.3, 0.32, 0.36))
+	# the cowl in the ski's colour, rising to the bars; a dark screen; the bars; the long seat; the footwells
+	tbox("sh_gloss", Vector3(1.0, 0.62, 0), Vector3(1.15, 0.2, 0.6), Basis(Vector3(0, 0, 1), -0.22), tint)
+	tbox("sh_gloss", Vector3(0.5, 0.82, 0), Vector3(0.5, 0.3, 0.5), Basis(Vector3(0, 0, 1), -0.7), tint)
+	tbox("sh_dark", Vector3(0.52, 1.02, 0), Vector3(0.03, 0.2, 0.42), Basis(Vector3(0, 0, 1), 0.6))
+	bar("sh_black", Vector3(0.42, 0.9, 0), Vector3(0.32, 1.06, 0), 0.05, 6)
+	bar("sh_black", Vector3(0.32, 1.06, -0.36), Vector3(0.32, 1.06, 0.36), 0.022, 6)
+	tbox("sh_rubber", Vector3(-0.45, 0.7, 0), Vector3(1.45, 0.3, 0.4), Basis.IDENTITY, Color(2.2, 2.2, 2.4))
+	tbox("sh_rubber", Vector3(-1.05, 0.78, 0), Vector3(0.5, 0.3, 0.42), Basis(Vector3(0, 0, 1), 0.12), Color(2.2, 2.2, 2.4))
+	for sg in [-1.0, 1.0]:
+		tbox("sh_gloss", Vector3(-0.2, 0.52, sg * 0.43), Vector3(2.2, 0.05, 0.1), Basis.IDENTITY, tint)
+	city.box("sh_grey", Vector3(-1.72, 0.1, 0), Vector3(0.16, 0.2, 0.24), 0.0, Color(0.3, 0.3, 0.3))
 	var mi: MeshInstance3D = city.commit(false)
 	main.remove_child(mi)
 	root.add_child(mi)
-	_boat_foam(root, [[Vector3(2.4, 0, 0), 0.4, 0.9], [Vector3(-2.6, 0, 0), 1.6, 1.0], [Vector3(-10.0, 0, 0), 2.4, 0.7], [Vector3(-30.0, 0, 0), 4.0, 0.0]])
+	_boat_foam(root, [[Vector3(1.4, 0, 0), 0.3, 0.9], [Vector3(-1.6, 0, 0), 1.1, 1.0], [Vector3(-7.0, 0, 0), 1.8, 0.7], [Vector3(-22.0, 0, 0), 3.0, 0.0]])
 	var body := StaticBody3D.new()
 	body.set_meta("surf", "metal")
 	body.set_meta("kind", "machine")
-	body.set_meta("hp", 240.0)
+	body.set_meta("hp", 170.0)
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = Vector3(6.0, 1.9, 2.0)
+	bs.size = Vector3(3.3, 1.9, 1.1)
 	cs.shape = bs
-	cs.position = Vector3(0, 0.75, 0)
+	cs.position = Vector3(0, 0.8, 0)
 	body.add_child(cs)
 	root.add_child(body)
 	main.machines.append(body)
-	var red: MeshInstance3D = city.glow(Vector3.ZERO, Color(1.0, 0.25, 0.15, 0.8), 0.7)
-	red.get_parent().remove_child(red)
-	root.add_child(red)
-	red.position = Vector3(-0.6, 1.6, 0)
-	skiffs.append({"n": root, "body": body, "a": i * TAU / 3.0 + 0.5, "w": 0.15 + i * 0.012, "side": 1.0 if i % 2 == 0 else -1.0, "cd": 2.0 + i, "burst": 0, "sunk": 0.0})
+	root.visible = false
+	root.position = Vector3(-400, 0, 0)
+	skiffs.append({"n": root, "body": body, "gun": {}, "st": "away", "a": 0.0, "w": 0.2, "side": 1.0, "off": -260.0, "life": 0.0,
+		"cd": 2.0, "burst": 0, "sunk": 0.0, "last": root.position, "ring": i})
+
+
+## The men on the skis (made once the player's own rig exists to copy from).
+var riders_made := false
+func _make_riders() -> void:
+	riders_made = true
+	var kinds := ["olive", "blue", "gasmask"]
+	for i in skiffs.size():
+		var root: Node3D = skiffs[i]["n"]
+		_rider(root, kinds[i % 3], Vector3(-0.18, RIDE_Y, 0), false)
+		skiffs[i]["gun"] = _rider(root, kinds[(i + 1) % 3], Vector3(-0.95, RIDE_Y + 0.08, 0), true)
+
+
+var RIDE_Y := -0.05
+## Send the next few in from astern.
+func _wave() -> void:
+	var n: int = [2, 3, 1, 2, 1, 3, 2][wave_n % 7]
+	wave_n += 1
+	var sent := 0
+	for s in skiffs:
+		if sent >= n or s["st"] != "away":
+			continue
+		var body: StaticBody3D = s["body"]
+		for c in body.get_children():
+			if not (c is CollisionShape3D):
+				c.queue_free()            # (what was left burning on it the last time)
+		body.set_meta("gone", false)
+		body.set_meta("hp", 170.0)
+		s["st"] = "in"
+		s["side"] = 1.0 if (wave_n + sent) % 2 == 0 else -1.0
+		s["a"] = PI + sent * 1.3
+		s["w"] = randf_range(0.19, 0.25)
+		s["off"] = -240.0 - sent * 25.0
+		s["life"] = randf_range(38.0, 55.0)
+		s["sunk"] = 0.0
+		s["cd"] = randf_range(1.5, 3.5)
+		var nd: Node3D = s["n"]
+		nd.visible = true
+		nd.rotation = Vector3.ZERO
+		sent += 1
 
 
 func _move_skiffs(dt: float) -> void:
 	var pl = main.player
+	if pl == null:
+		return
+	if not riders_made:
+		_make_riders()
+	var busy := false
 	for s in skiffs:
 		var n: Node3D = s["n"]
+		var st: String = s["st"]
+		if st == "away":
+			continue
+		busy = true
 		if s["body"].get_meta("gone", false):
-			# hit and burning: she drops astern and goes down
+			# hit and burning: it drops astern and goes down
 			s["sunk"] += dt
-			n.position += Vector3(-SPEED * 0.8 * dt, -0.12 * dt if s["sunk"] > 3.0 else 0.0, 0)
-			n.rotation.z = lerp(n.rotation.z, 0.5, dt * 0.2)
-			if s["sunk"] > 22.0:
+			n.position += Vector3(-SPEED * 0.8 * dt, -0.1 * dt if s["sunk"] > 2.0 else 0.0, 0)
+			n.rotation.z = lerp(n.rotation.z, 0.6, dt * 0.3)
+			if s["sunk"] > 14.0:
 				n.visible = false
+				s["st"] = "away"
 			continue
-		s["a"] += s["w"] * dt * s["side"]
+		if st == "in":
+			s["off"] = move_toward(s["off"], 0.0, 26.0 * dt)
+			if s["off"] == 0.0:
+				s["st"] = "orbit"
+		elif st == "orbit":
+			s["life"] -= dt
+			if s["life"] <= 0.0:
+				s["st"] = "out"
+		else:
+			s["off"] -= 22.0 * dt
+			if s["off"] < -260.0:
+				n.visible = false
+				s["st"] = "away"
+				continue
+		if st != "in":
+			s["a"] += s["w"] * dt * s["side"]
 		var a: float = s["a"]
-		var p := Vector3(cos(a) * 105.0, 0, sin(a) * 20.0)
-		var v: Vector3 = Vector3(-sin(a) * 105.0, 0, cos(a) * 20.0) * float(s["w"] * s["side"]) + Vector3(SPEED, 0, 0)
+		var p := Vector3(cos(a) * (72.0 + s["ring"] * 10.0) + s["off"], 0, sin(a) * (16.0 + s["ring"] * 4.5) + (0.0 if st == "orbit" else sin(t * 0.7 + a) * 2.0))
+		var v: Vector3 = (p - s["last"]) / max(dt, 0.001) + Vector3(SPEED, 0, 0)
+		s["last"] = p
 		var sp: float = v.length()
-		n.position = p + Vector3(0, 0.12 + abs(sin(t * 5.0 + a * 9.0)) * 0.1 * clamp(sp / 12.0, 0.3, 1.2), 0)
-		n.rotation = Vector3(sin(t * 3.1 + a) * 0.05, atan2(-v.z, v.x), 0.04 + clamp(sp / 20.0, 0.0, 1.0) * 0.09 + sin(t * 5.0 + a * 9.0) * 0.03)
-		# once the ship knows he is aboard, the gunners fire on him when they have a line
-		if mis == null or not mis.alarm or pl == null or pl.dead:
+		var hop: float = abs(sin(t * 6.0 + a * 9.0)) * 0.12 * clamp(sp / 12.0, 0.3, 1.2)
+		n.position = p + Vector3(0, 0.1 + hop, 0)
+		var yaw := atan2(-v.z, v.x)
+		var lean: float = clamp(angle_difference(n.rotation.y, yaw) * 4.0, -0.4, 0.4)
+		n.rotation = Vector3(lerp(n.rotation.x, -lean, min(1.0, dt * 4.0)), lerp_angle(n.rotation.y, yaw, min(1.0, dt * 6.0)), 0.03 + clamp(sp / 20.0, 0.0, 1.0) * 0.07 + hop * 0.3)
+		if pl == null or pl.dead:
 			continue
-		s["cd"] -= dt
-		if s["cd"] > 0.0:
-			continue
-		var from: Vector3 = n.global_transform * Vector3(2.3, 1.3, 0)
+		# the man behind turns to keep his rifle on the player, and fires when he has seen him
+		var g: Dictionary = s["gun"]
+		var hold: Node3D = g["hold"]
 		var chest: Vector3 = pl.global_position + Vector3(0, 0.3 if pl.prone else 1.1, 0)
-		if from.distance_to(chest) > 60.0:
-			s["cd"] = 0.5
+		var loc: Vector3 = n.global_transform.affine_inverse() * chest
+		var want: float = clamp(atan2(-loc.z, loc.x), -2.0, 2.0)
+		hold.rotation.y = lerp_angle(hold.rotation.y, -PI * 0.5 + want, min(1.0, dt * 5.0))
+		var from: Vector3 = hold.global_position + Vector3(0, 1.25, 0)
+		var dist := from.distance_to(chest)
+		s["cd"] -= dt
+		if s["cd"] > 0.0 or dist > 65.0:
+			continue
+		if not (mis != null and mis.alarm) and (dist > 40.0 or pl.prone or pl.crouch) and s["burst"] <= 0:
+			s["cd"] = 0.4
 			continue
 		if s["burst"] <= 0:
-			s["burst"] = 7
+			s["burst"] = 6
 		s["burst"] -= 1
-		s["cd"] = 0.11 if s["burst"] > 0 else randf_range(2.5, 4.5)
+		s["cd"] = 0.12 if s["burst"] > 0 else randf_range(2.0, 4.0)
 		var dir := (chest - from).normalized()
-		dir = (dir + Vector3(randf_range(-0.07, 0.07), randf_range(-0.05, 0.05), randf_range(-0.07, 0.07))).normalized()
+		from += dir * 0.9
+		dir = (dir + Vector3(randf_range(-0.06, 0.06), randf_range(-0.04, 0.04), randf_range(-0.06, 0.06))).normalized()
 		main.fx.muzzle_flash(from, dir, "ak")
 		main.snd.enemy_shot(from)
 		var end: Vector3 = main.shoot_ray(from, dir, 7.0, s["body"])
 		main.fx.tracer(from, end)
+	if not busy:
+		wave_cd -= dt
+		if wave_cd <= 0.0:
+			wave_cd = randf_range(16.0, 30.0)
+			_wave()
 
 
 # ---------------- putting it together ----------------

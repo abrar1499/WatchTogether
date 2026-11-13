@@ -1435,11 +1435,11 @@ func _m4() -> Vector3:
 	title = "IRON TIDE"
 	briefing = "The war plans name a ship: the freighter Northern Gannet, running down the coast tonight with the " + \
 		"militia's rockets in her containers. Two patrol launches keep station off her sides, sweeping her decks with " + \
-		"their lights, and fast boats race round her.\n\nYour boat has come up under her side and made fast at the foot " + \
+		"their lights, and men on jet skis come racing up from astern in ones, twos and threes.\n\nYour boat has come up under her side and made fast at the foot " + \
 		"of her ladder. Take the cargo manifest from the bridge, high at her stern: it says which containers carry the " + \
 		"rockets. Destroy the two marked containers. Then get back down the ladder to your boat.\n\nYou carry a pistol, " + \
 		"an AK-47, an M4A1, a knife and three grenades. Keep out of the launches' lights. Once the ship knows you are " + \
-		"aboard, the fast boats' gunners will fire on you: they can be sunk. Do not go over the side."
+		"aboard, the men riding behind will fire on you whenever they see you: the jet skis can be sunk. Do not go over the side."
 	main.flat_c = Vector2(0, 0)
 	main.flat_r = 900.0
 	main.area = Rect2(-60, -30, 120, 60)
