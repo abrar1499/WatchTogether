@@ -312,9 +312,8 @@ func _layer(code: String, mm: MultiMesh, params: Dictionary) -> Array:
 
 func _make_rain() -> void:
 	# close: thin streaks; far: hair-thin, fainter, longer (further off they blur together into a grey veil)
-	rain_layers.append(_layer(RAIN_SHADER, _drops(21000, 7), {"box": Vector3(12, 10, 12), "len": 0.15, "width": 0.0006, "strength": 0.7, "near_cut": 1.5}))
-	rain_layers.append(_layer(RAIN_SHADER, _drops(13500, 11), {"box": Vector3(36, 20, 36), "len": 0.3, "width": 0.001, "strength": 0.4, "near_cut": 5.0}))
-	_make_veils()
+	rain_layers.append(_layer(RAIN_SHADER, _drops(6000, 7), {"box": Vector3(12, 10, 12), "len": 0.15, "width": 0.0006, "strength": 0.5, "near_cut": 1.5}))
+	rain_layers.append(_layer(RAIN_SHADER, _drops(3500, 11), {"box": Vector3(36, 20, 36), "len": 0.3, "width": 0.001, "strength": 0.28, "near_cut": 5.0}))
 	_make_spray()
 	_make_puddles()
 	var sl := _layer(SPLASH_SHADER, _drops(1000, 13), {"box": Vector2(14, 14)})
@@ -331,27 +330,7 @@ func _make_rain() -> void:
 				wet_mats.append([m, m.roughness, m.albedo_color, m.metallic_specular])
 
 
-# ---- the rain picture (VRA, CC BY 4.0): far rain as falling sheets round the camera, ripples on the puddles ----
-const VEIL_SHADER := """
-shader_type spatial;
-render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled, blend_add;
-uniform sampler2D sheet : filter_linear_mipmap, repeat_enable;
-uniform float amount = 0.0;
-uniform float flash = 0.0;
-uniform float speed = 0.55;
-uniform float tiles = 7.0;
-uniform float lean = 0.05;
-uniform vec3 tint = vec3(0.36, 0.38, 0.44);
-uniform float opacity = 1.1;
-void fragment() {
-	vec2 uv = vec2(UV.x * tiles + UV.y * lean, UV.y * 1.6 - TIME * speed);
-	float r = texture(sheet, uv).r;
-	float r2 = texture(sheet, uv * vec2(1.37, 0.83) + vec2(0.31, -TIME * speed * 0.35)).r;
-	float edge = smoothstep(0.0, 0.18, UV.y) * (1.0 - smoothstep(0.82, 1.0, UV.y));
-	ALBEDO = (tint + flash * vec3(0.8)) * (r * 0.75 + r2 * 0.45) * edge * amount * opacity;
-}
-"""
-
+# ---- ripples on the puddles (the ripple picture: VRA, CC BY 4.0) ----
 const PUDDLE_SHADER := """
 shader_type spatial;
 render_mode blend_mix, depth_draw_never, cull_back, shadows_disabled;
@@ -397,42 +376,13 @@ void fragment() {
 	float n = texture(noise, vec2(UV.x * tiles + TIME * 0.05, h * 0.6 - TIME * 0.11)).r;
 	float n2 = texture(noise, vec2(UV.x * tiles * 2.3 - TIME * 0.07, h * 1.1 + TIME * 0.05)).r;
 	ALBEDO = tint + flash * vec3(0.6);
-	ALPHA = amount * low * (0.5 * n + 0.5 * n2) * 0.32;
+	ALPHA = amount * low * (0.5 * n + 0.5 * n2) * 0.16;
 }
 """
 
 var sprays: Array = []
-var veils: Array = []            # [MeshInstance3D, ShaderMaterial]
 var puddle: MeshInstance3D
 var puddle_mat: ShaderMaterial
-
-
-func _make_veils() -> void:
-	var sh := Shader.new()
-	sh.code = VEIL_SHADER
-	var tex: Texture2D = load("res://assets/fx/rain_sheet.png")
-	for r in [[11.0, 11.0, 0.55, 0.9], [24.0, 18.0, 0.42, 0.75]]:
-		var cm := CylinderMesh.new()
-		cm.top_radius = r[0]
-		cm.bottom_radius = r[0]
-		cm.height = 22.0
-		cm.radial_segments = 28
-		cm.rings = 1
-		cm.cap_top = false
-		cm.cap_bottom = false
-		var m := ShaderMaterial.new()
-		m.shader = sh
-		m.set_shader_parameter("sheet", tex)
-		m.set_shader_parameter("tiles", r[1])
-		m.set_shader_parameter("speed", r[2])
-		m.set_shader_parameter("tint", Vector3(0.36, 0.38, 0.44) * float(r[3]))
-		var mi := MeshInstance3D.new()
-		mi.mesh = cm
-		mi.material_override = m
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mi.visible = false
-		add_child(mi)
-		veils.append([mi, m])
 
 
 func _make_spray() -> void:
@@ -729,11 +679,6 @@ func _weather(dt: float) -> void:
 	var camn := get_viewport().get_camera_3d()
 	if camn:
 		var cp := camn.global_position
-		for v in veils:
-			(v[0] as Node3D).visible = show_rain
-			(v[0] as Node3D).global_position = Vector3(cp.x, cp.y + 4.0, cp.z)
-			(v[1] as ShaderMaterial).set_shader_parameter("amount", rain)
-			(v[1] as ShaderMaterial).set_shader_parameter("flash", flash)
 		for sp in sprays:
 			(sp[0] as Node3D).visible = show_rain
 			(sp[0] as Node3D).global_position = Vector3(cp.x, main.player.global_position.y + 0.55, cp.z)
@@ -757,18 +702,18 @@ func _weather(dt: float) -> void:
 	if abs(wet - last_wet) > 0.02 or (wet == 1.0 and last_wet != 1.0):
 		last_wet = wet
 		_wet(wet)
-	main.world_env.fog_density = fog_d + 0.024 * rain
-	main.world_env.fog_light_color = fog_c.lerp(Color(0.105, 0.11, 0.125), rain * 0.8) + Color(0.5, 0.55, 0.65) * flash * 0.3
+	main.world_env.fog_density = fog_d + 0.008 * rain
+	main.world_env.fog_light_color = fog_c.lerp(Color(0.08, 0.085, 0.1), rain * 0.5) + Color(0.5, 0.55, 0.65) * flash * 0.12
 	# the town lit up by the stroke
-	main.sun.light_energy = sun_e + flash * 1.8
-	main.world_env.ambient_light_energy = amb_e * (1.0 - 0.15 * cover) + flash * 0.6
+	main.sun.light_energy = sun_e + flash * 1.1
+	main.world_env.ambient_light_energy = amb_e * (1.0 - 0.15 * cover) + flash * 0.35
 	# rain heard: fades in with the rain (quieter indoors)
 	if rain > 0.0 and not rain_snd.playing:
 		rain_snd.play(randf() * 60.0)
 	if rain_snd.playing:
 		# heard as it is seen: the same amount drives the drops falling and the sound (a few drops, a whisper;
 		# a downpour, the full recording)
-		var lin: float = rain * (0.55 if indoors > 0.5 else 1.0)
+		var lin: float = rain * 0.6 * (0.55 if indoors > 0.5 else 1.0)    # (a light rain)
 		rain_snd.volume_db = lerp(rain_snd.volume_db, linear_to_db(max(lin, 0.0005)) + 2.0, min(1.0, dt * 2.0))
 
 
