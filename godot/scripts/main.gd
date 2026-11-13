@@ -2768,7 +2768,7 @@ class FX extends Node3D:
 			return
 		if not b_ready:
 			_blood_setup()
-		var n := int(clamp(9.0 * amount, 4.0, 26.0))
+		var n := int(clamp(4.0 * amount, 2.0, 10.0))
 		for i in n:
 			var d: Dictionary = b_drops[b_drop_i % b_drops.size()]
 			b_drop_i += 1
@@ -2782,14 +2782,15 @@ class FX extends Node3D:
 			d["t"] = 1.6
 		# the wall or the ground behind him
 		var space := get_world_3d().direct_space_state
-		for k in (2 if amount >= 1.5 else 1):
-			var q := PhysicsRayQueryParameters3D.create(p, p + (dir + Vector3(randf_range(-0.25, 0.25), randf_range(-0.45, 0.05), randf_range(-0.25, 0.25))).normalized() * 3.2)
+		# (a small mark, and not from every round: one bullet does not paint a wall)
+		for k in (1 if (amount >= 1.5 or randf() < 0.5) else 0):
+			var q := PhysicsRayQueryParameters3D.create(p, p + (dir + Vector3(randf_range(-0.25, 0.25), randf_range(-0.45, 0.05), randf_range(-0.25, 0.25))).normalized() * 2.0)
 			q.collision_mask = 1
 			var hit := space.intersect_ray(q)
 			if hit:
-				var sz: float = randf_range(0.35, 0.7) * clamp(amount, 0.6, 1.6)
+				var sz: float = randf_range(0.14, 0.26) * clamp(amount, 0.7, 1.5)
 				blood_stain(hit["position"], hit["normal"], sz)
-				if abs((hit["normal"] as Vector3).y) < 0.4:
+				if abs((hit["normal"] as Vector3).y) < 0.4 and amount >= 1.5:
 					_drips(hit["position"], hit["normal"], sz)
 
 
@@ -2808,7 +2809,7 @@ class FX extends Node3D:
 			b_drip_mat.render_priority = 1
 		var bz := n.normalized()
 		var bx := Vector3.UP.cross(bz).normalized()
-		for k in randi_range(2, 4):
+		for k in randi_range(1, 2):
 			var d: Dictionary
 			if b_drip.size() < 30:
 				var mi := MeshInstance3D.new()
@@ -2851,7 +2852,7 @@ class FX extends Node3D:
 		mi.scale = Vector3.ONE * 0.15
 		mi.visible = true
 		d["t"] = 0.0
-		d["size"] = randf_range(1.5, 2.1) * size
+		d["size"] = randf_range(0.7, 1.0) * size
 
 
 	func _blood_step(dt: float) -> void:
@@ -2869,8 +2870,8 @@ class FX extends Node3D:
 			if hit:
 				d["t"] = 0.0
 				mi.visible = false
-				if randf() < 0.6:
-					blood_stain(hit["position"], hit["normal"], randf_range(0.08, 0.2))
+				if randf() < 0.45:
+					blood_stain(hit["position"], hit["normal"], randf_range(0.04, 0.1))
 			elif d["t"] <= 0.0:
 				mi.visible = false
 			else:
@@ -2882,12 +2883,13 @@ class FX extends Node3D:
 			var kk: float = clamp(d["t"] / 3.0, 0.0, 1.0)
 			var l: float = max(0.02, float(d["len"]) * (1.0 - (1.0 - kk) * (1.0 - kk)))
 			var mi2: MeshInstance3D = d["m"]
-			mi2.global_transform = Transform3D((d["b"] as Basis).scaled(Vector3(float(d["w"]), l, 1.0)), (d["top"] as Vector3) - Vector3(0, l * 0.5, 0))
+			var db: Basis = d["b"]
+			mi2.global_transform = Transform3D(Basis(db.x * float(d["w"]), db.y * l, db.z), (d["top"] as Vector3) - Vector3(0, l * 0.5, 0))
 		for d in b_pools:
-			if d["t"] < 0.0 or d["t"] > 2.4:
+			if d["t"] < 0.0 or d["t"] > 7.2:
 				continue
 			d["t"] += dt
-			var k: float = clamp(d["t"] / 2.2, 0.0, 1.0)
+			var k: float = clamp(d["t"] / 7.0, 0.0, 1.0)        # slowly
 			(d["m"] as MeshInstance3D).scale = Vector3.ONE * lerp(0.15, float(d["size"]), 1.0 - (1.0 - k) * (1.0 - k))
 
 
