@@ -597,10 +597,36 @@ func ragdoll_rest(sk: Skeleton3D, sim: PhysicalBoneSimulator3D) -> void:
 		g.append(pg * l)
 	sim.physical_bones_stop_simulation()
 	sim.queue_free()
+	var hips_i := sk.find_bone("mixamorigHips")
 	for i in sk.get_bone_count():
 		if held.has(i):
-			sk.set_bone_pose_position(i, (loc[i] as Transform3D).origin)
-			sk.set_bone_pose_rotation(i, (loc[i] as Transform3D).basis.get_rotation_quaternion())
+			# only the hips are put somewhere: every other bone keeps its length and is only turned (a joint pulled
+			# apart in the fall would otherwise leave a limb stretched out)
+			if i == hips_i:
+				sk.set_bone_pose_position(i, (loc[i] as Transform3D).origin)
+			sk.set_bone_pose_rotation(i, (loc[i] as Transform3D).basis.orthonormalized().get_rotation_quaternion())
+
+
+## While he falls: no weight may fly off from the rest (caught in a wall or a crate and thrown out, it dragged a
+## limb metres away). One too far from the hips is brought back and stopped; none moves faster than a fall.
+func ragdoll_tame(sim: PhysicalBoneSimulator3D) -> void:
+	if not is_instance_valid(sim) or not sim.has_node("rag_Hips"):
+		return
+	var hips: PhysicalBone3D = sim.get_node("rag_Hips")
+	if hips.linear_velocity.length() > 9.0:
+		hips.linear_velocity = hips.linear_velocity.normalized() * 9.0
+	var hp := hips.global_position
+	for c in sim.get_children():
+		var pb := c as PhysicalBone3D
+		if pb == null or pb == hips:
+			continue
+		var d := pb.global_position - hp
+		if d.length() > 1.15:
+			pb.global_position = hp + d.normalized() * 0.9
+			pb.linear_velocity = hips.linear_velocity
+			pb.angular_velocity = Vector3.ZERO
+		elif pb.linear_velocity.length() > 10.0:
+			pb.linear_velocity = pb.linear_velocity.normalized() * 10.0
 
 
 # ---- soft contact shadows ----
@@ -1808,6 +1834,7 @@ func _physics_process(dt: float) -> void:
 	if blobs.is_empty():
 		blobs = make_blobs(self)
 	if dead:
+		ragdoll_tame(my_rag)
 		for bl in blobs:
 			bl.visible = false           # (his body lies where it fell, not where he stood)
 	else:

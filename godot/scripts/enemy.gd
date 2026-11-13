@@ -241,6 +241,8 @@ func _physics_process(dt: float) -> void:
 		dead_t += dt
 		for b in severed:
 			skel.set_bone_pose_scale(b, Vector3.ONE * 0.001)
+		if rag != null:
+			player.ragdoll_tame(rag)
 		if rag != null and dead_t > 5.0:
 			player.ragdoll_rest(skel, rag)       # at rest: the pose stays, the weights go
 			rag = null
