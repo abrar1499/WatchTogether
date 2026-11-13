@@ -642,7 +642,7 @@ const MISSION_INFO := {
 	1: ["BROKEN RELAY", "A militia radio station in the desert, at dusk. Take the codes, kill the generator, get out."],
 	2: ["CITY 2026", "A border city under curfew, at night. The message, the transformer, the Courier, his laptop."],
 	3: ["DEAD CITY", "A city the war has emptied, by day. The hospital, the car park, the headquarters, the yard."],
-	4: ["IRON TIDE", "A freighter at anchor in a bay, at night. Board her from the sea: the manifest, the cargo, away."]}
+	4: ["IRON TIDE", "A freighter under way down the coast, at night. Board her from the sea: the manifest, the cargo, away."]}
 
 
 func show_missions() -> void:

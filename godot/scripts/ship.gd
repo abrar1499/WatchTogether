@@ -32,6 +32,12 @@ var launches := []         # [node, phase, speed, light, beam, glow]
 var water: MeshInstance3D
 var radar: Node3D
 var gray := Color(0.33, 0.35, 0.38)
+const SPEED := 7.0         # she is under way: the sea and the land go by at this (metres a second)
+var run := 0.0             # how far she has come
+var isles := []            # [node, x at the start, scale]
+var skiffs := []           # the fast boats: {n, body, a, w, side, cd, burst, sunk}
+var sea_mat: ShaderMaterial
+var foam_mat: ShaderMaterial
 
 
 # ---------------- materials ----------------
@@ -96,6 +102,12 @@ func _mats() -> void:
 	_flat("sh_green", Color(0.15, 1.0, 0.3), 0.3, 3.0)
 	_flat("sh_dark", Color(0.03, 0.04, 0.05), 0.2)
 	_flat("sh_glass", Color(0.35, 0.5, 0.6, 0.22), 0.05, 0.0, true)
+	var fs := Shader.new()
+	fs.code = FOAM
+	foam_mat = ShaderMaterial.new()
+	foam_mat.shader = fs
+	foam_mat.set_shader_parameter("tex", load("res://assets/fx/rain_ripples.png"))
+	city.mats["sh_foam"] = foam_mat
 
 
 # ---------------- drawing helpers ----------------
@@ -795,6 +807,7 @@ func _rib(p: Vector3, yaw: float) -> void:
 	tbox("sh_black", xf * Vector3(-2.5, 0.2, 0), Vector3(0.14, 0.9, 0.14), b)
 	tbox("sh_wood", xf * Vector3(0.2, 0.5, 0), Vector3(0.3, 0.06, 1.4), b)
 	bar("sh_steel", xf * Vector3(2.4, 0.6, 0.0), Vector3(GATE[1] + 9.6 + 1.9, 0.8, hw(0.0) + 0.75), 0.012, 4, Color(0.6, 0.55, 0.4))
+	foam([[xf * Vector3(2.2, -0.35, 0), 0.4, 0.8], [xf * Vector3(-2.4, -0.35, 0), 1.3, 0.9], [xf * Vector3(-14.0, -0.35, 0), 2.6, 0.0]])
 	city.commit(false)
 	solid(p + b * Vector3(-0.2, 0.2, 0), Vector3(4.2, 0.2, 1.6), yaw)
 	for sg in [-1.0, 1.0]:
@@ -809,10 +822,12 @@ render_mode cull_back;
 uniform sampler2D ripples : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec3 deep : source_color = vec3(0.012, 0.035, 0.06);
 uniform vec3 sky : source_color = vec3(0.16, 0.24, 0.38);
+uniform float drift = 0.0;
 varying vec3 wp;
 void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	float far = smoothstep(30.0, 140.0, length(wp.xz - CAMERA_POSITION_WORLD.xz));
+	wp.x += drift;
 	VERTEX.y += (sin(wp.x * 0.13 + TIME * 0.8) * 0.07 + sin(wp.z * 0.09 + wp.x * 0.04 + TIME * 0.6) * 0.09) * (0.5 + far);
 }
 void fragment() {
@@ -836,6 +851,7 @@ func _sea() -> void:
 	var wm := ShaderMaterial.new()
 	wm.shader = sh
 	wm.set_shader_parameter("ripples", load("res://assets/fx/rain_ripples.png"))
+	sea_mat = wm
 	water = MeshInstance3D.new()
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(1800, 1800)
@@ -846,29 +862,62 @@ func _sea() -> void:
 	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	water.extra_cull_margin = 4.0
 	add_child(water)
-	# foam where the sea washes along the hull: a pale band lying on the water
-	var fm := StandardMaterial3D.new()
-	fm.albedo_color = Color(0.75, 0.82, 0.88, 0.3)
-	fm.albedo_texture = main.fx.soft_tex
-	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	fm.cull_mode = BaseMaterial3D.CULL_DISABLED
-	city.mats["sh_foam"] = fm
+	# foam: along the hull, the wave thrown off the bows, the wake astern
 	var xs := _xs()
-	for i in xs.size() - 1:
-		for sg in [-1.0, 1.0]:
-			var a: Vector3 = _ring(xs[i], 0.0)[1] * Vector3(1, 0, sg) + Vector3(0, 0.2, 0)
-			var b: Vector3 = _ring(xs[i + 1], 0.0)[1] * Vector3(1, 0, sg) + Vector3(0, 0.2, 0)
-			var o := Vector3(0, 0, sg * 1.5)
-			var st: SurfaceTool = city._st("sh_foam")
-			var p := [a - o * 0.3, b - o * 0.3, b + o, a + o]
-			var uv := [Vector2(0, 0.5), Vector2(1, 0.5), Vector2(1, 1), Vector2(0, 1)]
-			for q in ([0, 2, 1, 0, 3, 2] if sg > 0.0 else [0, 1, 2, 0, 2, 3]):
-				st.set_color(Color(1, 1, 1))
-				st.set_normal(Vector3.UP)
-				st.set_uv(uv[q])
-				st.add_vertex(p[q])
+	for sg in [-1.0, 1.0]:
+		var side := []
+		for x in xs:
+			var q: Vector3 = _ring(x, 0.0)[1]
+			side.append([Vector3(q.x, 0, sg * (q.z + 0.9)), 1.3, 0.85])
+		foam(side)
+		var bow := []
+		for i in 9:
+			var f := i / 8.0
+			bow.append([Vector3(lerp(44.5, -30.0, f), 0, sg * lerp(0.8, 30.0, pow(f, 0.8))), lerp(0.8, 7.0, f), lerp(1.0, 0.0, pow(f, 0.7))])
+		foam(bow)
+	var wake := []
+	for i in 12:
+		var f := i / 11.0
+		wake.append([Vector3(lerp(-43.0, -260.0, f), 0, 0), lerp(6.0, 26.0, f), lerp(1.0, 0.0, pow(f, 0.6))])
+	foam(wake)
 	city.commit(false)
+
+
+const FOAM := """
+shader_type spatial;
+render_mode unshaded, blend_mix, cull_disabled, depth_draw_never;
+uniform sampler2D tex : filter_linear_mipmap, repeat_enable;
+uniform float drift = 0.0;
+varying vec3 wp;
+void vertex() {
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+void fragment() {
+	vec2 p = wp.xz + vec2(drift, 0.0);
+	float n = texture(tex, p * 0.05).r + texture(tex, p * 0.13 + vec2(0.3, TIME * 0.02)).g - 1.0;
+	float m = texture(tex, p * 0.31 + vec2(0.0, TIME * 0.05)).r;
+	ALBEDO = vec3(0.5, 0.58, 0.68) * (0.75 + m * 0.5);
+	ALPHA = clamp(COLOR.a * (0.55 + n * 4.0), 0.0, 0.92);
+}
+"""
+
+
+## A band of foam lying on the water along a line: [[centre, half width, strength], ..]; strongest down its middle.
+func foam(line: Array) -> void:
+	var st: SurfaceTool = city._st("sh_foam")
+	for i in line.size() - 1:
+		var a: Vector3 = line[i][0]
+		var b: Vector3 = line[i + 1][0]
+		var d := (b - a).normalized()
+		var sd := Vector3(-d.z, 0, d.x)
+		for sg in [-1.0, 1.0]:
+			var q := [a, b, b + sd * (sg * line[i + 1][1]), a + sd * (sg * line[i][1])]
+			var al := [line[i][2], line[i + 1][2], 0.0, 0.0]
+			for k in ([0, 1, 2, 0, 2, 3] if sg < 0.0 else [0, 2, 1, 0, 3, 2]):
+				st.set_color(Color(1, 1, 1, al[k]))
+				st.set_normal(Vector3.UP)
+				st.set_uv(Vector2(q[k].x, q[k].z))
+				st.add_vertex(q[k] + Vector3(0, 0.3, 0))
 
 
 func _islets() -> void:
@@ -894,6 +943,7 @@ func _islets() -> void:
 			var off := Vector3.ZERO if k == 0 else Vector3(rng.randf_range(-0.6, 0.6) * s[1].x, 0, rng.randf_range(-0.6, 0.6) * s[1].z)
 			mi.position = s[0] + off
 			mi.scale = sc * Vector3(1, rng.randf_range(0.8, 1.3), 1)
+			isles.append([mi, mi.position.x, mi.scale])
 			mi.rotation.y = rng.randf() * TAU
 
 
@@ -990,26 +1040,142 @@ void fragment() {
 	return root
 
 
+## Foam on a boat's own node (it goes where the boat goes).
+func _boat_foam(root: Node3D, line: Array) -> void:
+	foam(line)
+	var mi: MeshInstance3D = city.commit(false)
+	main.remove_child(mi)
+	root.add_child(mi)
+	mi.position.y = -0.05
+
+
 func _launches() -> void:
 	for i in 2:
 		var n := _launch()
-		launches.append([n, i * PI + 0.4, 0.05 if i == 0 else 0.042, n.get_child(2), 68.0 + i * 16.0, 36.0 + i * 12.0])
+		_boat_foam(n, [[Vector3(5.5, 0, 0), 0.6, 0.9], [Vector3(-5.0, 0, 0), 2.6, 0.9], [Vector3(-16.0, 0, 0), 3.6, 0.6], [Vector3(-42.0, 0, 0), 6.0, 0.0]])
+		launches.append([n, i * 2.4 + 0.4, 37.0 if i == 0 else -34.0, n.get_child(2)])
 	_move_launches(0.0)
+	for i in 3:
+		_skiff(i)
 
 
-func _move_launches(dt: float) -> void:
+func _move_launches(_dt: float) -> void:
 	for l in launches:
-		l[1] += l[2] * dt
 		var a: float = l[1]
 		var n: Node3D = l[0]
-		var p := Vector3(cos(a) * l[4], 0.0, sin(a) * l[5])
-		var fwd := Vector3(-sin(a) * l[4], 0, cos(a) * l[5]).normalized()
-		n.position = p + Vector3(0, 0.05 + sin(t * 1.3 + a * 7.0) * 0.07, 0)
-		n.rotation = Vector3(sin(t * 0.9 + a) * 0.03, atan2(-fwd.z, fwd.x), sin(t * 1.1 + a * 3.0) * 0.025)
+		# keeping station off her side, ranging up and dropping back
+		var p := Vector3(sin(t * 0.07 + a) * 34.0, 0.0, l[2] + sin(t * 0.11 + a) * 5.0)
+		var v := Vector3(cos(t * 0.07 + a) * 34.0 * 0.07 + SPEED, 0, cos(t * 0.11 + a) * 5.0 * 0.11)
+		n.position = p + Vector3(0, 0.1 + sin(t * 2.3 + a * 7.0) * 0.08, 0)
+		n.rotation = Vector3(sin(t * 1.9 + a) * 0.04, atan2(-v.z, v.x), 0.05 + sin(t * 2.6 + a * 3.0) * 0.025)
 		# the light sweeps the ship's deck end to end and back
 		var sl: SpotLight3D = l[3]
 		var aim := Vector3(sin(t * 0.21 + a * 2.0) * 40.0, D + 1.0, sin(t * 0.33 + a) * 5.0)
 		sl.look_at(aim, Vector3.UP)
+
+
+## A fast open boat with a helmsman and a gunner, racing round the ship. It can be shot to pieces.
+func _skiff(i: int) -> void:
+	var root := Node3D.new()
+	add_child(root)
+	var stn := [[-2.8, 0.85], [-2.2, 1.0], [0.6, 1.0], [1.8, 0.75], [2.6, 0.4], [3.1, 0.04]]
+	for k in stn.size() - 1:
+		for sg in [1.0, -1.0]:
+			var m := Vector3(1, 1, sg)
+			var r := []
+			for e in [stn[k], stn[k + 1]]:
+				var x: float = e[0]
+				var w: float = e[1]
+				var bow: float = clamp((x - 0.6) / 2.5, 0.0, 1.0)
+				r.append([Vector3(x - bow * 0.5, -0.25, w * lerp(0.5, 0.08, bow)), Vector3(x, 0.55 + bow * 0.25, w)])
+			var out := Vector3(0.3 if stn[k][0] > 0.5 else 0.0, 0, sg)
+			quad("sh_black", r[0][0] * m, r[1][0] * m, r[1][1] * m, r[0][1] * m, out, Color(1.6, 1.7, 1.9))
+			quad("sh_plate", Vector3(stn[k][0], 0.2, 0), Vector3(stn[k + 1][0], 0.2, 0), Vector3(stn[k + 1][0], 0.2, sg * stn[k + 1][1] * 0.9),
+				Vector3(stn[k][0], 0.2, sg * stn[k][1] * 0.9), Vector3.UP, Color(0.4, 0.4, 0.4))
+		bar("sh_rubber", Vector3(stn[k][0], 0.6, stn[k][1]), Vector3(stn[k + 1][0], 0.6 + (0.25 if k == 4 else 0.0), stn[k + 1][1]), 0.13, 6)
+		bar("sh_rubber", Vector3(stn[k][0], 0.6, -stn[k][1]), Vector3(stn[k + 1][0], 0.6 + (0.25 if k == 4 else 0.0), -stn[k + 1][1]), 0.13, 6)
+	quad("sh_black", Vector3(-2.8, -0.25, -0.45), Vector3(-2.8, -0.25, 0.45), Vector3(-2.8, 0.6, 0.85), Vector3(-2.8, 0.6, -0.85), Vector3(-1, 0, 0), Color(1.6, 1.7, 1.9))
+	# the wheel's console with its screen, two outboards, the gun on its post behind a shield
+	city.box("sh_grey", Vector3(-0.6, 0.65, 0), Vector3(0.5, 0.9, 0.8), 0.0, Color(0.5, 0.5, 0.5))
+	tbox("sh_glass", Vector3(-0.38, 1.3, 0), Vector3(0.03, 0.45, 0.8), Basis(Vector3(0, 0, 1), -0.35))
+	for sz in [-0.3, 0.3]:
+		city.box("sh_black", Vector3(-3.0, 0.7, sz), Vector3(0.4, 0.55, 0.3))
+		city.box("sh_black", Vector3(-3.0, 0.2, sz), Vector3(0.14, 0.7, 0.12))
+	bar("sh_black", Vector3(1.3, 0.2, 0), Vector3(1.3, 1.15, 0), 0.05, 6)
+	city.box("sh_black", Vector3(1.35, 1.25, 0), Vector3(0.5, 0.16, 0.12))
+	bar("sh_black", Vector3(1.6, 1.27, 0), Vector3(2.3, 1.3, 0), 0.025, 5)
+	tbox("sh_grey", Vector3(1.5, 1.3, 0), Vector3(0.03, 0.55, 0.7), Basis(Vector3(0, 0, 1), 0.2), Color(0.35, 0.37, 0.36))
+	# the two men, dark shapes: one at the wheel, one at the gun
+	for mp in [Vector3(-1.05, 0.2, 0), Vector3(0.85, 0.2, 0)]:
+		for sz in [-0.11, 0.11]:
+			bar("sh_rubber", mp + Vector3(0, 0, sz), mp + Vector3(0.05, 0.85, sz), 0.085, 6, Color(1.8, 2.0, 1.6))
+		bar("sh_rubber", mp + Vector3(0.05, 0.8, 0), mp + Vector3(0.14, 1.45, 0), 0.19, 8, Color(1.6, 1.9, 1.5), 0.16)
+		bar("sh_rubber", mp + Vector3(0.16, 1.47, 0), mp + Vector3(0.18, 1.72, 0), 0.105, 8, Color(1.2, 1.3, 1.2))
+		for sz in [-0.22, 0.22]:
+			bar("sh_rubber", mp + Vector3(0.14, 1.38, sz), mp + Vector3(0.48, 1.08, sz * 0.6), 0.055, 5, Color(1.6, 1.9, 1.5))
+	var mi: MeshInstance3D = city.commit(false)
+	main.remove_child(mi)
+	root.add_child(mi)
+	_boat_foam(root, [[Vector3(2.4, 0, 0), 0.4, 0.9], [Vector3(-2.6, 0, 0), 1.6, 1.0], [Vector3(-10.0, 0, 0), 2.4, 0.7], [Vector3(-30.0, 0, 0), 4.0, 0.0]])
+	var body := StaticBody3D.new()
+	body.set_meta("surf", "metal")
+	body.set_meta("kind", "machine")
+	body.set_meta("hp", 240.0)
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(6.0, 1.9, 2.0)
+	cs.shape = bs
+	cs.position = Vector3(0, 0.75, 0)
+	body.add_child(cs)
+	root.add_child(body)
+	main.machines.append(body)
+	var red: MeshInstance3D = city.glow(Vector3.ZERO, Color(1.0, 0.25, 0.15, 0.8), 0.7)
+	red.get_parent().remove_child(red)
+	root.add_child(red)
+	red.position = Vector3(-0.6, 1.6, 0)
+	skiffs.append({"n": root, "body": body, "a": i * TAU / 3.0 + 0.5, "w": 0.15 + i * 0.012, "side": 1.0 if i % 2 == 0 else -1.0, "cd": 2.0 + i, "burst": 0, "sunk": 0.0})
+
+
+func _move_skiffs(dt: float) -> void:
+	var pl = main.player
+	for s in skiffs:
+		var n: Node3D = s["n"]
+		if s["body"].get_meta("gone", false):
+			# hit and burning: she drops astern and goes down
+			s["sunk"] += dt
+			n.position += Vector3(-SPEED * 0.8 * dt, -0.12 * dt if s["sunk"] > 3.0 else 0.0, 0)
+			n.rotation.z = lerp(n.rotation.z, 0.5, dt * 0.2)
+			if s["sunk"] > 22.0:
+				n.visible = false
+			continue
+		s["a"] += s["w"] * dt * s["side"]
+		var a: float = s["a"]
+		var p := Vector3(cos(a) * 105.0, 0, sin(a) * 20.0)
+		var v: Vector3 = Vector3(-sin(a) * 105.0, 0, cos(a) * 20.0) * float(s["w"] * s["side"]) + Vector3(SPEED, 0, 0)
+		var sp: float = v.length()
+		n.position = p + Vector3(0, 0.12 + abs(sin(t * 5.0 + a * 9.0)) * 0.1 * clamp(sp / 12.0, 0.3, 1.2), 0)
+		n.rotation = Vector3(sin(t * 3.1 + a) * 0.05, atan2(-v.z, v.x), 0.04 + clamp(sp / 20.0, 0.0, 1.0) * 0.09 + sin(t * 5.0 + a * 9.0) * 0.03)
+		# once the ship knows he is aboard, the gunners fire on him when they have a line
+		if mis == null or not mis.alarm or pl == null or pl.dead:
+			continue
+		s["cd"] -= dt
+		if s["cd"] > 0.0:
+			continue
+		var from: Vector3 = n.global_transform * Vector3(2.3, 1.3, 0)
+		var chest: Vector3 = pl.global_position + Vector3(0, 0.3 if pl.prone else 1.1, 0)
+		if from.distance_to(chest) > 60.0:
+			s["cd"] = 0.5
+			continue
+		if s["burst"] <= 0:
+			s["burst"] = 7
+		s["burst"] -= 1
+		s["cd"] = 0.11 if s["burst"] > 0 else randf_range(2.5, 4.5)
+		var dir := (chest - from).normalized()
+		dir = (dir + Vector3(randf_range(-0.07, 0.07), randf_range(-0.05, 0.05), randf_range(-0.07, 0.07))).normalized()
+		main.fx.muzzle_flash(from, dir, "ak")
+		main.snd.enemy_shot(from)
+		var end: Vector3 = main.shoot_ray(from, dir, 7.0, s["body"])
+		main.fx.tracer(from, end)
 
 
 # ---------------- putting it together ----------------
@@ -1111,7 +1277,17 @@ func _process(dt: float) -> void:
 	t += dt
 	if radar != null:
 		radar.rotation.y += dt * 2.2
+	run += SPEED * dt
 	_move_launches(dt)
+	_move_skiffs(dt)
+	if sea_mat != null:
+		sea_mat.set_shader_parameter("drift", run)
+		foam_mat.set_shader_parameter("drift", run)
+	for il in isles:
+		var x: float = wrapf(il[1] - run, -620.0, 620.0)
+		var mi: MeshInstance3D = il[0]
+		mi.position.x = x
+		mi.scale = il[2] * Vector3(1, smoothstep(620.0, 520.0, abs(x)), 1)
 	var cam := get_viewport().get_camera_3d()
 	if cam != null and water != null:
 		var c := cam.global_position
