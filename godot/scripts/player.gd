@@ -1341,7 +1341,7 @@ func _build_camera() -> void:
 	cam = Camera3D.new()
 	cam.fov = 62
 	cam.near = 0.05
-	cam.far = 1400
+	cam.far = 900
 	cam_arm.add_child(cam)
 	cam.current = true
 	# first person: a second soldier in the aim pose on the camera; only the arms and the gun come into view
@@ -2386,6 +2386,10 @@ func _update_camera(dt: float) -> void:
 	elif speed > 3.0:
 		fov = 66.0
 	cam.fov = lerp(cam.fov, fov, min(1.0, dt * 10.0))
+	# how near the camera starts to see: as far out as the view allows. The further out, the finer it can tell one
+	# far surface from the one just above it (a road on the ground, a line on the road): with it at 5 cm those
+	# flickered against each other from a hundred metres. Looking down the sights the arms are close: 5 cm there.
+	cam.near = 0.05 if (view == 2 or scope_k > 0.3) else 0.2
 	if scoped:
 		cam.fov = float(w["scope"])
 	var fp := (view == 2 or scoped) and not dead

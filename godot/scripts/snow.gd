@@ -12,6 +12,8 @@ render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled, world_v
 uniform vec3 box = vec3(22.0, 12.0, 22.0);
 uniform float speed = 0.6;      // (a flake falls at about half a metre to a metre a second)
 uniform vec2 wind = vec2(0.22, 0.09);
+uniform vec3 tint = vec3(0.97, 0.98, 1.0);
+uniform float strength = 0.85;
 varying float vis;
 varying vec2 uv;
 
@@ -39,8 +41,8 @@ void vertex() {
 
 void fragment() {
 	float d = length(uv - vec2(0.5)) * 2.0;
-	ALBEDO = vec3(0.97, 0.98, 1.0);
-	ALPHA = vis * (1.0 - smoothstep(0.35, 1.0, d)) * 0.85;
+	ALBEDO = tint;
+	ALPHA = vis * (1.0 - smoothstep(0.35, 1.0, d)) * strength;
 }
 """
 
@@ -64,6 +66,10 @@ func start(m: Node) -> void:
 	sh.code = FLAKE_SHADER
 	mat = ShaderMaterial.new()
 	mat.shader = sh
+	if main.snow_night:
+		# at night a flake is only as bright as the lamps make it: a pale blue, not daylight white
+		mat.set_shader_parameter("tint", Vector3(0.62, 0.74, 0.95))
+		mat.set_shader_parameter("strength", 0.7)
 	flakes = MultiMeshInstance3D.new()
 	flakes.multimesh = mm
 	flakes.material_override = mat

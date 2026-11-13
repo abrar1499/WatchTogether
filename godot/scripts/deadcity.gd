@@ -375,11 +375,51 @@ func crater(c: Vector3, r: float) -> void:
 
 
 ## A dead street light: the pole leaning, its head hanging.
+## Snow lying over the town's ground: the paving, the roads, the pavements and their kerbs turn white (packed a
+## little greyer where the roads run), keeping the relief of what is under them.
+func snow_ground() -> void:
+	for kv in [["m3_debris", 0.9], ["g_asphalt", 0.8], ["m3_cracked", 0.92], ["g_kerb", 0.88], ["m3_road", 0.8], ["m3_burnt", 0.7], ["m3_rubble", 0.82]]:
+		if not city.mats.has(kv[0]):
+			continue
+		var m: StandardMaterial3D = city.mats[kv[0]]
+		var k: float = kv[1]
+		if kv[0] == "m3_rubble":
+			m.albedo_color = Color(1.35, 1.4, 1.5)        # (a dusting: the broken stone still shows through)
+			continue
+		m.albedo_texture = null
+		m.vertex_color_use_as_albedo = false
+		m.albedo_color = Color(0.9 * k, 0.94 * k, 1.0 * k)
+		m.roughness_texture = null
+		m.roughness = 0.6
+		m.metallic = 0.0
+		m.metallic_texture = null
+		m.metallic_specular = 0.55
+		m.ao_enabled = false
+		m.normal_scale = 0.7
+
+
 func dead_lamp(p: Vector3, lean := 0.0) -> void:
 	var b := Basis(Vector3(0, 0, 1), lean)
 	var top: Vector3 = p + b * Vector3(0, 7.2, 0)
 	_tilted_box("frame", (p + top) * 0.5, Vector3(0.14, 7.2, 0.14), b, Color(0.3, 0.31, 0.33))
 	_tilted_box("frame", top + b * Vector3(0.8, 0.0, 0), Vector3(1.8, 0.1, 0.2), b, Color(0.3, 0.31, 0.33))
+	# on a night of snow most of them still burn: a cold white lamp, a wide glow round it in the falling snow, a
+	# pool of light on the snow beneath
+	if main.snow_night and abs(lean) < 0.13 and rng.randf() < 0.72:
+		var c: Vector3 = top + b * Vector3(1.5, -0.12, 0)
+		var l := OmniLight3D.new()
+		l.light_color = Color(0.82, 0.9, 1.0)
+		l.light_energy = 5.0
+		l.omni_range = 19.0
+		l.omni_attenuation = 1.2
+		l.distance_fade_enabled = true
+		l.distance_fade_begin = 45.0
+		l.distance_fade_length = 12.0
+		l.shadow_enabled = false
+		main.add_child(l)
+		l.global_position = c
+		city.glow(c, Color(0.75, 0.86, 1.0, 0.85), 4.6)
+		city.pool(Vector3(c.x, p.y + 0.03, c.z), Color(0.2, 0.26, 0.36, 1.0), 8.0)
 
 
 ## A line of power poles with sagging cables from a to b.

@@ -1388,10 +1388,11 @@ func _m3() -> Vector3:
 	main.ground_holes.clear()
 	for h in dead.HOLES:
 		main.ground_holes.append(h)
+	main.snow = true
+	main.snow_night = true
 	main._build_ground()
 	main._build_mountains()
-	main.apply_war_day()
-	main.photo_sky("res://assets/sky/overcast.hdr", 2.6, 76.0)      # (a grey day: at 0.9 the film curve made it night)
+	main.apply_snow_night()
 	main.extra_cover = []
 	city = load("res://scripts/city.gd").new(main, 33)
 	dead.main = main
@@ -1400,6 +1401,7 @@ func _m3() -> Vector3:
 	dead.name = "DeadCity"
 	main.add_child(dead)
 	var spawn: Vector3 = await dead.build()
+	dead.snow_ground()
 	main._restore_breakables()
 	posts = dead.posts
 	far_cull = 80.0

@@ -1535,6 +1535,7 @@ func apply_golden() -> void:
 
 
 var snow := false               # the mission lies under snow (ground, hills, the look of the light)
+var snow_night := false         # and it is night: the flakes are seen by the lamps, not by daylight
 
 
 ## A day of snow: a low white overcast that lights everything evenly, the sun a pale disc behind it, the far hills
@@ -1556,6 +1557,39 @@ func apply_snow() -> void:
 	sun.rotation_degrees = Vector3(-14, -60, 0)      # (low: it picks out the drifts)
 	sun.light_color = Color(1.0, 0.96, 0.92)
 	sun.light_energy = 1.25
+
+
+## A night of snow in a town: deep blue, the snow on the ground throwing back what light there is, street lamps
+## glowing in the falling snow, the far end of every street lost in a pale blue haze.
+func apply_snow_night() -> void:
+	apply_night()
+	# (no stars through falling snow: the sky is one deep blue, a little paler toward the town's lamps)
+	var sm := ProceduralSkyMaterial.new()
+	sm.sky_top_color = Color(0.02, 0.04, 0.1)
+	sm.sky_horizon_color = Color(0.1, 0.17, 0.33)
+	sm.ground_horizon_color = Color(0.1, 0.17, 0.33)
+	sm.ground_bottom_color = Color(0.04, 0.07, 0.14)
+	sm.sky_curve = 0.25
+	sm.sun_angle_max = 0.0
+	sm.sky_energy_multiplier = 0.55 if hd else 1.0
+	var sky := Sky.new()
+	sky.sky_material = sm
+	sky.radiance_size = Sky.RADIANCE_SIZE_32
+	world_env.sky = sky
+	world_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	world_env.ambient_light_color = Color(0.36, 0.5, 0.82)
+	world_env.ambient_light_energy = 0.62
+	world_env.fog_enabled = true
+	world_env.fog_light_color = Color(0.13, 0.2, 0.36)
+	world_env.fog_density = 0.011
+	world_env.fog_sky_affect = 0.3
+	world_env.tonemap_exposure = 1.25
+	world_env.adjustment_enabled = true
+	world_env.adjustment_saturation = 0.95
+	world_env.adjustment_contrast = 1.05
+	sun.rotation_degrees = Vector3(-46, 70, 0)
+	sun.light_color = Color(0.5, 0.65, 1.0)
+	sun.light_energy = 0.3
 
 
 ## Missions progress: how many are open (the first always is).
