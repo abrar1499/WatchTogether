@@ -320,13 +320,14 @@ func apply_war_day() -> void:
 
 ## Night: a dark blue sky, a cool moon low in the east (soft shadows), dark haze; the lamps light the streets.
 func apply_night() -> void:
-	var sm: ProceduralSkyMaterial = world_env.sky.sky_material
-	sm.sky_top_color = Color(0.012, 0.018, 0.04)
-	sm.sky_horizon_color = Color(0.08, 0.085, 0.12)
-	sm.ground_horizon_color = Color(0.04, 0.04, 0.05)
-	sm.ground_bottom_color = Color(0.015, 0.015, 0.02)
-	sm.sun_angle_max = 2.0
-	sm.sun_curve = 0.3
+	var sm := world_env.sky.sky_material as ProceduralSkyMaterial
+	if sm != null:          # (a sky picture set already has no colours of its own to turn down)
+		sm.sky_top_color = Color(0.012, 0.018, 0.04)
+		sm.sky_horizon_color = Color(0.08, 0.085, 0.12)
+		sm.ground_horizon_color = Color(0.04, 0.04, 0.05)
+		sm.ground_bottom_color = Color(0.015, 0.015, 0.02)
+		sm.sun_angle_max = 2.0
+		sm.sun_curve = 0.3
 	world_env.ambient_light_color = Color(0.32, 0.38, 0.52)
 	world_env.ambient_light_energy = 0.38      # (a little more than before: the night was too dark to play)
 	world_env.fog_light_color = Color(0.05, 0.055, 0.075)
