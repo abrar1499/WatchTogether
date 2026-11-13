@@ -2642,24 +2642,46 @@ class FX extends Node3D:
 	var b_ready := false
 
 
+	## A blood mark's picture: a ragged body with lobes, thin spikes thrown outwards and loose flecks; darker and
+	## thicker in the middle, thin and redder at the edge (as blood dries).
 	func _blot(seed_: int) -> ImageTexture:
-		var n := 64
+		var n := 128
 		var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
 		var rg := RandomNumberGenerator.new()
 		rg.seed = seed_
+		var noise := FastNoiseLite.new()
+		noise.seed = seed_
+		noise.frequency = 0.045
 		var blobs := []
-		for i in rg.randi_range(5, 9):
-			blobs.append([Vector2(rg.randf_range(0.3, 0.7), rg.randf_range(0.3, 0.7)), rg.randf_range(0.1, 0.24)])
-		for i in rg.randi_range(6, 12):       # flecks thrown out round it
+		for i in rg.randi_range(4, 7):
+			blobs.append([Vector2(rg.randf_range(0.36, 0.64), rg.randf_range(0.36, 0.64)), rg.randf_range(0.1, 0.2)])
+		var spikes := []
+		for i in rg.randi_range(7, 13):
 			var a := rg.randf() * TAU
-			blobs.append([Vector2(0.5, 0.5) + Vector2(cos(a), sin(a)) * rg.randf_range(0.28, 0.46), rg.randf_range(0.02, 0.05)])
+			spikes.append([a, rg.randf_range(0.22, 0.47), rg.randf_range(0.008, 0.022)])
+		var flecks := []
+		for i in rg.randi_range(10, 22):
+			var a := rg.randf() * TAU
+			flecks.append([Vector2(0.5, 0.5) + Vector2(cos(a), sin(a)) * rg.randf_range(0.26, 0.48), rg.randf_range(0.006, 0.022)])
 		for y in n:
 			for x in n:
 				var q := Vector2((x + 0.5) / n, (y + 0.5) / n)
 				var v := 0.0
 				for b in blobs:
-					v = max(v, 1.0 - q.distance_to(b[0]) / float(b[1]))
-				img.set_pixel(x, y, Color(1, 1, 1, clamp(v * 3.0, 0.0, 1.0)))
+					v = max(v, 1.0 - q.distance_to(b[0]) / (float(b[1]) * (1.0 + 0.35 * noise.get_noise_2d(x, y))))
+				var d := q - Vector2(0.5, 0.5)
+				var r := d.length()
+				var ang := atan2(d.y, d.x)
+				for sp in spikes:
+					var da: float = abs(wrapf(ang - float(sp[0]), -PI, PI))
+					if r < float(sp[1]):
+						v = max(v, 1.0 - (da * r) / (float(sp[2]) * (1.0 - r / float(sp[1]) * 0.7)))
+				for f in flecks:
+					v = max(v, 1.0 - q.distance_to(f[0]) / float(f[1]))
+				var a2: float = clamp(v * 4.0, 0.0, 1.0)
+				var thick: float = clamp(v * 1.6, 0.0, 1.0)
+				img.set_pixel(x, y, Color(lerp(1.0, 0.5, thick), lerp(1.0, 0.45, thick), lerp(1.0, 0.45, thick), a2))
+		img.generate_mipmaps()
 		return ImageTexture.create_from_image(img)
 
 
@@ -2673,10 +2695,10 @@ class FX extends Node3D:
 		dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 		dm.albedo_texture = soft_tex
 		dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		for i in 48:
+		for i in 90:
 			var mi := MeshInstance3D.new()
 			var q := QuadMesh.new()
-			q.size = Vector2(0.05, 0.05)
+			q.size = Vector2(0.028, 0.028)
 			mi.mesh = q
 			mi.material_override = dm
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -2690,7 +2712,7 @@ class FX extends Node3D:
 			mi.mesh = q
 			var sm := StandardMaterial3D.new()
 			sm.albedo_texture = b_tex[i % b_tex.size()]
-			sm.albedo_color = Color(0.2, 0.006, 0.01, 0.92)
+			sm.albedo_color = Color(0.3, 0.008, 0.012, 0.95)
 			sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 			sm.roughness = 0.35                        # wet: a little shine
 			sm.metallic_specular = 0.6
@@ -2710,10 +2732,10 @@ class FX extends Node3D:
 			mi.mesh = q
 			var pm := StandardMaterial3D.new()
 			pm.albedo_texture = b_tex[i % b_tex.size()]
-			pm.albedo_color = Color(0.17, 0.004, 0.008, 0.94)
+			pm.albedo_color = Color(0.3, 0.004, 0.006, 0.97)
 			pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			pm.roughness = 0.22
-			pm.metallic_specular = 0.7
+			pm.roughness = 0.34          # (shinier, it mirrored the sky and turned purple)
+			pm.metallic_specular = 0.35
 			pm.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
 			mi.material_override = pm
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -2746,15 +2768,17 @@ class FX extends Node3D:
 			return
 		if not b_ready:
 			_blood_setup()
-		var n := int(clamp(4.0 * amount, 2.0, 14.0))
+		var n := int(clamp(9.0 * amount, 4.0, 26.0))
 		for i in n:
 			var d: Dictionary = b_drops[b_drop_i % b_drops.size()]
 			b_drop_i += 1
 			var mi: MeshInstance3D = d["m"]
 			mi.global_position = p
-			mi.scale = Vector3.ONE * randf_range(0.5, 1.3)
+			mi.scale = Vector3.ONE * randf_range(0.5, 1.6)
 			mi.visible = true
-			d["v"] = (dir + Vector3(randf_range(-0.5, 0.5), randf_range(-0.1, 0.7), randf_range(-0.5, 0.5))).normalized() * randf_range(1.6, 4.2)
+			# most go on with the round (out of his back), a few come back out of the front
+			var way: Vector3 = dir if randf() < 0.8 else -dir * 0.5
+			d["v"] = (way + Vector3(randf_range(-0.45, 0.45), randf_range(-0.15, 0.55), randf_range(-0.45, 0.45))).normalized() * randf_range(1.2, 5.0)
 			d["t"] = 1.6
 		# the wall or the ground behind him
 		var space := get_world_3d().direct_space_state
@@ -2763,7 +2787,49 @@ class FX extends Node3D:
 			q.collision_mask = 1
 			var hit := space.intersect_ray(q)
 			if hit:
-				blood_stain(hit["position"], hit["normal"], randf_range(0.35, 0.7) * clamp(amount, 0.6, 1.6))
+				var sz: float = randf_range(0.35, 0.7) * clamp(amount, 0.6, 1.6)
+				blood_stain(hit["position"], hit["normal"], sz)
+				if abs((hit["normal"] as Vector3).y) < 0.4:
+					_drips(hit["position"], hit["normal"], sz)
+
+
+	## Blood on a wall runs: a few thin lines from the mark downwards, growing for a couple of seconds.
+	var b_drip: Array = []        # {m, t, len, top}
+	var b_drip_i := 0
+	var b_drip_mat: StandardMaterial3D
+	func _drips(p: Vector3, n: Vector3, size: float) -> void:
+		if b_drip_mat == null:
+			b_drip_mat = StandardMaterial3D.new()
+			b_drip_mat.albedo_color = Color(0.19, 0.005, 0.009, 0.9)
+			b_drip_mat.albedo_texture = soft_tex
+			b_drip_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			b_drip_mat.roughness = 0.3
+			b_drip_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+			b_drip_mat.render_priority = 1
+		var bz := n.normalized()
+		var bx := Vector3.UP.cross(bz).normalized()
+		for k in randi_range(2, 4):
+			var d: Dictionary
+			if b_drip.size() < 30:
+				var mi := MeshInstance3D.new()
+				var q := QuadMesh.new()
+				q.size = Vector2(1, 1)
+				mi.mesh = q
+				mi.material_override = b_drip_mat
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				mi.visibility_range_end = 40.0
+				add_child(mi)
+				d = {"m": mi}
+				b_drip.append(d)
+			else:
+				d = b_drip[b_drip_i % b_drip.size()]
+			b_drip_i += 1
+			d["t"] = 0.0
+			d["len"] = randf_range(0.15, 0.55) * size * 2.0
+			d["w"] = randf_range(0.012, 0.028)
+			d["top"] = p + bx * randf_range(-0.3, 0.3) * size + Vector3(0, randf_range(-0.12, 0.05) * size, 0) + bz * 0.014
+			d["b"] = Basis(bx, Vector3.UP, bz)
+			(d["m"] as MeshInstance3D).visible = true
 
 
 	## The pool under a body lying at p: spreads over a couple of seconds.
@@ -2809,6 +2875,14 @@ class FX extends Node3D:
 				mi.visible = false
 			else:
 				mi.global_position = to
+		for d in b_drip:
+			if d["t"] > 3.2:
+				continue
+			d["t"] += dt
+			var kk: float = clamp(d["t"] / 3.0, 0.0, 1.0)
+			var l: float = max(0.02, float(d["len"]) * (1.0 - (1.0 - kk) * (1.0 - kk)))
+			var mi2: MeshInstance3D = d["m"]
+			mi2.global_transform = Transform3D((d["b"] as Basis).scaled(Vector3(float(d["w"]), l, 1.0)), (d["top"] as Vector3) - Vector3(0, l * 0.5, 0))
 		for d in b_pools:
 			if d["t"] < 0.0 or d["t"] > 2.4:
 				continue
