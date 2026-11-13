@@ -6,16 +6,17 @@ var main: Node
 var t := 0.0
 
 # ---- weather timeline (seconds from the start of the mission) ----
-const CLOUD_START := 0.36       # how much of the sky is cloud at the start
+const CLOUD_START := 0.3        # how much of the sky is cloud at the start
 const CLOUD_FULL := 0.92        # and when it is about to rain
-const THICKEN_T := 75.0         # clouds grow over this long
-const RAIN_T := 70.0            # then the rain begins
+const THICKEN_T := 90.0         # clouds grow over this long
+const RAIN_T := 100.0           # then the rain begins (clouds first, thunder far off, then rain)
 const RAIN_RAMP := 25.0         # and gets heavy over this long
 
 var sky_mat: ShaderMaterial
 var rain_snd: AudioStreamPlayer
 var thunders: Array = []
 var thunder_snd: AudioStreamPlayer
+var thunders_far: Array = []     # the same claps with the rain filtered out of them: heard before it rains
 var cover := CLOUD_START
 var rain := 0.0
 var flash := 0.0
@@ -59,7 +60,7 @@ func start(m: Node) -> void:
 		spots.append(s)
 	_lamp_all()
 	_tower_lamps()
-	next_bolt = RAIN_T + 12.0      # (its sound has rain in it: none before the rain)
+	next_bolt = 40.0               # the first stroke far off, well before the rain
 
 
 # =============== sky: the night picture with clouds over it ===============
@@ -82,7 +83,7 @@ void sky() {
 		c *= smoothstep(-0.02, 0.12, d.y);
 		// lit a little from below by the town, darker on top; the stroke lights them up
 		float low = 1.0 - smoothstep(0.0, 0.45, d.y);
-		vec3 cc = mix(vec3(0.07, 0.075, 0.095), vec3(0.2, 0.155, 0.125), low) * (0.7 + 0.6 * n);
+		vec3 cc = mix(vec3(0.12, 0.125, 0.15), vec3(0.32, 0.25, 0.2), low) * (0.6 + 0.8 * n);
 		cc += flash * vec3(0.55, 0.6, 0.75) * (0.35 + 0.65 * n);
 		col = mix(col, cc, c);
 		col += flash * 0.06 * vec3(0.7, 0.75, 0.9);
@@ -437,6 +438,7 @@ func _make_sound() -> void:
 	add_child(rain_snd)
 	for i in 4:
 		thunders.append(load("res://assets/sfx/thunder_%d.ogg" % i))
+		thunders_far.append(load("res://assets/sfx/thunder_far_%d.ogg" % i))
 	thunder_snd = AudioStreamPlayer.new()
 	add_child(thunder_snd)
 
@@ -651,9 +653,9 @@ func _weather(dt: float) -> void:
 					hits += 1
 			indoors = 1.0 if hits == 3 else 0.0
 	# lightning: now and then once the clouds are thick, more often in the rain
-	if mt > next_bolt and rain > 0.3:
+	if mt > next_bolt and cover > 0.5:
 		_bolt()
-		next_bolt = mt + (randf_range(14.0, 30.0) if rain > 0.3 else randf_range(22.0, 40.0))
+		next_bolt = mt + (randf_range(14.0, 30.0) if rain > 0.3 else randf_range(18.0, 28.0))
 	flash = 0.0
 	var keep := []
 	for p in flash_seq:
@@ -719,13 +721,16 @@ func _weather(dt: float) -> void:
 
 ## A stroke: two or three quick flickers, and its thunder a moment later (later the further off it fell).
 func _bolt() -> void:
-	var s: float = randf_range(0.6, 1.0)
+	# before the rain the storm is still far off: a weaker glow in the clouds, a long wait, a low rumble with no
+	# rain in it; once it rains, close strokes, bright, the clap soon after
+	var near := rain > 0.3
+	var s: float = randf_range(0.6, 1.0) if near else randf_range(0.3, 0.5)
 	flash_seq.append([t, s])
 	flash_seq.append([t + randf_range(0.09, 0.14), s * randf_range(0.5, 0.9)])
 	if randf() < 0.6:
 		flash_seq.append([t + randf_range(0.25, 0.4), s * randf_range(0.3, 0.7)])
-	var delay: float = randf_range(0.4, 2.8)
+	var delay: float = randf_range(0.4, 2.8) if near else randf_range(3.0, 5.5)
 	get_tree().create_timer(delay).timeout.connect(func():
-		thunder_snd.stream = thunders[randi() % thunders.size()]
-		thunder_snd.volume_db = -4.0 - delay * 2.5
+		thunder_snd.stream = thunders[randi() % thunders.size()] if near else thunders_far[randi() % thunders_far.size()]
+		thunder_snd.volume_db = (-4.0 - delay * 2.5) if near else -9.0
 		thunder_snd.play())
