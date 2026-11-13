@@ -455,81 +455,34 @@ func _draw_mission(vs: Vector2, s: float) -> void:
 	draw_string(font, clamped + Vector2(-14 * s, 24 * s), "%d m" % dist, HORIZONTAL_ALIGNMENT_LEFT, -1, int(12 * s), col)
 
 
-## What the player needs to feel hunted: who is starting to notice him and from where, who has seen him, and how
-## long is left before the one who saw him has called it in.
-##   - a ring round the middle of the screen: for every soldier growing suspicious, a segment toward him that fills
-##     as he becomes sure (white, yellow, red); solid red for one who is fighting
-##   - "?" over the head of one who is suspicious or searching, "!" over one who has seen him
-##   - while a soldier is calling the alarm in: a bar running down and the seconds left, and a red mark on him
-##   - once the alarm is raised: the seconds until more soldiers arrive
+## A soldier who has seen the player, or is growing suspicious of him, has a small red mark over his head: faint
+## while he only suspects, clear once he has seen. Nothing else on the screen (the ring, the countdown bar and the
+## reinforcements' count were more than was wanted).
 func _draw_danger(vs: Vector2, s: float) -> void:
-	var m = main.mission
 	if player.dead:
 		return
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return
-	var c := vs * 0.5
-	var now: float = Time.get_ticks_msec() * 0.001
-	var cam_f: Vector3 = -cam.global_transform.basis.z
-	var cam_r: Vector3 = cam.global_transform.basis.x
-	var ring: float = 128.0 * s
 	for e in main.enemies:
 		if e.dead:
 			continue
-		var fighting: bool = e.mode == "combat"
-		var looking: bool = e.mode == "search" or e.mode == "body"
+		var seen: bool = e.mode == "combat"
 		var al: float = clamp(float(e.alert), 0.0, 1.0)
-		if not fighting and al < 0.06 and not looking:
+		if not seen and al < 0.2:
 			continue
-		if not fighting and al < 0.06 and (e.global_position.distance_to(player.global_position) > 40.0):
-			continue          # (one searching far off: no mark, the screen would fill with them after an alarm)
-		var to: Vector3 = e.global_position - player.global_position
-		var dist: float = to.length()
-		if dist > 90.0:
+		var dist: float = e.global_position.distance_to(player.global_position)
+		if dist > 80.0:
 			continue
-		# the segment on the ring, toward him
-		if not player.scoped() and (fighting or al >= 0.06):
-			var ang: float = atan2(to.dot(cam_r), to.dot(cam_f)) - PI * 0.5
-			var half := 0.2
-			var col := Color(1, 0.16, 0.1, 0.9) if fighting else Color(1, 1, 1, 0.75).lerp(Color(1, 0.8, 0.15, 0.9), clamp(al * 2.0, 0.0, 1.0)).lerp(Color(1, 0.2, 0.1, 0.95), clamp(al * 2.0 - 1.0, 0.0, 1.0))
-			draw_arc(c, ring, ang - half, ang + half, 12, Color(0, 0, 0, 0.35), 9.0 * s)
-			var fill: float = 1.0 if fighting else al
-			if fighting or al > 0.75:
-				col.a *= 0.65 + 0.35 * sin(now * 14.0)
-			draw_arc(c, ring, ang - half * fill, ang + half * fill, 12, col, 6.0 * s)
-		# the mark over his head
-		var head: Vector3 = e.global_position + Vector3(0, 2.15, 0)
-		if not cam.is_position_behind(head):
-			var sp := cam.unproject_position(head)
-			if sp.x > 0 and sp.x < vs.x and sp.y > 0 and sp.y < vs.y:
-				var size: int = int(clamp(34.0 - dist * 0.35, 15.0, 34.0) * s)
-				var calling: bool = m != null and m.alarm_t >= 0.0 and not m.alarm and m.alarm_src == e
-				if calling:
-					var r: float = (11.0 + 3.0 * sin(now * 16.0)) * s
-					draw_colored_polygon(PackedVector2Array([sp + Vector2(0, -r), sp + Vector2(r, 0), sp + Vector2(0, r), sp + Vector2(-r, 0)]), Color(1, 0.12, 0.08, 0.95))
-				elif fighting:
-					draw_string(font, sp + Vector2(-size * 0.16, 0), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(1, 0.2, 0.12, 0.95))
-				else:
-					draw_string(font, sp + Vector2(-size * 0.25, 0), "?", HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(1, 0.85, 0.2, 0.55 + 0.4 * max(al, 0.3)))
-	if m == null:
-		return
-	# the call going out: a bar that runs down, the seconds, in the top middle
-	if m.alarm_t >= 0.0 and not m.alarm:
-		var k: float = clamp(m.alarm_t / m.ALARM_TIME, 0.0, 1.0)
-		var w: float = 300.0 * s
-		var top := Vector2(c.x - w * 0.5, 86.0 * s)
-		var pulse: float = 0.75 + 0.25 * sin(now * (10.0 + (1.0 - k) * 16.0))
-		draw_rect(Rect2(top - Vector2(8, 26) * s, Vector2(w + 16 * s, 50 * s)), Color(0.08, 0.0, 0.0, 0.6))
-		draw_string(font, top + Vector2(0, -8 * s), "GUARD CALLING IN  -  STOP HIM", HORIZONTAL_ALIGNMENT_CENTER, w, int(13 * s), Color(1, 0.35, 0.25, pulse))
-		draw_rect(Rect2(top, Vector2(w, 10 * s)), Color(0.25, 0.03, 0.02, 0.9))
-		draw_rect(Rect2(top, Vector2(w * k, 10 * s)), Color(1, 0.2, 0.12, pulse))
-		draw_string(font, top + Vector2(0, 14 * s) + Vector2(0, 10 * s), "%.1f" % m.alarm_t, HORIZONTAL_ALIGNMENT_CENTER, w, int(13 * s), Color(1, 0.9, 0.85))
-	elif m.alarm and m.reinf_t > 0.0:
-		var w2: float = 300.0 * s
-		var top2 := Vector2(c.x - w2 * 0.5, 86.0 * s)
-		draw_rect(Rect2(top2 - Vector2(8, 22) * s, Vector2(w2 + 16 * s, 30 * s)), Color(0.08, 0.0, 0.0, 0.6))
-		draw_string(font, top2 + Vector2(0, -2 * s), "MORE SOLDIERS IN  %d" % int(ceil(m.reinf_t)), HORIZONTAL_ALIGNMENT_CENTER, w2, int(14 * s), Color(1, 0.4, 0.3, 0.7 + 0.3 * sin(now * 9.0)))
+		var head: Vector3 = e.global_position + Vector3(0, 2.12, 0)
+		if cam.is_position_behind(head):
+			continue
+		var sp := cam.unproject_position(head)
+		if sp.x < 0 or sp.x > vs.x or sp.y < 0 or sp.y > vs.y:
+			continue
+		var r: float = clamp(7.0 - dist * 0.06, 3.5, 7.0) * s
+		var col := Color(1, 0.14, 0.1, 0.8) if seen else Color(1, 0.14, 0.1, 0.25 + 0.3 * al)
+		draw_colored_polygon(PackedVector2Array([sp + Vector2(0, -r), sp + Vector2(r, 0), sp + Vector2(0, r), sp + Vector2(-r, 0)]), col)
 
 
 # ---------------- menus ----------------

@@ -2569,7 +2569,7 @@ func _cover_step(dt: float) -> void:
 	cover_low = (ray.call(base + Vector3(0, 1.5, 0), base + Vector3(0, 1.5, 0) - n * 1.7) as Dictionary).is_empty()
 	var shooting := aiming or firing or throw_t >= 0.0
 	# he sits only if the player crouched; sitting behind something low he rises to shoot over it, then sits again
-	crouch = cover_sit and not (cover_low and shooting and cover_edge == 0)
+	crouch = cover_sit          # (as the player set it: he does not stand up of himself to shoot)
 	var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
 	var right := Vector3(cos(yaw), 0, -sin(yaw))
 	var want := fwd * move_in.y + right * move_in.x
@@ -2605,6 +2605,10 @@ func _cover_step(dt: float) -> void:
 		else:
 			cover_edge = -look if gap[-look] < 99.0 else 0
 		cover_reach = (float(gap[cover_edge]) + 0.55) if cover_edge != 0 else 0.0      # (well clear of the corner: the round must not catch it)
+	# kept simple, as asked: he does not step out along the wall to shoot. He stays where he is against it,
+	# turns to where the player aims, and fires from there.
+	cover_edge = 0
+	cover_reach = 0.0
 	var v_t := 0.0
 	if not shooting:
 		if cover_peek > 0.0:       # back in from the lean

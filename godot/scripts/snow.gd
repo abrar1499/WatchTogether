@@ -10,8 +10,8 @@ const FLAKE_SHADER := """
 shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled, world_vertex_coords, blend_mix;
 uniform vec3 box = vec3(22.0, 12.0, 22.0);
-uniform float speed = 1.3;
-uniform vec2 wind = vec2(0.5, 0.2);
+uniform float speed = 0.6;      // (a flake falls at about half a metre to a metre a second)
+uniform vec2 wind = vec2(0.22, 0.09);
 varying float vis;
 varying vec2 uv;
 
@@ -19,15 +19,17 @@ void vertex() {
 	vec4 r = INSTANCE_CUSTOM;
 	vec3 cam = (INV_VIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 	vec3 base = r.xyz * box;
-	float sp = speed * (0.7 + 0.6 * r.w);
+	// flakes of every size: most of them small, a few big ones (clumps), the big ones falling a little faster
+	float big = pow(fract(r.w * 9.1), 3.0);
+	float sp = speed * (0.75 + 0.45 * big + 0.25 * r.w);
 	// each flake drifts its own way as it falls
-	vec2 sway = vec2(sin(TIME * (0.7 + r.w) + r.x * 40.0), cos(TIME * (0.6 + r.y) + r.z * 40.0)) * 0.35;
+	vec2 sway = vec2(sin(TIME * (0.35 + 0.5 * r.w) + r.x * 40.0), cos(TIME * (0.3 + 0.5 * r.y) + r.z * 40.0)) * (0.22 + 0.2 * r.x);
 	vec3 w;
 	w.y = cam.y - box.y * 0.45 + mod(base.y - TIME * sp, box.y);
 	w.x = cam.x + mod(base.x + wind.x * TIME + sway.x - cam.x, box.x) - box.x * 0.5;
 	w.z = cam.z + mod(base.z + wind.y * TIME + sway.y - cam.z, box.z) - box.z * 0.5;
 	float dist = distance(cam, w);
-	float size = (0.012 + 0.014 * fract(r.w * 9.1)) + dist * 0.0009;
+	float size = (0.005 + 0.026 * big) + dist * 0.0007;
 	vec3 right = INV_VIEW_MATRIX[0].xyz;
 	vec3 up = INV_VIEW_MATRIX[1].xyz;
 	VERTEX = w + (right * VERTEX.x + up * VERTEX.y) * size * 2.0;
