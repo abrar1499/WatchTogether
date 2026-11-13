@@ -161,6 +161,7 @@ var cover_hit := {}
 var cover_cool := 0.0           # after leaving cover: no automatic cover for a moment
 var touch_t := 0.0              # how long he has been walking into a wall
 var end_t := 0.0                # how long the stick has pushed past the end of the wall
+var cover_face := 1.0            # against a tall wall: which end he faces (+1 / -1 along it)
 var cover_sit := false          # in cover he sits only if the player chose to (CROUCH); rises to shoot over low cover
 var cover_reach := 0.0          # how far he steps to clear the end of the wall
 var act_doing := ""
@@ -1764,8 +1765,18 @@ func _physics_process(dt: float) -> void:
 		vel = velocity
 		_step_up(target, dt)
 	speed = Vector2(vel.x, vel.z).length()
-	if cover and not (aiming or firing or t - last_shot < 0.6):
-		rotation.y = lerp_angle(rotation.y, atan2(-cover_n.x, -cover_n.z), min(1.0, dt * 12.0))    # back to the wall
+	if cover and not (aiming or firing or t - last_shot < 1.2):
+		# at rest in cover: behind something low he faces it (the enemy is over there, he rises to shoot over it);
+		# against a tall wall his shoulder is to it, facing the end he looks toward (where he leans out to shoot).
+		# Never the back to the wall: from there every burst over the top turned him right round and back again.
+		var rest := -cover_n
+		if not cover_low:
+			var tn := Vector3(cover_n.z, 0, -cover_n.x)
+			var lk: float = Vector3(-sin(yaw), 0, -cos(yaw)).dot(tn)
+			if abs(lk) > 0.3:
+				cover_face = 1.0 if lk > 0.0 else -1.0
+			rest = (tn * cover_face - cover_n * 0.3).normalized()
+		rotation.y = lerp_angle(rotation.y, atan2(-rest.x, -rest.z), min(1.0, dt * 6.0))
 	elif cover:
 		rotation.y = lerp_angle(rotation.y, yaw, min(1.0, dt * 16.0))
 	else:
@@ -2166,7 +2177,7 @@ func _animate(dt: float) -> void:
 	var w: Dictionary = weapons[wi]
 	var acting := throw_t >= 0.0 or hol_t >= 0.0 or holstered or knife_t >= 0.0
 	var doing := act_t >= 0.0
-	var aim_now := (aiming or firing or t - last_shot < (0.6 if cover else 2.5)) and not acting and climb_t < 0.0 and not doing
+	var aim_now := (aiming or firing or t - last_shot < (1.2 if cover else 2.5)) and not acting and climb_t < 0.0 and not doing
 	var moving := speed > 0.25
 	var ry := rotation.y
 	var local := Vector2(vel.dot(Vector3(cos(ry), 0, -sin(ry))), vel.dot(Vector3(-sin(ry), 0, -cos(ry))))  # x right, y forward
