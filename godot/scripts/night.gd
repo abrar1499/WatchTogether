@@ -255,7 +255,11 @@ func _rain_lights() -> void:
 		if is_instance_valid(l) and l.visible:
 			# the drops lit are those in his beam, out in front of him
 			var r: float = float(reach_of.get(l, 7.0))
-			cand.append([l.global_position + l.global_transform.basis.z * min(2.2, r * 0.5), min(3.0, r * 0.6 + 0.6)])
+			if r < 0.2:
+				continue
+			# (a ball of lit drops that ends short of the wall the beam stops at: none lit on the far side of it)
+			var rad: float = min(2.6, r * 0.42)
+			cand.append([l.global_position + l.global_transform.basis.z * rad, rad])
 	cand.sort_custom(func(a, b): return (a[0] as Vector3).distance_squared_to(cp) < (b[0] as Vector3).distance_squared_to(cp))
 	var arr := PackedVector4Array()
 	for i in 8:
@@ -465,7 +469,7 @@ uniform float strength = 1.0;
 void vertex() {
 	vec3 centre = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 	vec3 cam = (INV_VIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-	float grow = clamp(distance(centre, cam) * 0.045, 1.0, 3.5);
+	float grow = clamp(distance(centre, cam) * 0.04, 1.0, 2.6);
 	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0] * grow, INV_VIEW_MATRIX[1] * grow, INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
 }
 void fragment() {
@@ -516,7 +520,7 @@ func _lamp(parent: Node3D, beam: bool, glow_size := 0.32) -> Node3D:
 		var b := MeshInstance3D.new()
 		var cm := CylinderMesh.new()
 		cm.top_radius = 0.03
-		cm.bottom_radius = 1.5
+		cm.bottom_radius = 1.1
 		cm.height = 7.0
 		cm.radial_segments = 10
 		cm.rings = 1
@@ -540,12 +544,9 @@ func _lamp_all() -> void:
 	for e in main.enemies:
 		if lamped.has(e) or e.dead:
 			continue
-		var at := BoneAttachment3D.new()
-		at.bone_name = "mixamorigHead"
-		e.skel.add_child(at)
-		# on the forehead, looking where he looks and a little down
-		# (the bone carries the model's scale: the lamp keeps its own size and is placed from the bone each frame)
-		var l := _lamp(at, true, 0.42)
+		# a light on his rifle, under the muzzle: it shines where the barrel points (down at the ground with the
+		# rifle lowered, at what he aims at with it raised); placed from the muzzle each frame
+		var l := _lamp(e, true, 0.34)
 		l.top_level = true
 		lamped[e] = l
 
@@ -594,14 +595,14 @@ func _lamps(dt: float) -> void:
 		if e.dead:
 			l.visible = false
 			continue
-		# on his forehead, looking the way he faces and a little down (the head bone's own axes are not the same in
-		# every model)
-		var head: Vector3 = (l.get_parent() as Node3D).global_position
-		var f: Vector3 = -(e.global_transform.basis.z as Vector3)
-		f.y = 0.0
-		f = f.normalized()
-		var look := (f + Vector3(0, -0.17, 0)).normalized()
-		var lp: Vector3 = head + Vector3(0, 0.12, 0) + f * 0.12
+		var gun_on: bool = e.rig["guns"][e.gun].visible
+		l.visible = gun_on
+		if not gun_on:
+			reach_of[l] = 0.0
+			continue
+		var mz: Node3D = e.muzzle
+		var look: Vector3 = (mz.global_transform.basis.z as Vector3).normalized()
+		var lp: Vector3 = mz.global_position - look * 0.28 + Vector3(0, -0.035, 0)
 		l.global_transform = Transform3D(Basis.looking_at(-look), lp)
 		var d: float = e.global_position.distance_to(me)
 		# the light stops at the first wall: the beam no further, and (spot) nothing lit on the far side of it
@@ -623,7 +624,7 @@ func _lamps(dt: float) -> void:
 		if i < near.size():
 			var l: Node3D = near[i][1]
 			s.visible = true
-			s.spot_range = float(reach_of.get(l, 7.0)) + 0.6 if float(reach_of.get(l, 7.0)) < 6.9 else 17.0
+			s.spot_range = float(reach_of.get(l, 7.0)) + 0.12 if float(reach_of.get(l, 7.0)) < 6.9 else 17.0
 			# the light shines down its -z; the lamp looks along its +z
 			s.global_transform = l.global_transform.orthonormalized() * Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
 		else:
