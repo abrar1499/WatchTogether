@@ -17,12 +17,14 @@ const GRAVITY := 12.0
 # natural speed (m/s) of each clip, measured from its root motion
 # the ground speed each clip's feet really walk at (measured: the planted foot must not slide)
 const NAT := {"walk": 0.8, "walkBack": 0.95, "walkR": 1.75, "walkL": 1.78, "run": 2.45, "runBack": 1.8,
-	"runStrafeR": 2.2, "runStrafeL": 1.7, "crouchWalk2": 1.06, "crouchWalk": 0.95, "crouchBack": 1.17, "crouchRun": 1.3}
+	"runStrafeR": 2.2, "runStrafeL": 1.7, "crouchWalk2": 1.06, "crouchWalk": 0.95, "crouchBack": 1.17, "crouchRun": 1.3,
+	"stairsUp": 0.8, "stairsRun": 1.55}
 const STATES := {"idle": "idle", "aim": "aim", "kneel": "kneel", "kneel_aim": "crouchFire", "jump": "jump",
 	"walk": "walk", "walk_b": "walkBack", "walk_r": "walkR", "walk_l": "walkL",
 	"run": "run", "run_b": "runBack", "run_r": "runStrafeR", "run_l": "runStrafeL",
 	"c_walk": "crouchWalk", "c_back": "crouchBack", "c_run": "crouchWalk", "c_r": "crouchWalk", "c_l": "crouchWalk",
-	"dead": "dieFront", "kick": "kick", "prone": "proneFire", "crawl": "proneFwd"}
+	"dead": "dieFront", "kick": "kick", "prone": "proneFire", "crawl": "proneFwd",
+	"stairs": "stairsUp", "stairs_run": "stairsRun"}
 # (the "crouchRun" clip has its hips 1.8 m behind the body, which put the soldier behind the camera: crouch-running
 # plays the crouch walk faster instead)
 const UPPER := ["mixamorigSpine", "mixamorigSpine1", "mixamorigSpine2", "mixamorigNeck", "mixamorigHead",
@@ -180,7 +182,12 @@ var nade_hand: Node3D               # the grenade in the right hand until it is 
 var knife_hand: Node3D              # the combat knife, in the hand while it is used
 var knife_t := -1.0                 # a knife stroke: time into it
 var knife_hit := false
-const KNIFE_FROM := 0.85            # the grenade clip's overarm swing, used for a downward stab
+const KNIFE_FROM := 0.264           # the thrust clip ("stab2"): where it starts, so that the point is furthest out
+const KNIFE_RATE := 1.4             # (0.60 s into the clip) at the moment the stroke lands (0.24 s into the stroke)
+const PRONE_NADE_RELEASE := 2.0     # the throw lying down ("proneNade"): when the grenade leaves the hand
+var nade_node: AnimationNodeAnimation    # the clip the "grenade" slot plays: a throw, a throw lying down, a knife thrust
+var stairs_t := 0.0                 # going up steps or a ramp (a short while after the last climbing moment)
+var last_y := 0.0
 var holstered := false              # the gun is on the back (the pistol in its thigh holster)
 var hol_t := -1.0                   # putting the gun away (hol_dir 1) or drawing it (-1): time into it
 var hol_dir := 0
@@ -240,6 +247,12 @@ func _build_model() -> void:
 	sc.rotation.y = PI
 	_skin(sc, Color(1, 1, 1))
 	head_bone = skel.find_bone("mixamorigHead")
+	# clips added later (stairs, a knife thrust, a throw lying down): see tools/charbuild/anim_take.gd
+	var extra: AnimationLibrary = load("res://assets/anims/extra.res")
+	var own: AnimationLibrary = ap.get_animation_library("")
+	for n in extra.get_animation_list():
+		if not own.has_animation(n):
+			own.add_animation(n, extra.get_animation(n))
 	_cut_clip("knockout", "knockback", 2.05, 0.25)    # about 1 m back
 	_cut_clip("knockout", "fallback", 2.05, 0.12)     # half a metre: shot from further off
 	_cut_clip("knockout", "blastback", 2.05, 0.55)    # thrown by an explosion
@@ -1041,8 +1054,8 @@ func _calibrate_and_attach() -> void:
 	att.add_child(nade_hand)
 	nade_hand.visible = false
 	knife_hand = _knife_mesh()
-	# held point-down out of the little-finger side of the fist (along the line a pistol grip would take)
-	knife_hand.transform = Transform3D(Basis(holder_xf["pistol"].basis.orthonormalized()) * Basis.looking_at(-GRIP_DOWN.normalized(), Vector3(0, 0, 1)), holder_xf["pistol"] * (GRIP_DOWN.normalized() * 0.05))
+	# held for a thrust: the blade out of the thumb side of the fist (along the line a pistol grip would take)
+	knife_hand.transform = Transform3D(Basis(holder_xf["pistol"].basis.orthonormalized()) * Basis.looking_at(GRIP_DOWN.normalized(), Vector3(0, 0, 1)), holder_xf["pistol"] * (GRIP_DOWN.normalized() * 0.05))
 	knife_hand.scale = Vector3.ONE / skel.global_transform.basis.get_scale().x
 	att.add_child(knife_hand)
 	knife_hand.visible = false
@@ -1294,6 +1307,8 @@ func _build_tree() -> void:
 		var an := AnimationNodeAnimation.new()
 		an.animation = c[1]
 		bt.add_node(c[0] + "_a", an)
+		if c[0] == "nade":
+			nade_node = an
 		var sk_ := AnimationNodeTimeSeek.new()
 		bt.add_node(c[0] + "_seek", sk_)
 		bt.connect_node(c[0] + "_seek", 0, c[0] + "_a")
@@ -1514,29 +1529,15 @@ func busy() -> bool:
 	return dead or climb_t >= 0.0 or throw_t >= 0.0 or hol_t >= 0.0 or act_t >= 0.0 or knife_t >= 0.0
 
 
-## A combat knife: steel blade, black grip, guard (metres; the blade along +z of the hand's grip).
+## The combat knife (assets/guns/knife.glb: metres, the blade along +z, the grip at the origin).
 func _knife_mesh() -> Node3D:
-	var root := Node3D.new()
-	var steel := StandardMaterial3D.new()
-	steel.albedo_color = Color(0.7, 0.7, 0.68)
-	steel.metallic = 0.9
-	steel.roughness = 0.25
-	var black := StandardMaterial3D.new()
-	black.albedo_color = Color(0.06, 0.06, 0.06)
-	black.roughness = 0.7
-	for pt in [[Vector3(0, 0, 0.11), Vector3(0.004, 0.028, 0.17), steel], [Vector3(0, 0.006, 0.2), Vector3(0.004, 0.016, 0.02), steel],
-			[Vector3(0, 0, 0.0), Vector3(0.024, 0.03, 0.12), black], [Vector3(0, 0, 0.065), Vector3(0.012, 0.06, 0.01), steel]]:
-		var mi := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = pt[1]
-		mi.mesh = bm
-		mi.material_override = pt[2]
-		mi.position = pt[0]
-		root.add_child(mi)
+	var root: Node3D = load("res://assets/guns/knife.glb").instantiate()
+	for m in root.find_children("*", "MeshInstance3D", true, false):
+		(m as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return root
 
 
-## KNIFE: an overarm stab at whoever is within reach in front. A soldier who has not seen it coming (on guard,
+## KNIFE: a thrust at whoever is within reach in front. A soldier who has not seen it coming (on guard,
 ## searching, or turned away) dies silently; one in a fight facing the player takes a deep wound.
 func knife() -> void:
 	if busy():
@@ -2245,6 +2246,13 @@ func _animate(dt: float) -> void:
 		var fwd_axis := dir == "F" or dir == "B"
 		var use_f = abs(local.y) >= abs(local.x) * 0.75 if fwd_axis else abs(local.y) > abs(local.x) * 1.35
 		dir = (("F" if local.y >= 0 else "B") if use_f else ("R" if local.x >= 0 else "L"))
+	# on steps or a ramp, going up: seen from the floor's slope and the body really rising
+	var rising: float = (global_position.y - last_y) / max(dt, 0.001)
+	last_y = global_position.y
+	if is_on_floor() and get_floor_normal().y < 0.95 and rising > 0.25:
+		stairs_t = 0.3
+	else:
+		stairs_t = max(0.0, stairs_t - dt)
 	var st := "idle"
 	var nat := 0.0
 	if dead:
@@ -2265,6 +2273,8 @@ func _animate(dt: float) -> void:
 		var run := (speed > (1.25 if was_run else 1.4)) if crouch else (speed > (1.7 if was_run else 1.95))
 		if crouch:
 			st = {"F": "c_run" if run else "c_walk", "B": "c_back", "R": "c_r", "L": "c_l"}[dir]
+		elif dir == "F" and stairs_t > 0.0:
+			st = "stairs_run" if run else "stairs"       # climbing: the knees come up to the steps
 		else:
 			st = {"F": "walk", "B": "walk_b", "R": "walk_r", "L": "walk_l"}[dir]
 		nat = NAT.get(STATES[st], 1.0)
@@ -2312,11 +2322,17 @@ func _animate(dt: float) -> void:
 	tree.set("parameters/pick/blend_amount", rl_w)
 	tree.set("parameters/act/blend_amount", act_w)
 	if knife_t >= 0.0:
+		if nade_node.animation != &"stab2":
+			nade_node.animation = &"stab2"
 		tree.set("parameters/acts/blend_amount", -1.0)
-		tree.set("parameters/nade_seek/seek_request", KNIFE_FROM + min(knife_t, 0.42) * 1.2)
+		tree.set("parameters/nade_seek/seek_request", KNIFE_FROM + knife_t * KNIFE_RATE)
 	elif throw_t >= 0.0:
+		var want_clip: StringName = &"proneNade" if prone else &"grenade"
+		if nade_node.animation != want_clip:
+			nade_node.animation = want_clip
 		tree.set("parameters/acts/blend_amount", -1.0)
-		tree.set("parameters/nade_seek/seek_request", NADE_FROM + throw_t * 1.5)
+		var ct := NADE_FROM + throw_t * 1.5
+		tree.set("parameters/nade_seek/seek_request", clamp(PRONE_NADE_RELEASE + (ct - NADE_RELEASE), 0.6, 3.4) if prone else ct)
 	elif hol_t >= 0.0 and hol_dir == -1:
 		tree.set("parameters/acts/blend_amount", 1.0)
 		tree.set("parameters/draw_seek/seek_request", min(hol_t * DRAW_SPEED, 1.95))
