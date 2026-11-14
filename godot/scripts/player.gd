@@ -2570,6 +2570,7 @@ func hit(dmg: float, from: Vector3, part := "") -> void:
 
 var view_before := 0
 var my_rag: PhysicalBoneSimulator3D = null
+const RAGDOLL := false            # (switched off at the player's word: the death clips play instead)
 var last_hit_from := Vector3.ZERO
 var layer_alive := 1
 func _die() -> void:
@@ -2590,7 +2591,8 @@ func _die() -> void:
 	away.y = 0.0
 	if last_hit_from == Vector3.ZERO or away.length() < 0.01:
 		away = -Vector3(-sin(yaw), 0, -cos(yaw))
-	my_rag = ragdoll(skel, guns[weapons[wi]["gun"]], away.normalized() * 40.0, global_position + Vector3(0, 1.2, 0))
+	if RAGDOLL:
+		my_rag = ragdoll(skel, guns[weapons[wi]["gun"]], away.normalized() * 40.0, global_position + Vector3(0, 1.2, 0))
 	if fx.get_parent().has_method("on_player_dead"):
 		fx.get_parent().on_player_dead()
 

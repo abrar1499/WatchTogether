@@ -240,6 +240,18 @@ func _keep_above_ground() -> void:
 func _physics_process(dt: float) -> void:
 	if dead:
 		dead_t += dt
+		if rag == null and not player.RAGDOLL:
+			# (no ragdoll: the death clip plays out, the body kept above the ground)
+			if dead_t < 6.0:
+				tree.advance(dt)
+				if not taken:
+					player.pose_rig_hands(skel, gun, rig["data"])
+				hips_base = skel.get_bone_pose_rotation(hips_b)
+			if abs(roll) > 0.001:
+				var axis: Vector3 = (skel.get_bone_global_pose(skel.find_bone("mixamorigSpine2")).origin - skel.get_bone_global_pose(hips_b).origin).normalized()
+				skel.set_bone_pose_rotation(hips_b, Quaternion(axis, roll) * hips_base)
+			if dead_t < 9.0:
+				_keep_above_ground()
 		for b in severed:
 			skel.set_bone_pose_scale(b, Vector3.ONE * 0.001)
 		if rag != null:
@@ -1014,12 +1026,17 @@ func _die(headshot: bool, blasted := false, push := Vector3.ZERO, force := 0.0, 
 		nade_t = -1.0
 		rig["guns"][gun].visible = true
 	rig["ik"].interpolation = 0.0
-	rig["ik"].stop()
-	# he falls as a body with weight (see player.ragdoll): let go where he was hit, thrown the way the round went
-	var throw_: Vector3 = flat * clamp(force, 1.0, 2.5) * 40.0
-	if blasted:
-		throw_ = flat * 120.0 + Vector3(0, 40.0, 0)     # (thrown, not flung through the air)
-	rag = player.ragdoll(skel, rig["guns"][gun], throw_, hit_at if hit_at != Vector3.ZERO else global_position + Vector3(0, 1.2, 0))
+	if player.RAGDOLL:
+		rig["ik"].stop()
+		# he falls as a body with weight (see player.ragdoll): let go where he was hit, thrown the way the round went
+		var throw_: Vector3 = flat * clamp(force, 1.0, 2.5) * 40.0
+		if blasted:
+			throw_ = flat * 120.0 + Vector3(0, 40.0, 0)     # (thrown, not flung through the air)
+		rag = player.ragdoll(skel, rig["guns"][gun], throw_, hit_at if hit_at != Vector3.ZERO else global_position + Vector3(0, 1.2, 0))
+	else:
+		# (the ragdoll is switched off: he falls as the death clip has it)
+		playback.travel(clip)
+		tree.set("parameters/speed/scale", 1.15 if clip == "dieKnock" else 1.0)
 	main.snd.death(global_position, "blast" if blasted else ("head" if (headshot or silent_death) else "body"))
 	main.on_enemy_killed(self, headshot)
 	main.comrade_down(self)
