@@ -2375,6 +2375,8 @@ var aim_k := 0.0
 ## crosshair line whatever the legs are doing (the strafe and run clips twist and tip the hips, which used to
 ## carry the rifle off to the side and down).
 const STRAIGHTEN := 0.32
+const KNEEL_TUCK := 0.6            # how far the kneeling man's right elbow is brought down (radians)
+var tuck_k := 0.0
 
 
 func _bend_spine(dt: float) -> void:
@@ -2394,6 +2396,14 @@ func _bend_spine(dt: float) -> void:
 	if abs(lean) > 0.001 and not dead:
 		turn_chest(skel, Quaternion((sk_inv * global_transform.basis.x).normalized(), lean))
 	aim_chest(skel, aim_dir_now(), aim_k * (1.0 - rl_w) * (1.0 - act_w) * can_turn)
+	# kneeling at rest the clip holds his right elbow up level with his shoulder: brought down to his side
+	var want_tuck := 1.0 if (state == "kneel" and crouch and act_t < 0.0 and climb_t < 0.0 and not dead and not holstered and wi != 0) else 0.0
+	tuck_k = lerp(tuck_k, want_tuck, min(1.0, dt * 8.0))
+	if tuck_k > 0.01:
+		var fwd_s: Vector3 = (sk_inv * global_transform.basis.z).normalized()
+		var b := skel.find_bone("mixamorigRightArm")
+		var pg: Basis = skel.get_bone_global_pose(skel.get_bone_parent(b)).basis.orthonormalized()
+		skel.set_bone_pose_rotation(b, Quaternion((pg.inverse() * fwd_s).normalized(), KNEEL_TUCK * tuck_k) * skel.get_bone_pose_rotation(b))
 
 
 func aim_dir_now() -> Vector3:
