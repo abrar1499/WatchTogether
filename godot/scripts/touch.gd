@@ -282,10 +282,20 @@ func _draw() -> void:
 		if player.on_target != null:
 			g = 5.0 * s           # on a soldier the crosshair closes up: no spread
 		var col := Color(1, 0.12, 0.08, 0.95) if player.on_target != null else Color(1, 1, 1, 0.85)
+		if player.shot_blocked:
+			col = Color(0.7, 0.7, 0.7, 0.4)
 		draw_line(c + Vector2(-g - 9 * s, 0), c + Vector2(-g, 0), col, 2.0 * s)
 		draw_line(c + Vector2(g, 0), c + Vector2(g + 9 * s, 0), col, 2.0 * s)
 		draw_line(c + Vector2(0, -g - 9 * s), c + Vector2(0, -g), col, 2.0 * s)
 		draw_line(c + Vector2(0, g), c + Vector2(0, g + 9 * s), col, 2.0 * s)
+	# the gun's own line blocked close by (a wall he is behind): a red cross where the round would go
+	if player.shot_blocked and not player.scoped() and not player.holstered and not player.dead:
+		var cam3 := get_viewport().get_camera_3d()
+		if cam3 and not cam3.is_position_behind(player.block_at):
+			var bp: Vector2 = cam3.unproject_position(player.block_at) * (vs / get_viewport().get_visible_rect().size)
+			var k := 7.0 * s
+			draw_line(bp + Vector2(-k, -k), bp + Vector2(k, k), Color(1, 0.15, 0.1, 0.95), 2.5 * s)
+			draw_line(bp + Vector2(-k, k), bp + Vector2(k, -k), Color(1, 0.15, 0.1, 0.95), 2.5 * s)
 	# hit marker: four short strokes round the crosshair, red on a kill
 	if mark_t > 0.0:
 		var mc := Color(1, 0.2, 0.15, 0.95) if mark_kill else Color(1, 1, 1, 0.9)

@@ -1429,9 +1429,49 @@ func _aim_assist(dt: float) -> void:
 var on_target: Node = null
 
 
+## Where the gun is when it is aimed along the crosshair: at his right shoulder, a little ahead (inside his own
+## round shape, so never inside a wall).
+func gun_origin() -> Vector3:
+	var h := 0.3 if prone else (0.85 if crouch else 1.35)
+	return global_position + Vector3(0, h, 0) + Vector3(cos(yaw), 0, -sin(yaw)) * 0.15 + Vector3(-sin(yaw), 0, -cos(yaw)) * 0.2
+
+
+## Something close in front of the gun itself that the eye (behind and above him) sees past: a wall he stands
+## behind, a corner, a rail. A round fired then goes into it, and the crosshair shows a red cross on it.
+var shot_blocked := false
+var block_at := Vector3.ZERO
+const BLOCK_NEAR := 3.5          # only what is this near the gun counts (further off, eye and gun see the same)
+
+
+func _check_block() -> void:
+	shot_blocked = false
+	if dead or holstered or view == 2:
+		return
+	var space := get_world_3d().direct_space_state
+	var from: Vector3 = cam.global_position
+	var d: Vector3 = -cam.global_transform.basis.z
+	var q := PhysicsRayQueryParameters3D.create(from, from + d * 150.0)
+	q.exclude = [get_rid()]
+	q.collision_mask = 1
+	var h := space.intersect_ray(q)
+	var aim: Vector3 = h.position if not h.is_empty() else from + d * 150.0
+	var go := gun_origin()
+	var len_ := go.distance_to(aim)
+	if len_ < 0.8:
+		return
+	var q2 := PhysicsRayQueryParameters3D.create(go, go + (aim - go) / len_ * min(len_ - 0.5, BLOCK_NEAR))
+	q2.exclude = [get_rid()]
+	q2.collision_mask = 1
+	var h2 := space.intersect_ray(q2)
+	if not h2.is_empty() and str(h2.collider.get_meta("pierce", "")) == "":
+		shot_blocked = true
+		block_at = h2.position
+
+
 func _check_target() -> void:
 	on_target = null
-	if dead or holstered:
+	_check_block()
+	if dead or holstered or shot_blocked:
 		return
 	var from: Vector3 = cam.global_position
 	var d: Vector3 = -cam.global_transform.basis.z
@@ -2187,18 +2227,14 @@ func _fire() -> void:
 		var d := (d0 + Vector3(randf_range(-sp, sp), randf_range(-sp, sp), randf_range(-sp, sp))).normalized()
 		if cone > 0.0:
 			d = (d + Vector3(randf_range(-cone, cone), randf_range(-cone, cone) * 0.8, randf_range(-cone, cone))).normalized()
-		# the round leaves the gun, not the eye: find what the crosshair is on, then fire at it from his chest
-		# (so a gun pressed against a wall or a rail puts its round into the wall, not where the eye can see past it)
-		var q := PhysicsRayQueryParameters3D.create(from, from + d * 400.0)
-		q.exclude = [get_rid()]
-		q.collision_mask = 1 | 8
-		var h := get_world_3d().direct_space_state.intersect_ray(q)
-		var aim_at: Vector3 = h.position if not h.is_empty() else from + d * 400.0
-		var chest := global_position + Vector3(0, 0.75 if crouch else (0.3 if prone else 1.3), 0)
-		var shot_from := chest
-		if (aim_at - chest).length() < 0.6:
-			shot_from = from
-		var end: Vector3 = world.shoot_ray(shot_from, (aim_at - shot_from).normalized(), float(w["dmg"]), self, float(w.get("power", 1.0)))
+		# the round goes where the crosshair is; only if something stands right in front of the gun itself
+		# (a wall he is behind, a rail) does it go into that instead: the crosshair shows a red cross there
+		var end: Vector3
+		if shot_blocked and view != 2:
+			var go := gun_origin()
+			end = world.shoot_ray(go, (from + d * 60.0 - go).normalized(), float(w["dmg"]), self, float(w.get("power", 1.0)))
+		else:
+			end = world.shoot_ray(from, d, float(w["dmg"]), self, float(w.get("power", 1.0)))
 		if n == 1:
 			if int(w["mag"]) % 2 == 0 or not w["auto"]:
 				fx.tracer(mp, end, true)
@@ -2342,10 +2378,14 @@ const STRAIGHTEN := 0.32
 
 
 func _bend_spine(dt: float) -> void:
-	var aim_now: bool = (aiming or firing or t - last_shot < 2.5) and not dead and not holstered and throw_t < 0.0 and hol_t < 0.0 and climb_t < 0.0 and act_t < 0.0
+	var aim_now: bool = (aiming or firing or t - last_shot < (0.6 if cover else 2.5)) and not dead and not holstered and throw_t < 0.0 and hol_t < 0.0 and climb_t < 0.0 and act_t < 0.0
 	aim_k = lerp(aim_k, 1.0 if aim_now else 0.0, min(1.0, dt * 10.0))
+	# (the chest turns the rifle onto the crosshair only while his body faces about that way: with his back to a
+	# wall in cover and the eye looking elsewhere, it would wring him right round)
+	var off_way: float = abs(angle_difference(rotation.y, yaw))
+	var can_turn: float = 1.0 - smoothstep(0.6, 1.2, off_way)
 	var sk_inv: Basis = skel.global_transform.basis.orthonormalized().inverse()
-	var lean: float = clamp(pitch, -0.9, 0.9) * 0.35 * (1.0 - aim_k)
+	var lean: float = clamp(pitch, -0.9, 0.9) * 0.35 * (1.0 - aim_k) * can_turn
 	# walking fast and running: the run clips lean the chest well forward; held up straighter (the rifle is up)
 	if prone:
 		lean = 0.0
@@ -2353,7 +2393,7 @@ func _bend_spine(dt: float) -> void:
 		lean += STRAIGHTEN * clamp((speed - 1.2) / 1.6, 0.0, 1.0) * (1.0 - aim_k * 0.5)
 	if abs(lean) > 0.001 and not dead:
 		turn_chest(skel, Quaternion((sk_inv * global_transform.basis.x).normalized(), lean))
-	aim_chest(skel, aim_dir_now(), aim_k * (1.0 - rl_w) * (1.0 - act_w))
+	aim_chest(skel, aim_dir_now(), aim_k * (1.0 - rl_w) * (1.0 - act_w) * can_turn)
 
 
 func aim_dir_now() -> Vector3:
@@ -2625,11 +2665,13 @@ func _cover_step(dt: float) -> void:
 			for sg in [-1, 1]:
 				gap[sg] = 99.0
 				for st in [0.25, 0.5, 0.75, 1.0]:
-					var q2: Vector3 = base + tan * (sg * st) + Vector3(0, 0.55, 0)
+					# (the wall's end at the height of his gun: a wall that steps down to a low one ends there
+					# for a man standing to shoot)
+					var q2: Vector3 = base + tan * (sg * st) + Vector3(0, 1.35, 0)
 					if (ray.call(q2, q2 - n * 1.7) as Dictionary).is_empty():
 						gap[sg] = st
 						break
-					if not (ray.call(base + Vector3(0, 0.55, 0), q2 + n * 0.2) as Dictionary).is_empty():
+					if not (ray.call(base + Vector3(0, 1.35, 0), q2 + n * 0.2) as Dictionary).is_empty():
 						break          # (something in the way along the wall)
 			var look := 1 if fwd.dot(tan) > 0.0 else -1
 			if gap[look] < 99.0:
@@ -2639,7 +2681,7 @@ func _cover_step(dt: float) -> void:
 			else:
 				cover_edge = 0
 			peek_reach = (float(gap[cover_edge]) + 0.4) if cover_edge != 0 else 0.0
-		if cover_edge != 0 and cover_peek < peek_reach:
+		if cover_edge != 0 and (cover_peek < peek_reach or (shot_blocked and cover_peek < peek_reach + 0.6)):
 			v_t = float(cover_edge) * 3.5      # out past the end of the wall to shoot
 			cover_peek += 3.5 * dt
 	var v_n := 0.0
