@@ -2668,44 +2668,28 @@ class FX extends Node3D:
 					Color(0.16, 0.15, 0.14, 0.6), Color(0.38, 0.37, 0.35, 0.0))
 
 	## A frag grenade: dark olive egg, fuse on top, the spoon down one side (metres).
+	## A hand grenade (assets/guns/grenade.glb), upright, 11 cm tall, its middle at the origin.
 	func grenade_mesh() -> Node3D:
-		if grenade_m == null:
-			grenade_m = StandardMaterial3D.new()
-			grenade_m.albedo_color = Color(0.2, 0.23, 0.15)
-			grenade_m.roughness = 0.7
-			grenade_m.metallic = 0.2
-			steel_m = StandardMaterial3D.new()
-			steel_m.albedo_color = Color(0.5, 0.5, 0.48)
-			steel_m.metallic = 0.6
-			steel_m.roughness = 0.45
 		var root := Node3D.new()
-		var body := MeshInstance3D.new()
-		var sm := SphereMesh.new()
-		sm.radius = 0.032
-		sm.height = 0.074
-		sm.radial_segments = 14
-		sm.rings = 8
-		body.mesh = sm
-		body.material_override = grenade_m
-		root.add_child(body)
-		var fuse := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.009
-		cm.bottom_radius = 0.011
-		cm.height = 0.026
-		cm.radial_segments = 8
-		fuse.mesh = cm
-		fuse.material_override = steel_m
-		fuse.position = Vector3(0, 0.044, 0)
-		root.add_child(fuse)
-		var spoon := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = Vector3(0.012, 0.07, 0.006)
-		spoon.mesh = bm
-		spoon.material_override = steel_m
-		spoon.position = Vector3(0, 0.022, 0.03)
-		spoon.rotation.x = -0.15
-		root.add_child(spoon)
+		var inner: Node3D = load("res://assets/guns/grenade.glb").instantiate()
+		root.add_child(inner)
+		# its size as modelled: the boxes of its parts, each carried up through its parents to the model's top
+		var box := AABB()
+		var first := true
+		for m in inner.find_children("*", "MeshInstance3D", true, false):
+			var mi := m as MeshInstance3D
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var xf := mi.transform
+			var up := mi.get_parent()
+			while up != root and up is Node3D:
+				xf = (up as Node3D).transform * xf
+				up = up.get_parent()
+			var b: AABB = xf * mi.get_aabb()
+			box = b if first else box.merge(b)
+			first = false
+		var k: float = 0.11 / max(box.size.y, 0.0001)
+		inner.scale = Vector3.ONE * k
+		inner.position = -box.get_center() * k
 		return root
 
 	var grenade_m: StandardMaterial3D
