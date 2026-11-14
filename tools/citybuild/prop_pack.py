@@ -134,6 +134,8 @@ for mi, d in per.items():
             res = first[dst[:n]].astype(np.uint32) if n >= 3 else idx
         else:
             res = dst[:n].astype(np.uint32)
+    if len(res) < 3:
+        continue          # (a part so small that nothing of it is left)
     used, new = np.unique(res, return_inverse=True)
     tout += len(res) // 3
     src_m = g["materials"][mi]

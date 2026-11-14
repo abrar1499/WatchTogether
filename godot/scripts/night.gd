@@ -531,6 +531,7 @@ func _tower_lamps() -> void:
 		o.omni_attenuation = 1.2
 		o.shadow_enabled = false
 		holder.add_child(o)
+		main.lamp_can_break(at, [holder], 0.5)
 
 
 func _process(dt: float) -> void:

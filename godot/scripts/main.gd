@@ -802,8 +802,61 @@ func _restore_breakables() -> void:
 ## One round from `from` along `dir`: stops in the first solid thing, but goes on through wood, container sheet
 ## and drums with less force each time; hurts what it hits. Enemy rounds pass through other enemies.
 ## Returns where it ended (for the tracer).
+## Lamps that a round or a blast puts out: [the node it sits on (or null), its place, how near a round must pass,
+## the things that go dark with it, the size of the dead fitting left in its place (zero: none), that fitting's turn]
+var lamps_live := []
+var lamp_dead_mat: StandardMaterial3D
+
+
+func lamp_can_break(at: Vector3, parts: Array, near := 0.45, cover := Vector3.ZERO, yaw := 0.0, on: Node3D = null) -> void:
+	lamps_live.append([on, at, near, parts, cover, yaw])
+
+
+func _lamp_break(i: int, dir: Vector3) -> void:
+	var L: Array = lamps_live[i]
+	lamps_live.remove_at(i)
+	var at: Vector3 = (L[0] as Node3D).global_position if L[0] != null and is_instance_valid(L[0]) else L[1]
+	for n in L[3]:
+		if is_instance_valid(n):
+			n.visible = false
+	if L[4] != Vector3.ZERO:
+		# what is left: the fitting, dark
+		if lamp_dead_mat == null:
+			lamp_dead_mat = StandardMaterial3D.new()
+			lamp_dead_mat.albedo_color = Color(0.03, 0.03, 0.035)
+			lamp_dead_mat.roughness = 0.6
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = L[4]
+		mi.mesh = bm
+		mi.material_override = lamp_dead_mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+		mi.global_position = at
+		mi.rotation.y = L[5]
+	fx.chips(at, -dir, "spark", 10, 5.0)
+	fx.chips(at, Vector3.DOWN, "metal", 6, 2.0)
+
+
+## A round's flight from `from` to `end`: any lamp it passed close enough to is put out.
+func _lamps_shot(from: Vector3, end: Vector3) -> void:
+	var d := end - from
+	var len_ := d.length()
+	if len_ < 0.01:
+		return
+	d /= len_
+	for i in range(lamps_live.size() - 1, -1, -1):
+		var L: Array = lamps_live[i]
+		var at: Vector3 = (L[0] as Node3D).global_position if L[0] != null and is_instance_valid(L[0]) else L[1]
+		var t_: float = clamp((at - from).dot(d), 0.0, len_)
+		if (from + d * t_).distance_to(at) < L[2]:
+			_lamp_break(i, d)
+
+
 func shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node, power := 1.0) -> Vector3:
 	var end := _shoot_ray(from, dir, dmg, shooter, power)
+	if not lamps_live.is_empty():
+		_lamps_shot(from, end)
 	if shooter != player and not player.dead:
 		# a round that went past close to the player's head cracks by
 		var head: Vector3 = player.global_position + Vector3(0, 1.5, 0)
@@ -1088,6 +1141,11 @@ func explode_at(pos: Vector3, radius := 7.0, e_dmg := 260.0, p_dmg := 120.0, ign
 		scorches.append(fx.scorch(Vector3(pos.x, 0.02, pos.z)))
 	snd.explosion(pos)
 	noise(pos, 35.0)
+	for i in range(lamps_live.size() - 1, -1, -1):
+		var L: Array = lamps_live[i]
+		var at: Vector3 = (L[0] as Node3D).global_position if L[0] != null and is_instance_valid(L[0]) else L[1]
+		if at.distance_to(pos) < radius * 0.8:
+			_lamp_break(i, (at - pos).normalized())
 	var space := get_world_3d().direct_space_state
 	var in_open := func(target: Vector3, rid: RID) -> bool:
 		var q := PhysicsRayQueryParameters3D.create(pos, target)

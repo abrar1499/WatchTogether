@@ -38,6 +38,7 @@ var power_cut := false
 ## Build mission `num` into main; returns where the player starts.
 func build(num: int) -> Vector3:
 	n = num
+	main.lamps_live.clear()
 	match num:
 		1:
 			return await _m1()
@@ -625,6 +626,7 @@ func _m1() -> Vector3:
 	var hut_c := Vector3(8, 0, -12)
 	_hut(hut_c, 6.0, 5.0, 1.2, "x")
 	_car("land_rover_olive", hut_c + Vector3(6.2, 0, 1.5), 0.25)       # the commander's Land Rover by his hut
+	_car("ural_truck", Vector3(-22.0, 0, -6.0), PI * 0.5)               # the militia's lorry, inside the west gate
 	_block(hut_c + Vector3(-1.4, 0.4, -1.2), Vector3(1.6, 0.8, 0.8), "wood", "wood")
 	_block(hut_c + Vector3(-2.4, 0.35, -1.9), Vector3(0.5, 0.7, 0.5), "steel", "metal")
 	_block(hut_c + Vector3(2.2, 0.5, -1.8), Vector3(1.0, 1.0, 0.6), "green", "metal")
@@ -702,6 +704,7 @@ func _searchlight(top: Vector3, yaw: float, guard: int) -> void:
 	main.add_child(sl)
 	sl.global_position = top + Vector3(0, 2.0, 0)
 	lights.append({"n": sl, "head": head, "yaw": yaw, "ph": randf() * TAU, "guard": guard})
+	main.lamp_can_break(top + Vector3(0, 2.05, 0), [sl], 0.5)
 
 
 ## A lamp on a pole: a warm pool of light.
@@ -722,6 +725,7 @@ func _lamp(p: Vector3) -> void:
 	l.omni_attenuation = 1.4
 	main.add_child(l)
 	l.global_position = p + Vector3(0, 3.7, 0.3)
+	main.lamp_can_break(p + Vector3(0, 3.9, 0.3), [l, glow], 0.45)
 
 
 ## Sweep the searchlights; a lit player is seen by that tower's man (he looks, then he sees).
@@ -739,7 +743,7 @@ func _sweep(dt: float) -> void:
 			yaw = lerp_angle(sl.rotation.y, atan2(-to.x, -to.z), min(1.0, dt * 3.0))    # on the player
 		sl.rotation = Vector3(-0.19, yaw, 0)
 		L["head"].rotation.y = yaw
-		if not alive or pl.dead:
+		if not alive or pl.dead or not sl.visible:      # (a light that has been shot out finds nobody)
 			continue
 		var d: Vector3 = pl.global_position + Vector3(0, 1.0, 0) - sl.global_position
 		var fwd: Vector3 = -sl.global_transform.basis.z
@@ -827,14 +831,19 @@ func _car(kind: String, p: Vector3, yaw: float) -> void:
 		path = "res://assets/city/props/land_rover/%s_game.gltf" % kind
 		kind = "land_rover"
 		p.y -= 0.08
+	if kind == "ural_truck":
+		# the army lorry (zhe_kan, CC-BY 4.0), packed light for phones
+		path = "res://assets/city/props/ural_truck/ural_truck_game.gltf"
 	if kind.begins_with("sedan") or kind.begins_with("suv"):
 		path = "res://assets/city/props/covered_car/covered_car_game.gltf"
 		kind = "sedan"
-	var cb: StaticBody3D = _merged_prop(path, p, yaw, "metal") if kind in ["sedan", "land_rover"] else main._prop(path, p, yaw, Vector3.ZERO, "metal")
+	var cb: StaticBody3D = _merged_prop(path, p, yaw, "metal") if kind in ["sedan", "land_rover", "ural_truck"] else main._prop(path, p, yaw, Vector3.ZERO, "metal")
 	var big := kind.begins_with("bus")
 	var size := Vector3(2.5, 3.0, 10.1) if big else (Vector3(1.9, 2.2, 5.1) if kind == "pickup" else Vector3(1.8, 1.45, 4.6))
 	if kind == "land_rover":
 		size = Vector3(1.55, 2.0, 3.95)
+	if kind == "ural_truck":
+		size = Vector3(2.5, 2.95, 7.8)
 	var cs := CollisionShape3D.new()
 	var sh := BoxShape3D.new()
 	sh.size = size
@@ -985,6 +994,7 @@ func _m2() -> Vector3:
 	_courier_post(S(893, 158))
 	_car("pickup", S(917, 204), PI * 0.6)
 	_car("land_rover_night", S(885, 218), PI * 0.45)
+	_car("ural_truck", Vector3(66.4, 0, -120.0), PI * 0.5)              # a lorry in the rail yard, by the pad
 	_car("suv_black", S(842, 210), PI * 0.5)
 	# ---- the bus terminal, the checkpoint, the water tower ----
 	var da := S(112, 468)

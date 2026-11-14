@@ -203,6 +203,8 @@ func car(kind: String, p: Vector3, yaw: float, size := Vector3(1.8, 1.45, 4.6)) 
 	if kind.begins_with("land_rover"):
 		path = "res://assets/city/props/land_rover/%s_game.gltf" % kind
 		p.y -= 0.08
+	if kind == "ural_truck":
+		path = "res://assets/city/props/ural_truck/ural_truck_game.gltf"
 	var cb: StaticBody3D = main._prop(path, p, yaw, Vector3.ZERO, "metal")
 	var cs := CollisionShape3D.new()
 	var sh := BoxShape3D.new()
@@ -418,8 +420,9 @@ func dead_lamp(p: Vector3, lean := 0.0) -> void:
 		l.shadow_enabled = false
 		main.add_child(l)
 		l.global_position = c
-		city.glow(c, Color(0.75, 0.86, 1.0, 0.85), 4.6)
-		city.pool(Vector3(c.x, p.y + 0.03, c.z), Color(0.2, 0.26, 0.36, 1.0), 8.0)
+		var halo: Node3D = city.glow(c, Color(0.75, 0.86, 1.0, 0.85), 4.6)
+		var pool_: Node3D = city.pool(Vector3(c.x, p.y + 0.03, c.z), Color(0.2, 0.26, 0.36, 1.0), 8.0)
+		main.lamp_can_break(c, [l, halo, pool_], 0.6)
 
 
 ## A line of power poles with sagging cables from a to b.
@@ -1473,6 +1476,7 @@ func _hq() -> void:
 	car("apc", Vector3(52.0, 0, -24.0), 1.3, Vector3(2.9, 2.5, 6.6))
 	car("pickup", Vector3(60.0, 0, -32.0), 0.3, Vector3(1.9, 1.8, 5.2))
 	car("land_rover_olive", Vector3(47.0, 0, -30.0), 0.6, Vector3(1.55, 2.0, 3.95))
+	car("ural_truck", Vector3(50.0, 0, -20.0), PI * 0.5, Vector3(2.5, 2.95, 7.8))     # the headquarters' lorry in its yard
 	stack("old_military_crate", Vector3(63.5, 0, -44.0), PI * 0.5, 1, 2, 3, Vector3(1.82, 0.28, 0.97))
 	stack("wooden_military_crate", Vector3(63.8, 0, -49.0), 0.0, 2, 2, 2, Vector3(1.25, 0.46, 0.53))
 	stack("wooden_crate_02", Vector3(19.0, 0, -52.0), 0.3, 2, 1, 2, Vector3(0.53, 0.45, 1.17))

@@ -108,11 +108,14 @@ The combat knife (`godot/assets/guns/knife.glb`) is the knife from "knife Animat
 
 The hand grenade (`godot/assets/guns/grenade.glb`) is "MK2 Grenade" by [Slayer4Demons](https://sketchfab.com/Slayer4Demons) on [Sketchfab](https://sketchfab.com/3d-models/mk2-grenade-22e34fd60bc247a8a20b9174e7eec1a8), licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/); changed for this game: its textures cut to 512 pixels and stored as JPEG (`tools/boatbuild/boat_light.py`), sized to 11 cm.
 
+The army lorry (`godot/assets/city/props/ural_truck/`) is "URAL-4320 (soviet-army truck)" by [zhe_kan](https://sketchfab.com/zhe_kan) on [Sketchfab](https://sketchfab.com/3d-models/ural-4320-soviet-army-truck-e3aadc206ef2413c90f350a3f4e8a5cd), licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/); changed for this game: packed with `tools/citybuild/prop_pack.py` from 225,927 to about 9,500 triangles, its textures cut to 512 pixels, the roughness maps left out. It stands inside the west gate in mission 1, in the rail yard in mission 2 and in the headquarters yard in mission 3.
+
 The clips in `godot/assets/anims/extra.res` (climbing stairs at a walk and a run, a knife thrust, a grenade throw lying down, a strafe) are Mixamo animations, fitted to the soldier with `tools/charbuild/anim_take.gd`.
 
 The ripple picture `godot/assets/fx/rain_ripples.png` comes from "Rain drops circles" by [VRA](https://sketchfab.com/architect47) on [Sketchfab](https://sketchfab.com/3d-models/rain-drops-circles-download-like-please-50b52de9b9a94ac09afbbaf28f102081), licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/); changed for this game: the ripple normal map cut to 512 pixels. In mission 2 it stirs the puddles.
 
 Sounds in `godot/assets/sfx/` are unedited sound effects from [Pixabay](https://pixabay.com/sound-effects/), used under the Pixabay Content License:
+- The sea in mission 4 (`ocean_loop.ogg`): "Soothing ocean waves" by dragon-studio (372489); the deep heard under water (`underwater.ogg`): "Deep sea underwater ambience" by dragon-studio (472383). Both cut to loops for this game (40 s and 14 s, their ends faded into their beginnings; the ocean's loud and quiet stretches evened out).
 - AK-47: "AK-47 sound effect" by sovetsky_rastov72
 - M4A1: "Gun fire" by foisal72 (475286)
 - Pistol: "Gun rifle shots" by dennish18

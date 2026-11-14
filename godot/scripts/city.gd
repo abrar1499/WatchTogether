@@ -300,6 +300,8 @@ func led_lamp(p: Vector3, dir: Vector3) -> void:
 	main.add_child(l)
 	l.global_position = c
 	lamps.append([p, l, glow(c, Color(0.85, 0.75, 0.6, 0.8), 2.2), pool(Vector3(c.x, p.y, c.z), Color(0.3, 0.26, 0.2, 1.0), 6.5)])
+	var lp: Array = lamps[lamps.size() - 1]
+	main.lamp_can_break(c, [lp[1], lp[2], lp[3]], 0.6, Vector3(0.2, 0.06, 0.95), yaw)
 
 
 ## Street lights within `zone` (x, z) go dark: the light, its halo, the pool on the ground.

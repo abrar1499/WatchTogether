@@ -207,8 +207,10 @@ func lamp(p: Vector3, col: Color, energy: float, reach: float, halo := 1.6) -> O
 	l.shadow_enabled = false
 	add_child(l)
 	l.position = p
+	var parts: Array = [l]
 	if halo > 0.0:
-		city.glow(p, Color(col.r, col.g, col.b, 0.75), halo)
+		parts.append(city.glow(p, Color(col.r, col.g, col.b, 0.75), halo))
+		main.lamp_can_break(p, parts, 0.45, Vector3(0.5, 0.2, 0.5))
 	return l
 
 
@@ -813,7 +815,7 @@ func _rib(p: Vector3, yaw: float) -> void:
 # ---------------- the sea, the islets, the launches ----------------
 const WATER := """
 shader_type spatial;
-render_mode cull_back;
+render_mode cull_disabled;
 uniform sampler2D ripples : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec3 deep : source_color = vec3(0.012, 0.035, 0.06);
 uniform vec3 sky : source_color = vec3(0.15, 0.225, 0.36);
@@ -1121,6 +1123,7 @@ func _launch() -> Node3D:
 	root.add_child(sl)
 	sl.position = Vector3(FISHER_CABIN, roof + 0.35, 0)
 	root.set_meta("light", sl)
+	root.set_meta("lamp_parts", [sl])
 	bar("sh_black", Vector3(FISHER_CABIN, roof, 0), Vector3(FISHER_CABIN, roof + 0.3, 0), 0.06, 6)
 	city.box("sh_black", Vector3(FISHER_CABIN, roof + 0.36, 0), Vector3(0.4, 0.36, 0.36))
 	var lm: MeshInstance3D = city.commit(false)
@@ -1156,6 +1159,7 @@ void fragment() {
 	g.get_parent().remove_child(g)
 	root.add_child(g)
 	g.position = sl.position
+	main.lamp_can_break(Vector3.ZERO, [sl, g], 0.7, Vector3.ZERO, 0.0, sl)      # (the searchlight can be shot out)
 	return root
 
 
@@ -1440,6 +1444,7 @@ func build() -> Vector3:
 	_launches()
 	_marked()
 	_posts()
+	_sounds()
 	return boat_at
 
 
@@ -1483,16 +1488,52 @@ func _posts() -> void:
 
 
 var seen_t := 0.0
+var under_t := -1.0             # under the water after going over the side: time into it (-1: not)
+var sea_snd: AudioStreamPlayer
+var under_snd: AudioStreamPlayer
+
+
+## The sea round the ship, and the deep (the user's own two sounds, cut to loops).
+func _sounds() -> void:
+	sea_snd = AudioStreamPlayer.new()
+	under_snd = AudioStreamPlayer.new()
+	for e in [[sea_snd, "ocean_loop", -40.0], [under_snd, "underwater", -60.0]]:
+		var st: AudioStream = load("res://assets/sfx/%s.ogg" % e[1])
+		if st is AudioStreamOggVorbis:
+			(st as AudioStreamOggVorbis).loop = true
+		(e[0] as AudioStreamPlayer).stream = st
+		(e[0] as AudioStreamPlayer).volume_db = e[2]
+		add_child(e[0])
+	sea_snd.play()
+
+
 func _physics_process(dt: float) -> void:
 	var pl = main.player
 	if pl == null or pl.dead:
 		return
-	# over the side: hauled back into the boat, the worse for it
-	if pl.global_position.y < -0.7:
-		pl.global_position = boat_at + Vector3(0, 0.1, 0)
-		pl.vel = Vector3.ZERO
-		pl.hit(30.0, pl.global_position + Vector3(0, 0, 1))
-		main.ui.message("OVERBOARD", "You drag yourself back into the boat.", 2.5)
+	# over the side: a moment under the water (the sea's noise gone, the deep in his ears), then hauled back into
+	# the boat, the worse for it
+	if under_t < 0.0 and pl.global_position.y < -0.7:
+		under_t = 0.0
+		under_snd.play()
+	if under_t >= 0.0:
+		under_t += dt
+		pl.vel.x *= 0.9
+		pl.vel.z *= 0.9
+		pl.vel.y = max(pl.vel.y, -1.2)          # (he sinks slowly)
+		if under_t > 1.7:
+			under_t = -1.0
+			pl.global_position = boat_at + Vector3(0, 0.1, 0)
+			pl.vel = Vector3.ZERO
+			pl.hit(30.0, pl.global_position + Vector3(0, 0, 1))
+			main.ui.message("OVERBOARD", "You drag yourself back into the boat.", 2.5)
+	# the sea's sound: louder down by the water, less up on the bridge; under water only the deep is heard
+	var down: float = clamp(1.0 - (pl.global_position.y - 1.0) / 14.0, 0.0, 1.0)
+	var want_sea: float = -60.0 if under_t >= 0.0 else lerp(-13.0, -4.0, down)
+	sea_snd.volume_db = move_toward(sea_snd.volume_db, want_sea, dt * (90.0 if under_t >= 0.0 else 30.0))
+	under_snd.volume_db = move_toward(under_snd.volume_db, -2.0 if under_t >= 0.0 else -60.0, dt * 80.0)
+	if under_t < 0.0 and under_snd.playing and under_snd.volume_db <= -59.0:
+		under_snd.stop()
 	for en in main.enemies:
 		if not en.dead and en.global_position.y < -0.5:
 			en.take_hit(999.0, en.global_position, Vector3.DOWN)
@@ -1501,7 +1542,7 @@ func _physics_process(dt: float) -> void:
 	for l in launches:
 		var sl: SpotLight3D = l[3]
 		var to: Vector3 = pl.global_position + Vector3(0, 1.0, 0) - sl.global_position
-		if seen_t > 0.0 or pl.prone or to.length() > 85.0 or (-sl.global_transform.basis.z).dot(to.normalized()) < cos(deg_to_rad(8.0)):
+		if not sl.visible or seen_t > 0.0 or pl.prone or to.length() > 85.0 or (-sl.global_transform.basis.z).dot(to.normalized()) < cos(deg_to_rad(8.0)):
 			continue
 		var q := PhysicsRayQueryParameters3D.create(sl.global_position, pl.global_position + Vector3(0, 1.0, 0))
 		q.exclude = [pl.get_rid()]
