@@ -7,9 +7,6 @@ path="res://.godot/imported/grenade_2.jpg-026ff3a91c5a599f9685f773d44b6890.ctex"
 metadata={
 "vram_texture": false
 }
-generator_parameters={
-"md5": "12d5f7b7d2b6a4569a944ec062f82e30"
-}
 
 [deps]
 
@@ -18,7 +15,7 @@ dest_files=["res://.godot/imported/grenade_2.jpg-026ff3a91c5a599f9685f773d44b689
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

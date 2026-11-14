@@ -7,9 +7,6 @@ path="res://.godot/imported/fisher_boat_5.jpg-33831a4173a53ef9dc76c11f919f3420.c
 metadata={
 "vram_texture": false
 }
-generator_parameters={
-"md5": "37d8065fd135ee8df38de6e9a1f97ac0"
-}
 
 [deps]
 
@@ -18,7 +15,7 @@ dest_files=["res://.godot/imported/fisher_boat_5.jpg-33831a4173a53ef9dc76c11f919
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

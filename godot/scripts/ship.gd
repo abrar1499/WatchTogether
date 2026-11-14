@@ -974,7 +974,7 @@ func _launch() -> Node3D:
 	sl.spot_range = 90.0
 	sl.spot_angle = 9.0
 	sl.spot_attenuation = 0.4
-	sl.shadow_enabled = main.ultra
+	sl.shadow_enabled = false          # (its shadows drew the whole ship again each frame: too much for a phone)
 	root.add_child(sl)
 	sl.position = Vector3(FISHER_CABIN, roof + 0.35, 0)
 	root.set_meta("light", sl)
@@ -1553,3 +1553,6 @@ func night_look() -> void:
 	main.sun.light_color = Color(0.62, 0.74, 1.0)
 	main.sun.light_energy = 0.55
 	main.sun.shadow_opacity = 0.8
+	# (no shadows from the moon: at night they were hardly to be seen, and drawing every mesh again for them, with
+	# their large map, was what filled the HD app's graphics memory until it closed)
+	main.sun.shadow_enabled = false

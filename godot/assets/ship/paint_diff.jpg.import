@@ -15,7 +15,7 @@ dest_files=["res://.godot/imported/paint_diff.jpg-988e49d3369a24c3ee466782d0b98f
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

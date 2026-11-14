@@ -15,7 +15,7 @@ dest_files=["res://.godot/imported/img6_olive.png-ecf19306f424f946cb104c61616b03
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

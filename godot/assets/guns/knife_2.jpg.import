@@ -7,9 +7,6 @@ path="res://.godot/imported/knife_2.jpg-59364e9c6dd30d05c18d1a4ba7790e15.ctex"
 metadata={
 "vram_texture": false
 }
-generator_parameters={
-"md5": "dcf2f529816ca3715f9c130056d9135f"
-}
 
 [deps]
 
@@ -18,7 +15,7 @@ dest_files=["res://.godot/imported/knife_2.jpg-59364e9c6dd30d05c18d1a4ba7790e15.
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
