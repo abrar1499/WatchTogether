@@ -1,10 +1,12 @@
 """Bake the animated "ocean wave" model into frames the game's water can tile over the whole sea.
 
-usage: swell_bake.py ocean_wave.glb out.bin
+usage: swell_bake.py ocean_wave.glb out.bin [out.png]
 The model is one 201 x 201 sheet with 20 shapes it moves through. Each shape is read as a field of displacements
 (sideways, up, sideways), made to join at its edges (each frame is cross-faded with itself shifted half way, so
 the seam falls where the fade hides it), cut to 128 x 128, and written as float32 [20][128][128][3] in fractions
-of the sheet's width. tools/seabuild/swell_pack.gd turns that into the texture the game loads.
+of the sheet's width. With out.png it also writes the frames one under another as an 8-bit picture (128 x 2560,
+each value stored as 0.5 + v / 0.08), which is what the game loads: a plain picture every phone can read in a vertex
+shader (the half-float texture array swell_pack.gd made did not suit every phone).
 """
 import json, struct, sys
 import numpy as np
@@ -58,5 +60,10 @@ for k in range(20):
     fc = (idx - i0)[None, :, None]
     out[k] = (rows[:, i0 % 200] * (1 - fc) + rows[:, (i0 + 1) % 200] * fc) / width
 out.tofile(sys.argv[2])
+if len(sys.argv) > 3:
+    from PIL import Image
+    enc = np.clip(np.round((0.5 + out / 0.08) * 255.0), 0, 255).astype(np.uint8).reshape(20 * N, N, 3)
+    Image.fromarray(enc, "RGB").save(sys.argv[3])
+    print("picture: most |v| %.4f (room for 0.04)" % np.abs(out).max())
 print("frames", out.shape, "height: std %.4f, least %.4f, most %.4f of the sheet's width" % (out[:, :, :, 1].std(), out[:, :, :, 1].min(), out[:, :, :, 1].max()),
       "sideways std %.4f" % out[:, :, :, 0].std(), "seam L/R %.5f" % np.abs(out[0][:, 0, 1] - out[0][:, -1, 1]).mean(), "next to each other %.5f" % np.abs(out[0][:, 0, 1] - out[0][:, 1, 1]).mean())

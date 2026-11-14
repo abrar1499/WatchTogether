@@ -821,7 +821,7 @@ uniform vec3 deep : source_color = vec3(0.014, 0.03, 0.038);
 uniform vec3 sky : source_color = vec3(0.11, 0.15, 0.19);
 uniform float drift = 0.0;
 uniform float tm = 0.0;
-uniform sampler2DArray frames : filter_linear, repeat_enable;
+uniform sampler2D frames : filter_linear, repeat_enable;     // 20 frames one under another, 0.5 + v / 0.08
 uniform vec4 boats[6];        // x, z, heading x, heading z
 uniform float boat_w[6];      // half width of each boat's wake where it starts (0: none)
 varying vec3 wp;
@@ -834,9 +834,10 @@ vec3 swell(vec2 p, float size, float t) {
 	float f = fract(t / 4.0) * 20.0;
 	float k = floor(f);
 	vec2 uv = p / size;
-	vec3 a = textureLod(frames, vec3(uv, k), 0.0).rgb;
-	vec3 b = textureLod(frames, vec3(uv, mod(k + 1.0, 20.0)), 0.0).rgb;
-	return mix(a, b, f - k) * size;
+	float v = clamp(fract(uv.y), 0.5 / 128.0, 1.0 - 0.5 / 128.0);
+	vec3 a = textureLod(frames, vec2(uv.x, (k + v) / 20.0), 0.0).rgb;
+	vec3 b = textureLod(frames, vec2(uv.x, (mod(k + 1.0, 20.0) + v) / 20.0), 0.0).rgb;
+	return (mix(a, b, f - k) - 0.5) * 0.08 * size;
 }
 
 float hull_w(float x) {
@@ -946,19 +947,19 @@ void fragment() {
 
 
 ## The height of the sea at a place (as the water's shader has it), for boats to ride.
-var swell_frames: Array[Image] = []
+var swell_img: Image
 func _swell_h(p: Vector2, size: float, tt: float, comp: int) -> float:
 	var f: float = fposmod(tt / 4.0, 1.0) * 20.0
 	var k := int(f)
 	var u: int = posmod(int(floor(p.x / size * 128.0)), 128)
 	var v: int = posmod(int(floor(p.y / size * 128.0)), 128)
-	var a: Color = swell_frames[k].get_pixel(u, v)
-	var b: Color = swell_frames[(k + 1) % 20].get_pixel(u, v)
-	return lerp(a[comp], b[comp], f - k) * size
+	var a: Color = swell_img.get_pixel(u, k * 128 + v)
+	var b: Color = swell_img.get_pixel(u, ((k + 1) % 20) * 128 + v)
+	return (lerp(a[comp], b[comp], f - k) - 0.5) * 0.08 * size
 
 
 func sea_h(x: float, z: float) -> float:
-	if swell_frames.is_empty():
+	if swell_img == null:
 		return 0.0
 	var p := Vector2(x + run, z)
 	var off := Vector2(max(abs(x) - 48.0, 0.0), max(abs(z) - 7.5, 0.0))
@@ -973,13 +974,12 @@ func _sea() -> void:
 	wm.shader = sh
 	wm.set_shader_parameter("ripples", load("res://assets/fx/rain_ripples.png"))
 	sea_mat = wm
-	# the simulated sea's frames (assets/ship/swell.res: one tall picture) as the layers of one texture
-	var tall: Image = load("res://assets/ship/swell.res")
-	for k in 20:
-		swell_frames.append(tall.get_region(Rect2i(0, k * 128, 128, 128)))
-	var arr := Texture2DArray.new()
-	arr.create_from_images(swell_frames)
-	wm.set_shader_parameter("frames", arr)
+	# the simulated sea's frames (assets/ship/swell.png: twenty frames one under another, 8 bits a value)
+	var sw: Texture2D = load("res://assets/ship/swell.png")
+	swell_img = sw.get_image()
+	if swell_img.is_compressed():
+		swell_img.decompress()
+	wm.set_shader_parameter("frames", sw)
 	# a sheet of water finely cut near the eye (to rise and fall in the swell) and coarsely far out
 	var n := 140
 	var st := SurfaceTool.new()
@@ -1036,7 +1036,7 @@ func _sea() -> void:
 		q.size = Vector2(1.0, 1.0)
 		q.material = pm
 		ps.mesh = q
-		ps.amount = e[2]
+		ps.amount = e[2] if main.ultra else int(e[2] * 0.5)      # (half as many drops on the ordinary app)
 		ps.lifetime = e[7]
 		ps.randomness = 0.7
 		ps.explosiveness = 0.0
