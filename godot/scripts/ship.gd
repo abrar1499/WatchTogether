@@ -802,7 +802,7 @@ func _rib(p: Vector3, yaw: float) -> void:
 	tbox("sh_grey", xf * Vector3(-2.25, 0.4, 0), Vector3(0.1, 0.6, 1.6), b, Color(0.45, 0.45, 0.45))
 	tbox("sh_black", xf * Vector3(-2.5, 0.75, 0), Vector3(0.36, 0.5, 0.4), b)
 	tbox("sh_black", xf * Vector3(-2.5, 0.2, 0), Vector3(0.14, 0.9, 0.14), b)
-	tbox("sh_wood", xf * Vector3(0.2, 0.5, 0), Vector3(0.3, 0.06, 1.4), b)
+	tbox("sh_wood", xf * Vector3(1.25, 0.5, 0), Vector3(0.3, 0.06, 1.4), b)     # (a thwart forward, clear of where he kneels)
 	bar("sh_steel", xf * Vector3(2.4, 0.6, 0.0), Vector3(GATE[1] + 9.6 + 1.9, 0.8, hw(0.0) + 0.75), 0.012, 4, Color(0.6, 0.55, 0.4))
 	foam([[xf * Vector3(2.2, -0.35, 0), 0.4, 0.8], [xf * Vector3(-2.4, -0.35, 0), 1.3, 0.9], [xf * Vector3(-14.0, -0.35, 0), 2.6, 0.0]])
 	city.commit(false)
@@ -810,6 +810,7 @@ func _rib(p: Vector3, yaw: float) -> void:
 	for sg in [-1.0, 1.0]:
 		solid(p + b * Vector3(-0.3, 0.45, sg * 0.95), Vector3(4.4, 0.5, 0.3), yaw)
 	solid(p + b * Vector3(-2.4, 0.5, 0), Vector3(0.3, 0.7, 1.8), yaw)
+	solid(p + b * Vector3(1.25, 0.5, 0), Vector3(0.3, 0.06, 1.4), yaw)
 
 
 # ---------------- the sea, the islets, the launches ----------------
