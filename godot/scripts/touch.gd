@@ -948,7 +948,7 @@ func show_result(win: bool, title: String, sub: String, n: int) -> void:
 
 
 func show_start(ver: int) -> void:
-	ver_label.text = "      v%d" % ver if ver > 0 else "      test build"
+	ver_label.text = ("      v%d" % ver if ver > 0 else "      test build") + ("  Vulkan" if RenderingServer.get_rendering_device() != null else "  OpenGL")
 	_build_cards()
 	start_panel.position = Vector2.ZERO
 	start_panel.size = get_viewport_rect().size

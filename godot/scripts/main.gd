@@ -1820,20 +1820,23 @@ func _last_log_errors() -> String:
 	var keep := []
 	for line in txt.split("\n"):
 		var l := line.strip_edges()
-		if l.begins_with("ERROR") or l.begins_with("SCRIPT ERROR") or l.contains("signal") or l.contains("crash") or l.contains("Crash"):
+		if l.begins_with("ERROR") or l.begins_with("USER ERROR") or l.begins_with("SCRIPT ERROR") or l.contains("signal") or l.contains("crash") or l.contains("Crash"):
 			keep.append(l.substr(0, 110))
 	if keep.is_empty():
 		var all := txt.strip_edges().split("\n")
 		keep = Array(all.slice(max(0, all.size() - 3)))
-	return "\n".join(keep.slice(max(0, keep.size() - 4)))
+	# (the first errors of a run say more than the last: the last are what followed from them)
+	var firsts := keep.slice(0, 2)
+	var lasts := keep.slice(max(2, keep.size() - 2))
+	return "\n".join(firsts + lasts)
 
 
 func _runlog_check(layer: CanvasLayer) -> void:
 	var cf := ConfigFile.new()
 	if cf.load(RUNLOG) == OK and bool(cf.get_value("run", "alive", false)):
 		var secs := int(cf.get_value("run", "t", 0.0))
-		var txt := "LAST GAME STOPPED BY ITSELF: mission %d, %d:%02d in, %d FPS, %d MB, video %d MB, %d nodes, %s (version %d)" % [int(cf.get_value("run", "mission", 0)),
-			secs / 60, secs % 60, int(cf.get_value("run", "fps", 0)), int(cf.get_value("run", "mb", 0)), int(cf.get_value("run", "vmb", 0)),
+		var txt := "LAST GAME STOPPED BY ITSELF: mission %d, %d:%02d in, %d FPS, %s, video %d MB, %d nodes, %s (version %d)" % [int(cf.get_value("run", "mission", 0)),
+			secs / 60, secs % 60, int(cf.get_value("run", "fps", 0)), str(cf.get_value("run", "gpu", "")), int(cf.get_value("run", "vmb", 0)),
 			int(cf.get_value("run", "nodes", 0)), str(cf.get_value("run", "doing", "")), int(cf.get_value("run", "version", 0))]
 		var errs := _last_log_errors()
 		if errs != "":
@@ -1876,7 +1879,7 @@ func _runlog_write(alive: bool) -> void:
 			doing += ", %d boats out" % out
 		cf.set_value("run", "doing", doing)
 	cf.set_value("run", "fps", Performance.get_monitor(Performance.TIME_FPS))
-	cf.set_value("run", "mb", OS.get_static_memory_usage() / 1048576)
+	cf.set_value("run", "gpu", "Vulkan" if RenderingServer.get_rendering_device() != null else "OpenGL")
 	cf.set_value("run", "vmb", int(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0))
 	cf.set_value("run", "nodes", int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))
 	cf.save(RUNLOG)
