@@ -819,18 +819,25 @@ uniform vec3 deep : source_color = vec3(0.012, 0.035, 0.06);
 uniform vec3 sky : source_color = vec3(0.15, 0.225, 0.36);
 uniform float drift = 0.0;
 uniform float tm = 0.0;
+uniform sampler2DArray frames : filter_linear, repeat_enable;
 uniform vec4 boats[6];        // x, z, heading x, heading z
 uniform float boat_w[6];      // half width of each boat's wake where it starts (0: none)
 varying vec3 wp;
 varying float crest;
 
-// one train of waves with sharpened crests: adds its height and its slope (x, z)
-vec3 train(vec2 p, vec2 d, float k, float a, float sp, float t) {
-	float ph = dot(d, p) * k + t * sp;
-	float s = sin(ph) * 0.5 + 0.5;
-	float h = a * (2.0 * pow(s, 1.5) - 1.0);
-	float dh = a * 1.5 * sqrt(s) * cos(ph) * k;
-	return vec3(h, dh * d);
+// the swell at a place: frames of a simulated sea, laid over the water twice at two sizes; returns the
+// displacement (sideways, up, sideways) in metres
+vec3 swell(vec2 p, float size, float t) {
+	float f = fract(t / 4.0) * 20.0;
+	float k = floor(f);
+	vec2 uv = p / size;
+	vec3 a = textureLod(frames, vec3(uv, k), 0.0).rgb;
+	vec3 b = textureLod(frames, vec3(uv, mod(k + 1.0, 20.0)), 0.0).rgb;
+	return mix(a, b, f - k) * size;
+}
+
+vec3 sea(vec2 p, float t, float longf, float shortf) {
+	return swell(p, 190.0, t * 0.55) * longf * 0.75 + swell(p.yx + vec2(31.0, 7.0), 62.0, t).zyx * shortf * 0.85;
 }
 
 void vertex() {
@@ -838,19 +845,21 @@ void vertex() {
 	float dist = length(wp.xz - CAMERA_POSITION_WORLD.xz);
 	// (the sea lies quieter in the ship's lee, close under her sides)
 	vec2 off = max(abs(wp.xz) - vec2(48.0, 7.5), vec2(0.0));
-	float lee = mix(0.3, 1.0, smoothstep(0.0, 28.0, length(off)));
+	float lee = mix(0.2, 1.0, smoothstep(0.0, 30.0, length(off)));
 	wp.x += drift;
-	float longf = (1.0 - smoothstep(180.0, 520.0, dist)) * lee;
-	float shortf = (1.0 - smoothstep(50.0, 170.0, dist)) * lee;
-	vec3 w = train(wp.xz, normalize(vec2(-1.0, 0.3)), 0.2, 0.48, 1.25, tm) * longf;
-	w += train(wp.xz, normalize(vec2(-0.7, -0.75)), 0.34, 0.24, 1.6, tm) * longf;
-	w += train(wp.xz, normalize(vec2(0.25, 1.0)), 0.62, 0.11, 2.1, tm) * shortf;
-	w += train(wp.xz, normalize(vec2(-1.0, -0.2)), 1.35, 0.045, 3.0, tm) * shortf;
-	VERTEX.y += w.x;
-	NORMAL = normalize(vec3(-w.y, 1.0, -w.z));
-	TANGENT = normalize(vec3(1.0, w.y, 0.0));
-	BINORMAL = normalize(vec3(0.0, w.z, 1.0));
-	crest = w.x;
+	float longf = (1.0 - smoothstep(250.0, 700.0, dist)) * lee;
+	float shortf = (1.0 - smoothstep(60.0, 220.0, dist)) * lee;
+	vec3 w = sea(wp.xz, tm, longf, shortf);
+	// the slope, from the heights a step away each way
+	float e = 0.9;
+	float hx = sea(wp.xz + vec2(e, 0.0), tm, longf, shortf).y;
+	float hz = sea(wp.xz + vec2(0.0, e), tm, longf, shortf).y;
+	vec2 sl = vec2(hx - w.y, hz - w.y) / e;
+	VERTEX += vec3(w.x, w.y, w.z) * vec3(0.6, 1.0, 0.6);
+	NORMAL = normalize(vec3(-sl.x, 1.0, -sl.y));
+	TANGENT = normalize(vec3(1.0, sl.x, 0.0));
+	BINORMAL = normalize(vec3(0.0, sl.y, 1.0));
+	crest = w.y;
 }
 
 float band(float x, float a, float b) {
@@ -866,7 +875,7 @@ void fragment() {
 	NORMAL_MAP_DEPTH = mix(1.0, 0.3, smoothstep(30.0, 260.0, dist));
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
 	// (darker in the troughs, a little paler on the backs of the waves: it is this that shows the swell)
-	vec3 col = mix(deep, sky, fres * 0.85) * (0.82 + clamp(crest, -0.6, 0.6) * 0.45);
+	vec3 col = mix(deep, sky, fres * 0.85) * (0.82 + clamp(crest, -1.2, 1.2) * 0.3);
 
 	// foam, worked out where it lies (so it rides the swell): the wash along the ship's sides, the wave off her
 	// bows, her wake, and the wake of each boat
@@ -897,7 +906,7 @@ void fragment() {
 	float lace = smoothstep(0.5, 0.72, n1 * 0.55 + n2 * 0.45 + (m - 0.5) * 0.42);
 	float foam = clamp(m * lace + smoothstep(0.85, 1.0, m) * 0.12, 0.0, 1.0);
 	// a little white where the tops of the bigger waves break
-	foam = max(foam, smoothstep(0.42, 0.62, crest) * smoothstep(0.56, 0.7, n2) * 0.3);
+	foam = max(foam, smoothstep(0.75, 1.25, crest) * smoothstep(0.5, 0.66, n2) * 0.35);
 	col = mix(col, vec3(0.34, 0.42, 0.52), foam * 0.6);
 	ALBEDO = col;
 	ROUGHNESS = mix(0.22, 0.8, foam);
@@ -908,15 +917,24 @@ void fragment() {
 
 
 ## The height of the sea at a place (as the water's shader has it), for boats to ride.
+var swell_frames: Array[Image] = []
+func _swell_h(p: Vector2, size: float, tt: float, comp: int) -> float:
+	var f: float = fposmod(tt / 4.0, 1.0) * 20.0
+	var k := int(f)
+	var u: int = posmod(int(floor(p.x / size * 128.0)), 128)
+	var v: int = posmod(int(floor(p.y / size * 128.0)), 128)
+	var a: Color = swell_frames[k].get_pixel(u, v)
+	var b: Color = swell_frames[(k + 1) % 20].get_pixel(u, v)
+	return lerp(a[comp], b[comp], f - k) * size
+
+
 func sea_h(x: float, z: float) -> float:
+	if swell_frames.is_empty():
+		return 0.0
 	var p := Vector2(x + run, z)
 	var off := Vector2(max(abs(x) - 48.0, 0.0), max(abs(z) - 7.5, 0.0))
-	var lee: float = lerp(0.3, 1.0, smoothstep(0.0, 28.0, off.length()))
-	var h := 0.0
-	for w in [[Vector2(-1.0, 0.3), 0.2, 0.48, 1.25], [Vector2(-0.7, -0.75), 0.34, 0.24, 1.6], [Vector2(0.25, 1.0), 0.62, 0.11, 2.1]]:
-		var s: float = sin((w[0] as Vector2).normalized().dot(p) * w[1] + t * w[3]) * 0.5 + 0.5
-		h += w[2] * (2.0 * pow(s, 1.5) - 1.0)
-	return h * lee
+	var lee: float = lerp(0.2, 1.0, smoothstep(0.0, 30.0, off.length()))
+	return (_swell_h(p, 190.0, t * 0.55, 1) * 0.75 + _swell_h(Vector2(p.y + 31.0, p.x + 7.0), 62.0, t, 1) * 0.85) * lee
 
 
 func _sea() -> void:
@@ -926,6 +944,13 @@ func _sea() -> void:
 	wm.shader = sh
 	wm.set_shader_parameter("ripples", load("res://assets/fx/rain_ripples.png"))
 	sea_mat = wm
+	# the simulated sea's frames (assets/ship/swell.res: one tall picture) as the layers of one texture
+	var tall: Image = load("res://assets/ship/swell.res")
+	for k in 20:
+		swell_frames.append(tall.get_region(Rect2i(0, k * 128, 128, 128)))
+	var arr := Texture2DArray.new()
+	arr.create_from_images(swell_frames)
+	wm.set_shader_parameter("frames", arr)
 	# a sheet of water finely cut near the eye (to rise and fall in the swell) and coarsely far out
 	var n := 140
 	var st := SurfaceTool.new()
