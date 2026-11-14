@@ -925,7 +925,7 @@ void fragment() {
 		float len = boat_w[i] * 22.0;
 		m = max(m, (1.0 - smoothstep(boat_w[i] * 0.5 + back * 0.1, boat_w[i] + back * 0.16, lat)) * smoothstep(-boat_w[i] * 2.5, 0.0, back) * (1.0 - smoothstep(len * 0.15, len, back)));
 	}
-	m = max(m, smoothstep(0.12, 0.5, thrown));       // (what she throws up is white on top)
+	m = max(m, smoothstep(0.14, 0.55, thrown) * 0.95);  // (what she throws up is broken water on top)
 	vec2 fp = wp.xz;
 	float n1 = texture(ripples, fp * vec2(0.035, 0.09) + vec2(0.0, TIME * 0.02)).r;
 	float n2 = texture(ripples, fp * 0.21 + vec2(TIME * 0.03, 0.0)).g;
@@ -933,8 +933,9 @@ void fragment() {
 	float foam = clamp(m * lace + smoothstep(0.85, 1.0, m) * 0.12, 0.0, 1.0);
 	// a little white where the tops of the bigger waves break
 	foam = max(foam, smoothstep(0.75, 1.25, crest) * smoothstep(0.5, 0.66, n2) * 0.35);
-	col = mix(col, vec3(0.34, 0.42, 0.52), foam * 0.6);
+	col = mix(col, vec3(0.36, 0.44, 0.54), foam * 0.72);
 	ALBEDO = col;
+	EMISSION = vec3(0.2, 0.27, 0.36) * foam * 0.5;      // (broken water catches what light there is)
 	ROUGHNESS = mix(0.22, 0.8, foam);
 	SPECULAR = mix(0.85, 0.3, foam);
 	METALLIC = 0.0;
@@ -1004,59 +1005,31 @@ func _sea() -> void:
 	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	sm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	sm.billboard_keep_scale = true          # (without this every drop is drawn a metre across)
 	sm.albedo_texture = main.fx.soft_tex
 	sm.vertex_color_use_as_albedo = true
 	sm.albedo_color = Color(0.5, 0.58, 0.68, 0.22)
 	var qm := QuadMesh.new()
 	qm.size = Vector2(1.0, 1.0)
 	qm.material = sm
-	# a picture of thrown water for the sheets: a scatter of fine drops, thick in the middle, thinning outward
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 77
-	var simg := Image.create(96, 96, false, Image.FORMAT_RGBA8)
-	simg.fill(Color(1, 1, 1, 0))
-	# (a few ragged clumps of drops, not one round cloud)
-	var clumps := []
-	for i in 7:
-		clumps.append(Vector2(48.0 + rng.randf_range(-26.0, 26.0), 48.0 + rng.randf_range(-26.0, 26.0)))
-	for i in 150:
-		var cl: Vector2 = clumps[i % 7]
-		var a := rng.randf() * TAU
-		var rr: float = pow(rng.randf(), 1.4) * 17.0
-		var c := cl + Vector2(cos(a), sin(a)) * rr
-		var rad: float = rng.randf_range(1.0, 4.2) * (1.15 - rr / 22.0)
-		var str_: float = rng.randf_range(0.4, 1.0)
-		for y in range(int(c.y - rad - 1), int(c.y + rad + 2)):
-			for x in range(int(c.x - rad - 1), int(c.x + rad + 2)):
-				if x < 1 or y < 1 or x > 94 or y > 94:
-					continue
-				var k: float = smoothstep(0.0, 0.5, 1.0 - Vector2(x, y).distance_to(c) / rad) * str_
-				var old := simg.get_pixel(x, y).a
-				simg.set_pixel(x, y, Color(1, 1, 1, max(old, k)))
-	simg.generate_mipmaps()
-	var spray_tex := ImageTexture.create_from_image(simg)
 	# [where, the way it is thrown, how many, how fast, how big, how solid, the box it comes from]
 	var jets := []
 	for sg in [-1.0, 1.0]:
-		# at the stem: a sheet of white water thrown up and out, and the drops flung from it
-		jets.append([Vector3(44.2, 0.4, sg * 1.3), Vector3(-0.6, 0.65, sg * 0.8), 60, 6.5, 2.6, 0.6, Vector3(1.6, 0.25, 0.7), 1.2])
-		jets.append([Vector3(44.6, 0.5, sg * 1.1), Vector3(-0.55, 0.85, sg * 0.85), 90, 8.0, 0.09, 0.9, Vector3(1.4, 0.3, 0.6), 1.0])
+		# at the stem: fine drops flung up and out, and a thin mist hanging over them
+		jets.append([Vector3(44.6, 0.5, sg * 1.1), Vector3(-0.55, 0.85, sg * 0.85), 170, 8.5, 0.75, 0.34, Vector3(1.6, 0.3, 0.7), 1.0])
+		jets.append([Vector3(44.2, 0.5, sg * 1.3), Vector3(-0.6, 0.6, sg * 0.8), 14, 4.5, 3.0, 0.09, Vector3(1.6, 0.25, 0.7), 1.4])
 		# down her shoulders, where the bow wave rolls off
-		jets.append([Vector3(34.0, 0.3, sg * 5.6), Vector3(-0.75, 0.55, sg * 0.6), 44, 5.0, 2.2, 0.5, Vector3(7.0, 0.2, 1.4), 1.1])
-		# all along her sides: the wash slapping the plating
-		jets.append([Vector3(-8.0, 0.25, sg * 7.8), Vector3(-0.8, 0.5, sg * 0.35), 90, 4.2, 1.15, 0.3, Vector3(34.0, 0.15, 0.35), 0.9])
-		jets.append([Vector3(-8.0, 0.3, sg * 7.75), Vector3(-0.75, 0.7, sg * 0.4), 110, 5.0, 0.07, 0.85, Vector3(34.0, 0.15, 0.3), 0.8])
+		jets.append([Vector3(34.0, 0.35, sg * 5.6), Vector3(-0.75, 0.6, sg * 0.6), 110, 6.0, 0.65, 0.3, Vector3(7.0, 0.2, 1.4), 0.9])
+		# all along her sides: drops off the wash slapping the plating
+		jets.append([Vector3(-8.0, 0.3, sg * 7.75), Vector3(-0.75, 0.7, sg * 0.4), 190, 5.0, 0.55, 0.28, Vector3(34.0, 0.15, 0.3), 0.8])
 	# under her stern: the screw's water boiling up
-	jets.append([Vector3(-46.5, 0.2, 0.0), Vector3(-1.0, 0.35, 0.0), 50, 5.0, 2.6, 0.5, Vector3(1.0, 0.2, 4.5), 1.4])
+	jets.append([Vector3(-46.5, 0.2, 0.0), Vector3(-1.0, 0.45, 0.0), 90, 5.5, 0.7, 0.3, Vector3(1.0, 0.2, 4.5), 0.9])
 	for e in jets:
 		var ps := CPUParticles3D.new()
 		var solid: float = e[5]
 		var pm := sm.duplicate() as StandardMaterial3D
-		pm.albedo_color = Color(0.62, 0.7, 0.8, solid) if solid > 0.6 else Color(0.5, 0.58, 0.68, solid)
-		if solid <= 0.6:
-			pm.albedo_texture = spray_tex
-			ps.angle_min = 0.0
-			ps.angle_max = 360.0
+		# (drops: small, the colour of moonlit water, not white; the mist: wide and barely there)
+		pm.albedo_color = Color(0.5, 0.62, 0.78, solid) if solid > 0.2 else Color(0.4, 0.5, 0.64, solid)
 		var q := QuadMesh.new()
 		q.size = Vector2(1.0, 1.0)
 		q.material = pm
@@ -1076,7 +1049,7 @@ func _sea() -> void:
 		ps.scale_amount_max = e[4]
 		var sc := Curve.new()
 		sc.add_point(Vector2(0, 0.45))
-		sc.add_point(Vector2(1, 1.5 if solid < 0.6 else 0.7))
+		sc.add_point(Vector2(1, 1.5 if solid < 0.2 else 0.8))
 		ps.scale_amount_curve = sc
 		var gr := Gradient.new()
 		gr.set_color(0, Color(1, 1, 1, 0.0))
