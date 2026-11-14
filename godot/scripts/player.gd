@@ -159,6 +159,7 @@ var cover_low := false
 var cover_edge := 0              # the wall ends here: -1 / +1 along the wall, 0 not at an end
 var cover_peek := 0.0            # how far out of the end he has stepped to shoot
 var cover_hit := {}
+var peek_reach := 0.0             # how far along the wall he goes to clear its end and shoot
 var cover_cool := 0.0           # after leaving cover: no automatic cover for a moment
 var touch_t := 0.0              # how long he has been walking into a wall
 var act_doing := ""
@@ -2547,6 +2548,7 @@ func _enter_cover(hit: Dictionary) -> void:
 	cover_n = Vector3(cn.x, 0, cn.z).normalized()
 	cover_edge = 0
 	cover_peek = 0.0
+	peek_reach = 0.0
 	touch_t = 0.0
 	firing = false
 
@@ -2591,9 +2593,10 @@ func _cover_step(dt: float) -> void:
 	var along := want.dot(tan)
 	var v_t := 0.0
 	if not shooting:
+		peek_reach = 0.0
 		if cover_peek > 0.0:       # back in from the lean
-			v_t = -float(cover_edge) * 2.4
-			cover_peek = max(0.0, cover_peek - 2.4 * dt)
+			v_t = -float(cover_edge) * 3.0
+			cover_peek = max(0.0, cover_peek - 3.0 * dt)
 		elif abs(along) > 0.2:
 			var sgn := 1 if along > 0 else -1
 			# does the wall go on that way?
@@ -2603,9 +2606,31 @@ func _cover_step(dt: float) -> void:
 			else:
 				cover_edge = 0
 				v_t = sgn * lerp(0.5, 1.5, clamp((abs(along) - 0.2) / 0.8, 0.0, 1.0))
-	elif cover_edge != 0 and not cover_low and cover_peek < 0.62:
-		v_t = float(cover_edge) * 3.0      # lean out of the end to shoot
-		cover_peek += 3.0 * dt
+	elif not cover_low:
+		# to shoot he goes to the end of the wall on the side he is looking (or the other, if that side has none
+		# within reach) and leans out past it
+		if cover_peek <= 0.0 and peek_reach <= 0.0:
+			var gap := {}
+			for sg in [-1, 1]:
+				gap[sg] = 99.0
+				for st in [0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.1, 2.4, 2.7, 3.0]:
+					var q2: Vector3 = base + tan * (sg * st) + Vector3(0, 0.55, 0)
+					if (ray.call(q2, q2 - n * 1.7) as Dictionary).is_empty():
+						gap[sg] = st
+						break
+					if not (ray.call(base + Vector3(0, 0.55, 0), q2 + n * 0.2) as Dictionary).is_empty():
+						break          # (something in the way along the wall)
+			var look := 1 if fwd.dot(tan) > 0.0 else -1
+			if gap[look] < 99.0:
+				cover_edge = look
+			elif gap[-look] < 99.0:
+				cover_edge = -look
+			else:
+				cover_edge = 0
+			peek_reach = (float(gap[cover_edge]) + 0.4) if cover_edge != 0 else 0.0
+		if cover_edge != 0 and cover_peek < peek_reach:
+			v_t = float(cover_edge) * 3.5      # out past the end of the wall to shoot
+			cover_peek += 3.5 * dt
 	var v_n := 0.0
 	if not wall.is_empty():
 		var off: float = (global_position - (wall["position"] as Vector3)).dot(n)
