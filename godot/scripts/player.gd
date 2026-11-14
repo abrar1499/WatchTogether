@@ -161,9 +161,6 @@ var cover_peek := 0.0            # how far out of the end he has stepped to shoo
 var cover_hit := {}
 var cover_cool := 0.0           # after leaving cover: no automatic cover for a moment
 var touch_t := 0.0              # how long he has been walking into a wall
-var end_t := 0.0                # how long the stick has pushed past the end of the wall
-var cover_sit := false          # in cover he sits only if the player chose to (CROUCH); rises to shoot over low cover
-var cover_reach := 0.0          # how far he steps to clear the end of the wall
 var act_doing := ""
 var act_obj: Node = null
 var drip_t := 1.0
@@ -771,14 +768,6 @@ func _feet_out_of_walls(dt: float) -> void:
 				push.y = 0.0
 				if push.length() > want.length():
 					want = push
-	if cover and not dead:
-		# in cover his body is drawn up against the wall (his own round shape cannot get as near as a shoulder can):
-		# right against a tall wall, a little less behind something low (his rifle is toward it), and eased off
-		# while he leans out or shoots
-		var hug := 0.27          # (his back flat against it)
-		if aiming or firing or cover_peek > 0.05 or t - last_shot < 1.2:
-			hug = 0.08           # (turned to shoot: his rifle needs the room)
-		want = -cover_n * hug
 	wall_push = wall_push.lerp(want, min(1.0, dt * (6.0 if cover else 14.0)))
 	model.global_position = Vector3(global_position.x + wall_push.x, model.global_position.y, global_position.z + wall_push.z)
 
@@ -1489,10 +1478,6 @@ func toggle_crouch() -> void:
 		prone = false          # (up from lying to a crouch)
 		crouch = true
 		return
-	if cover:
-		cover_sit = not cover_sit
-		crouch = cover_sit
-		return
 	crouch = not crouch
 
 
@@ -1827,11 +1812,8 @@ func _physics_process(dt: float) -> void:
 		vel = velocity
 		_step_up(target, dt)
 	speed = Vector2(vel.x, vel.z).length()
-	if cover and not (aiming or firing or t - last_shot < 1.2):
-		# at rest in cover his back is to the wall (asked for: the look of a man in cover). To shoot he turns to
-		# where he aims, and turns back a moment after the last round, not fast enough to look like a spin.
-		var rest := cover_n
-		rotation.y = lerp_angle(rotation.y, atan2(-rest.x, -rest.z), min(1.0, dt * 5.0))
+	if cover and not (aiming or firing or t - last_shot < 0.6):
+		rotation.y = lerp_angle(rotation.y, atan2(-cover_n.x, -cover_n.z), min(1.0, dt * 12.0))    # back to the wall
 	elif cover:
 		rotation.y = lerp_angle(rotation.y, yaw, min(1.0, dt * 16.0))
 	else:
@@ -2234,7 +2216,7 @@ func _animate(dt: float) -> void:
 	var w: Dictionary = weapons[wi]
 	var acting := throw_t >= 0.0 or hol_t >= 0.0 or holstered or knife_t >= 0.0
 	var doing := act_t >= 0.0
-	var aim_now := (aiming or firing or t - last_shot < (1.2 if cover else 2.5)) and not acting and climb_t < 0.0 and not doing
+	var aim_now := (aiming or firing or t - last_shot < (0.6 if cover else 2.5)) and not acting and climb_t < 0.0 and not doing
 	var moving := speed > 0.25
 	var ry := rotation.y
 	var local := Vector2(vel.dot(Vector3(cos(ry), 0, -sin(ry))), vel.dot(Vector3(-sin(ry), 0, -cos(ry))))  # x right, y forward
@@ -2386,10 +2368,6 @@ func _update_camera(dt: float) -> void:
 		tl = 0.95
 		ts = 0.42
 		th += 0.02
-	if cover and cover_edge != 0:
-		# at the end of a wall the camera goes to the open side, so the corner is not in the way
-		var out_dir: Vector3 = Vector3(cover_n.z, 0, -cover_n.x) * cover_edge
-		ts = abs(ts) * (1.0 if (out_dir + cover_n).dot(Vector3(cos(yaw), 0, -sin(yaw))) >= 0.0 else -1.0)
 	cam_len = lerp(cam_len, tl, min(1.0, dt * 10.0))
 	cam_side = lerp(cam_side, ts, min(1.0, dt * 10.0))
 	cam_h = lerp(cam_h, th, min(1.0, dt * (14.0 if climb_t >= 0.0 else 8.0)))
@@ -2567,17 +2545,15 @@ func _enter_cover(hit: Dictionary) -> void:
 	cover = true
 	var cn: Vector3 = hit["normal"]
 	cover_n = Vector3(cn.x, 0, cn.z).normalized()
-	cover_sit = crouch
 	cover_edge = 0
 	cover_peek = 0.0
 	touch_t = 0.0
-	end_t = 0.0
 	firing = false
 
 
 func leave_cover() -> void:
-	if cover:
-		crouch = cover_sit
+	if cover and cover_low:
+		crouch = false
 	cover = false
 	cover_peek = 0.0
 	cover_edge = 0
@@ -2585,9 +2561,9 @@ func leave_cover() -> void:
 	touch_t = 0.0
 
 
-## In cover: held against the wall, sidestepping along it, crouched behind anything lower than his head. To shoot he
-## leans out of the nearer end (standing or crouched as he is), the camera on that side; in the middle of something
-## low he stands up over it. Pulling the stick away, or pushing on past the end of the wall, leaves cover.
+## In cover (the first cover, as it was made): held against the wall, sidestepping along it (never past its end),
+## crouched behind anything lower than his head; to shoot he leans out of the end of a wall, or stands up over a
+## low one. Pulling the stick straight away from the wall leaves cover.
 func _cover_step(dt: float) -> void:
 	var space := get_world_3d().direct_space_state
 	var n := cover_n
@@ -2604,71 +2580,36 @@ func _cover_step(dt: float) -> void:
 		return
 	cover_low = (ray.call(base + Vector3(0, 1.5, 0), base + Vector3(0, 1.5, 0) - n * 1.7) as Dictionary).is_empty()
 	var shooting := aiming or firing or throw_t >= 0.0
-	# he sits only if the player crouched; sitting behind something low he rises to shoot over it, then sits again
-	crouch = cover_sit          # (as the player set it: he does not stand up of himself to shoot)
+	crouch = cover_low and not shooting
 	var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
 	var right := Vector3(cos(yaw), 0, -sin(yaw))
 	var want := fwd * move_in.y + right * move_in.x
 	var mag: float = min(1.0, move_in.length())
-	if mag > 0.3 and want.normalized().dot(n) > 0.4:
-		leave_cover()          # the stick pulled away from the wall
+	if mag > 0.6 and want.normalized().dot(n) > 0.75:
+		leave_cover()          # the stick pulled straight away from the wall
 		return
 	var along := want.dot(tan)
-	# where the wall ends (he can lean out there) and where something stands in the way, each side
-	var ends := {}
-	var blocked := {}
-	var gap := {}        # how far along the wall to its end, each side (99: further than he would lean)
-	for sgn in [-1, 1]:
-		var ahead: Vector3 = base + tan * (sgn * 0.55) + Vector3(0, 0.55, 0)
-		ends[sgn] = (ray.call(ahead, ahead - n * 1.7) as Dictionary).is_empty()
-		blocked[sgn] = not (ray.call(base + Vector3(0, 0.55, 0), ahead + n * 0.2) as Dictionary).is_empty()
-		gap[sgn] = 99.0
-		for st in [0.3, 0.55, 0.8, 1.05, 1.3, 1.55, 1.8, 2.05, 2.3]:      # (he will go this far along a wall to its end to shoot)
-			var q2: Vector3 = base + tan * (sgn * st) + Vector3(0, 0.55, 0)
-			if (ray.call(q2, q2 - n * 1.7) as Dictionary).is_empty():
-				gap[sgn] = st
-				break
-	if cover_peek <= 0.0:
-		# lean out of the end on the side he is looking (left or right); behind something low, or with no end
-		# that side within reach, he rises and shoots over the top instead
-		var look := 1 if fwd.dot(tan) > 0.0 else -1
-		if abs(fwd.dot(tan)) < 0.25 and cover_low:
-			cover_edge = 0                                     # looking straight out over it
-		elif gap[look] < 99.0 and (not cover_low or gap[look] <= 1.35):
-			cover_edge = look
-		elif cover_low:
-			cover_edge = 0
-		else:
-			cover_edge = -look if gap[-look] < 99.0 else 0
-		cover_reach = (float(gap[cover_edge]) + 0.55) if cover_edge != 0 else 0.0      # (well clear of the corner: the round must not catch it)
-	# kept simple, as asked: he does not step out along the wall to shoot. He stays where he is against it,
-	# turns to where the player aims, and fires from there.
-	cover_edge = 0
-	cover_reach = 0.0
 	var v_t := 0.0
 	if not shooting:
 		if cover_peek > 0.0:       # back in from the lean
-			v_t = -float(cover_edge) * 3.0
-			cover_peek = max(0.0, cover_peek - 3.0 * dt)
+			v_t = -float(cover_edge) * 2.4
+			cover_peek = max(0.0, cover_peek - 2.4 * dt)
 		elif abs(along) > 0.2:
-			var sg := 1 if along > 0 else -1
-			if not ends[sg] and not blocked[sg]:
-				v_t = sg * lerp(0.5, 1.5, clamp((abs(along) - 0.2) / 0.8, 0.0, 1.0))
-				end_t = 0.0
-			elif ends[sg] and abs(along) > 0.5:
-				end_t += dt          # still pushing past the end of the wall: walk on round it
-				if end_t > 0.35:
-					leave_cover()
-					return
-		else:
-			end_t = 0.0
-	elif cover_edge != 0 and cover_peek < cover_reach:
-		v_t = float(cover_edge) * 4.5      # step out of the end to shoot
-		cover_peek += 4.5 * dt
+			var sgn := 1 if along > 0 else -1
+			# does the wall go on that way?
+			var ahead: Vector3 = base + tan * (sgn * 0.5) + Vector3(0, 0.55, 0)
+			if (ray.call(ahead, ahead - n * 1.2) as Dictionary).is_empty() or not (ray.call(base + Vector3(0, 0.55, 0), ahead + n * 0.2) as Dictionary).is_empty():
+				cover_edge = sgn
+			else:
+				cover_edge = 0
+				v_t = sgn * lerp(0.5, 1.5, clamp((abs(along) - 0.2) / 0.8, 0.0, 1.0))
+	elif cover_edge != 0 and not cover_low and cover_peek < 0.62:
+		v_t = float(cover_edge) * 3.0      # lean out of the end to shoot
+		cover_peek += 3.0 * dt
 	var v_n := 0.0
 	if not wall.is_empty():
 		var off: float = (global_position - (wall["position"] as Vector3)).dot(n)
-		v_n = clamp((0.44 - off) * 10.0, -3.0, 3.0)      # (as near as his shape allows)
+		v_n = clamp((0.46 - off) * 10.0, -3.0, 3.0)
 	vel.x = tan.x * v_t + n.x * v_n
 	vel.z = tan.z * v_t + n.z * v_n
 	vel.y = 0.0 if is_on_floor() else vel.y - GRAVITY * dt
