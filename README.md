@@ -104,6 +104,10 @@ The two boats in mission 4 (`godot/assets/boats/`), both licensed [CC BY 4.0](ht
 
 The swell of the sea in mission 4 (`godot/assets/ship/swell.res`) comes from "ocean wave" by [Andrea Marziano](https://sketchfab.com/3dartel) on [Sketchfab](https://sketchfab.com/3d-models/ocean-wave-f86f444dc7cc4458a0140f05a03c5896), licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/); changed for this game: the model itself is not used; its twenty animated shapes were read as fields of displacement, made to join at their edges, cut from 201 to 128 points a side and packed as one picture (`tools/seabuild/swell_bake.py`, `swell_pack.gd`). The game's own water is moved by them, at two sizes laid over each other.
 
+The combat knife (`godot/assets/guns/knife.glb`) is the knife from "knife Animated" by [DJMaesen](https://sketchfab.com/bumstrum) on [Sketchfab](https://sketchfab.com/3d-models/knife-animated-f3140db917cc43389c14b5b2536c1dc8), licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/); changed for this game: only the knife is kept (the first-person arms and their animation are left out), its textures cut to 512 pixels, turned and sized to 30 cm (`tools/gunbuild/knife_take.py`).
+
+The clips in `godot/assets/anims/extra.res` (climbing stairs at a walk and a run, a knife thrust, a grenade throw lying down, a strafe) are Mixamo animations, fitted to the soldier with `tools/charbuild/anim_take.gd`.
+
 The ripple picture `godot/assets/fx/rain_ripples.png` comes from "Rain drops circles" by [VRA](https://sketchfab.com/architect47) on [Sketchfab](https://sketchfab.com/3d-models/rain-drops-circles-download-like-please-50b52de9b9a94ac09afbbaf28f102081), licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/); changed for this game: the ripple normal map cut to 512 pixels. In mission 2 it stirs the puddles.
 
 Sounds in `godot/assets/sfx/` are unedited sound effects from [Pixabay](https://pixabay.com/sound-effects/), used under the Pixabay Content License:
