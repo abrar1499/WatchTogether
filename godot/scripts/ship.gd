@@ -859,8 +859,8 @@ func _sea() -> void:
 	water = MeshInstance3D.new()
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(1800, 1800)
-	pm.subdivide_width = 150
-	pm.subdivide_depth = 150
+	pm.subdivide_width = 80          # (its gentle swell needs no finer: 150 was 45,000 triangles every frame)
+	pm.subdivide_depth = 80
 	water.mesh = pm
 	water.material_override = wm
 	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -1100,6 +1100,8 @@ func _rider(parent: Node3D, kind: String, at: Vector3, armed: bool) -> Dictionar
 	hold.rotation.y = -PI * 0.5        # (the models look along -z; the ski's bow is +x)
 	var r: Dictionary = main.player.make_rig(Color(1, 1, 1), ["ak"], false, kind)
 	var root: Node3D = r["root"]
+	for g in root.find_children("*", "GeometryInstance3D", true, false):
+		(g as GeometryInstance3D).visibility_range_end = 110.0      # (a man in a boat far off is not drawn)
 	hold.add_child(root)
 	root.rotation.y = PI
 	(r["guns"]["ak"] as Node3D).visible = armed
@@ -1159,6 +1161,8 @@ func _skiff(i: int) -> void:
 	var root := Node3D.new()
 	add_child(root)
 	var box := _boat_model(root, "res://assets/boats/sprint_boat.glb", SPRINT_BOW, 5.6, 0.26, [Color(1, 0, 0), SKI_TINT[i % 3]])
+	for g in root.find_children("*", "GeometryInstance3D", true, false):
+		(g as GeometryInstance3D).visibility_range_end = 160.0
 	if i == 0:
 		pass
 	_boat_foam(root, [[Vector3(1.8, 0, 0), 0.4, 0.9], [Vector3(-2.1, 0, 0), 1.4, 1.0], [Vector3(-8.0, 0, 0), 2.2, 0.7], [Vector3(-26.0, 0, 0), 3.4, 0.0]])
