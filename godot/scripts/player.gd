@@ -18,13 +18,13 @@ const GRAVITY := 12.0
 # the ground speed each clip's feet really walk at (measured: the planted foot must not slide)
 const NAT := {"walk": 0.8, "walkBack": 0.95, "walkR": 1.75, "walkL": 1.78, "run": 2.45, "runBack": 1.8,
 	"runStrafeR": 2.2, "runStrafeL": 1.7, "crouchWalk2": 1.06, "crouchWalk": 0.95, "crouchBack": 1.17, "crouchRun": 1.3,
-	"stairsUp": 0.8, "stairsRun": 1.55}
+	"stairsUp": 0.8}
 const STATES := {"idle": "idle", "aim": "aim", "kneel": "kneel", "kneel_aim": "crouchFire", "jump": "jump",
 	"walk": "walk", "walk_b": "walkBack", "walk_r": "walkR", "walk_l": "walkL",
 	"run": "run", "run_b": "runBack", "run_r": "runStrafeR", "run_l": "runStrafeL",
 	"c_walk": "crouchWalk", "c_back": "crouchBack", "c_run": "crouchWalk", "c_r": "crouchWalk", "c_l": "crouchWalk",
 	"dead": "dieFront", "kick": "kick", "prone": "proneFire", "crawl": "proneFwd",
-	"stairs": "stairsUp", "stairs_run": "stairsRun"}
+	"stairs": "stairsUp"}
 # (the "crouchRun" clip has its hips 1.8 m behind the body, which put the soldier behind the camera: crouch-running
 # plays the crouch walk faster instead)
 const UPPER := ["mixamorigSpine", "mixamorigSpine1", "mixamorigSpine2", "mixamorigNeck", "mixamorigHead",
@@ -187,6 +187,9 @@ const KNIFE_RATE := 1.4             # (0.60 s into the clip) at the moment the s
 const PRONE_NADE_RELEASE := 2.0     # the throw lying down ("proneNade"): when the grenade leaves the hand
 var nade_node: AnimationNodeAnimation    # the clip the "grenade" slot plays: a throw, a throw lying down, a knife thrust
 var stairs_t := 0.0                 # going up steps or a ramp (a short while after the last climbing moment)
+var rise_v := 0.0                   # how fast he is going up (m/s, smoothed): the stairs clip keeps pace with it
+const STAIRS_RISE := 0.41           # the stairs clip at its own pace climbs this fast (two steps in 1.2 s)
+const STAIRS_WALK := 0.95           # walking up steps he goes no faster than this (a run is still a run)
 var last_y := 0.0
 var holstered := false              # the gun is on the back (the pistol in its thigh holster)
 var hol_t := -1.0                   # putting the gun away (hol_dir 1) or drawing it (-1): time into it
@@ -1795,6 +1798,8 @@ func _physics_process(dt: float) -> void:
 				if holstered:
 					top *= 1.2    # nothing in the hands: a little quicker
 			var spd: float = lerp(0.55, top, pow(push, 2.0))     # most of the stick is walking; the run is at its edge
+			if stairs_t > 0.0 and spd < 1.95 and not crouch and not prone:
+				spd = min(spd, STAIRS_WALK)      # (a man walking up steps takes them at a steady pace)
 			pass
 			if act_t >= 0.0:
 				spd = 0.0
@@ -2249,6 +2254,7 @@ func _animate(dt: float) -> void:
 	# on steps or a ramp, going up: seen from the floor's slope and the body really rising
 	var rising: float = (global_position.y - last_y) / max(dt, 0.001)
 	last_y = global_position.y
+	rise_v = lerp(rise_v, max(rising, 0.0), min(1.0, dt * 6.0))
 	if is_on_floor() and get_floor_normal().y < 0.95 and rising > 0.25:
 		stairs_t = 0.3
 	else:
@@ -2273,8 +2279,8 @@ func _animate(dt: float) -> void:
 		var run := (speed > (1.25 if was_run else 1.4)) if crouch else (speed > (1.7 if was_run else 1.95))
 		if crouch:
 			st = {"F": "c_run" if run else "c_walk", "B": "c_back", "R": "c_r", "L": "c_l"}[dir]
-		elif dir == "F" and stairs_t > 0.0:
-			st = "stairs_run" if run else "stairs"       # climbing: the knees come up to the steps
+		elif dir == "F" and stairs_t > 0.0 and not run:
+			st = "stairs"       # walking up: the knees come up to the steps (running up, the run is kept)
 		else:
 			st = {"F": "walk", "B": "walk_b", "R": "walk_r", "L": "walk_l"}[dir]
 		nat = NAT.get(STATES[st], 1.0)
@@ -2300,6 +2306,10 @@ func _animate(dt: float) -> void:
 		tree.set("parameters/loco/%s/blend_position" % st, gait_v)
 		cycle_rate = clamp(_gait_rate(gait, gait_v), 0.45, 2.2)
 		scale = cycle_rate
+	elif st == "stairs":
+		# the clip's feet land on its steps as fast as he really rises: no running in place, no gliding
+		scale = clamp(rise_v / STAIRS_RISE, 0.6, 1.35)
+		cycle_rate = scale / ap.get_animation("stairsUp").length
 	elif nat > 0:
 		scale = clamp(speed / nat, 0.5, 1.6)
 		cycle_rate = scale / max(0.3, ap.get_animation(STATES[st]).length)

@@ -817,8 +817,8 @@ const WATER := """
 shader_type spatial;
 render_mode cull_disabled;
 uniform sampler2D ripples : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
-uniform vec3 deep : source_color = vec3(0.012, 0.035, 0.06);
-uniform vec3 sky : source_color = vec3(0.15, 0.225, 0.36);
+uniform vec3 deep : source_color = vec3(0.014, 0.03, 0.038);
+uniform vec3 sky : source_color = vec3(0.11, 0.15, 0.19);
 uniform float drift = 0.0;
 uniform float tm = 0.0;
 uniform sampler2DArray frames : filter_linear, repeat_enable;
@@ -861,7 +861,7 @@ float wash(vec2 q, float t) {
 }
 
 vec3 sea(vec2 p, float t, float longf, float shortf) {
-	return swell(p, 190.0, t * 0.55) * longf * 0.75 + swell(p.yx + vec2(31.0, 7.0), 62.0, t).zyx * shortf * 0.85;
+	return swell(p, 260.0, t * 0.42) * longf * 0.2 + swell(p.yx + vec2(31.0, 7.0), 70.0, t * 0.8).zyx * shortf * 0.22;
 }
 
 void vertex() {
@@ -902,7 +902,7 @@ void fragment() {
 	NORMAL_MAP_DEPTH = mix(1.0, 0.3, smoothstep(30.0, 260.0, dist));
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
 	// (darker in the troughs, a little paler on the backs of the waves: it is this that shows the swell)
-	vec3 col = mix(deep, sky, fres * 0.85) * (0.82 + clamp(crest, -1.2, 1.2) * 0.3);
+	vec3 col = mix(deep, sky, fres * 0.85) * (0.85 + clamp(crest, -0.7, 0.7) * 0.3);
 
 	// foam, worked out where it lies (so it rides the swell): the wash along the ship's sides, the wave off her
 	// bows, her wake, and the wake of each boat
@@ -934,8 +934,8 @@ void fragment() {
 	float lace = smoothstep(0.5, 0.72, n1 * 0.55 + n2 * 0.45 + (m - 0.5) * 0.42);
 	float foam = clamp(m * lace + smoothstep(0.85, 1.0, m) * 0.12, 0.0, 1.0);
 	// a little white where the tops of the bigger waves break
-	foam = max(foam, smoothstep(0.75, 1.25, crest) * smoothstep(0.5, 0.66, n2) * 0.35);
-	col = mix(col, vec3(0.36, 0.44, 0.54), foam * 0.72);
+	foam = max(foam, smoothstep(0.55, 0.95, crest) * smoothstep(0.55, 0.68, n2) * 0.25);
+	col = mix(col, vec3(0.36, 0.41, 0.45), foam * 0.72);
 	ALBEDO = col;
 	EMISSION = vec3(0.2, 0.27, 0.36) * foam * 0.5;      // (broken water catches what light there is)
 	ROUGHNESS = mix(0.22, 0.8, foam);
@@ -963,7 +963,7 @@ func sea_h(x: float, z: float) -> float:
 	var p := Vector2(x + run, z)
 	var off := Vector2(max(abs(x) - 48.0, 0.0), max(abs(z) - 7.5, 0.0))
 	var lee: float = lerp(0.2, 1.0, smoothstep(0.0, 30.0, off.length()))
-	return (_swell_h(p, 190.0, t * 0.55, 1) * 0.75 + _swell_h(Vector2(p.y + 31.0, p.x + 7.0), 62.0, t, 1) * 0.85) * lee
+	return (_swell_h(p, 260.0, t * 0.42, 1) * 0.2 + _swell_h(Vector2(p.y + 31.0, p.x + 7.0), 70.0, t * 0.8, 1) * 0.22) * lee
 
 
 func _sea() -> void:
@@ -1529,7 +1529,7 @@ func _physics_process(dt: float) -> void:
 			main.ui.message("OVERBOARD", "You drag yourself back into the boat.", 2.5)
 	# the sea's sound: louder down by the water, less up on the bridge; under water only the deep is heard
 	var down: float = clamp(1.0 - (pl.global_position.y - 1.0) / 14.0, 0.0, 1.0)
-	var want_sea: float = -60.0 if under_t >= 0.0 else lerp(-13.0, -4.0, down)
+	var want_sea: float = -60.0 if under_t >= 0.0 else lerp(-24.0, -15.0, down)
 	sea_snd.volume_db = move_toward(sea_snd.volume_db, want_sea, dt * (90.0 if under_t >= 0.0 else 30.0))
 	under_snd.volume_db = move_toward(under_snd.volume_db, -2.0 if under_t >= 0.0 else -60.0, dt * 80.0)
 	if under_t < 0.0 and under_snd.playing and under_snd.volume_db <= -59.0:
