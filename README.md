@@ -108,6 +108,8 @@ The hand grenade (`godot/assets/guns/grenade.glb`) is "MK2 Grenade" by [Slayer4D
 
 The army lorry (`godot/assets/city/props/ural_truck/`) is "URAL-4320 (soviet-army truck)" by [zhe_kan](https://sketchfab.com/zhe_kan) on [Sketchfab](https://sketchfab.com/3d-models/ural-4320-soviet-army-truck-e3aadc206ef2413c90f350a3f4e8a5cd), licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/); changed for this game: packed with `tools/citybuild/prop_pack.py` from 225,927 to about 9,500 triangles, its textures cut to 512 pixels, the roughness maps left out. It stands inside the west gate in mission 1, in the rail yard in mission 2 and in the headquarters yard in mission 3.
 
+The hero is drawn in full detail (`godot/assets/hd/hero/hero_*.res`, all 46,301 triangles of the Mixamo file, with his 2048 px textures), made with `tools/charbuild/hero_take.gd` and bound to the soldier's own skeleton when the game starts; `assets/soldier.glb` keeps its lighter mesh and all the clips.
+
 The clips in `godot/assets/anims/extra.res` (a knife thrust and a grenade throw lying down) are Mixamo animations, fitted to the soldier with `tools/charbuild/anim_take.gd`.
 
 The ripple picture `godot/assets/fx/rain_ripples.png` comes from "Rain drops circles" by [VRA](https://sketchfab.com/architect47) on [Sketchfab](https://sketchfab.com/3d-models/rain-drops-circles-download-like-please-50b52de9b9a94ac09afbbaf28f102081), licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/); changed for this game: the ripple normal map cut to 512 pixels. In mission 2 it stirs the puddles.

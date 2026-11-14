@@ -239,6 +239,7 @@ func _build_model() -> void:
 	model_scale = s
 	sc.scale = Vector3.ONE * s
 	sc.rotation.y = PI
+	_hd_body(sc)
 	_skin(sc, Color(1, 1, 1))
 	head_bone = skel.find_bone("mixamorigHead")
 	# clips added later (a knife thrust, a throw lying down): see tools/charbuild/anim_take.gd
@@ -297,6 +298,33 @@ func _cut_clip(src: String, dst: String, from: float, k: float) -> void:
 
 ## Soldier materials. They cast soft shadows (on themselves and lightly on the ground), except the first-person
 ## arms, which also leave out whatever is within a hand's breadth of the eye (head, helmet) with a clean cut.
+## The hero in full detail (assets/hd/hero/hero_<surface>.res, made by tools/charbuild/hero_take.gd from the
+## Mixamo file): each surface of the soldier's own lighter mesh is swapped for the full one, bound to his skeleton by
+## bone name. Only the soldier's model has these.
+var hd_skins := {}
+func _hd_body(sc: Node3D) -> void:
+	for m in sc.find_children("*", "MeshInstance3D", true, false):
+		var mi := m as MeshInstance3D
+		var mat = mi.get_active_material(0)
+		if mat == null:
+			continue
+		var path := "res://assets/hd/hero/hero_%s.res" % str(mat.resource_name)
+		if not ResourceLoader.exists(path):
+			continue
+		var hd: ArrayMesh = load(path)
+		if hd.surface_get_material(0) == null:
+			hd.surface_set_material(0, mat)
+		if not hd_skins.has(path):
+			var sk := Skin.new()
+			var names: PackedStringArray = hd.get_meta("binds")
+			var poses: Array = hd.get_meta("poses")
+			for i in names.size():
+				sk.add_named_bind(names[i], poses[i])
+			hd_skins[path] = sk
+		mi.mesh = hd
+		mi.skin = hd_skins[path]
+
+
 func _skin(sc: Node3D, tint: Color, fade_near := false) -> void:
 	for m in sc.find_children("*", "MeshInstance3D", true, false):
 		# (no shadows from people in the missions; on the training ground, drawn in full, they cast them)
@@ -349,6 +377,8 @@ func make_rig(tint: Color, keys: Array, fade_near := false, kind := "soldier") -
 	var sc: Node3D = load(KINDS[kind]).instantiate()
 	sc.scale = Vector3.ONE * float(info["scale"])
 	sc.rotation.y = PI
+	if kind == "soldier":
+		_hd_body(sc)
 	_skin(sc, tint, fade_near)
 	var sk: Skeleton3D = sc.find_children("*", "Skeleton3D", true, false)[0]
 	var cap: AnimationPlayer = _rig_player(sc, kind)
