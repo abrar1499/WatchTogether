@@ -824,8 +824,8 @@ const WATER := """
 shader_type spatial;
 render_mode cull_back;
 uniform sampler2D ripples : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
-uniform vec3 deep : source_color = vec3(0.012, 0.035, 0.06);
-uniform vec3 sky : source_color = vec3(0.16, 0.24, 0.38);
+uniform vec3 deep : source_color = vec3(0.012, 0.03, 0.026);       // (night sea: a dark grey-green-blue)
+uniform vec3 sky : source_color = vec3(0.09, 0.125, 0.125);
 uniform float drift = 0.0;
 varying vec3 wp;
 void vertex() {
@@ -841,9 +841,9 @@ void fragment() {
 	NORMAL_MAP = normalize(a + b + c - 1.5) * 0.5 + 0.5;
 	NORMAL_MAP_DEPTH = mix(1.1, 0.3, smoothstep(30.0, 260.0, length(wp.xz - CAMERA_POSITION_WORLD.xz)));
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
-	ALBEDO = mix(deep, sky, fres * 0.85);
-	ROUGHNESS = 0.24;
-	SPECULAR = 0.85;
+	ALBEDO = mix(deep, sky, fres * 0.75);
+	ROUGHNESS = 0.3;
+	SPECULAR = 0.6;
 	METALLIC = 0.0;
 }
 """
@@ -900,7 +900,7 @@ void fragment() {
 	vec2 p = wp.xz + vec2(drift, 0.0);
 	float n = texture(tex, p * 0.05).r + texture(tex, p * 0.13 + vec2(0.3, TIME * 0.02)).g - 1.0;
 	float m = texture(tex, p * 0.31 + vec2(0.0, TIME * 0.05)).r;
-	ALBEDO = vec3(0.5, 0.58, 0.68) * (0.75 + m * 0.5);
+	ALBEDO = vec3(0.36, 0.41, 0.42) * (0.7 + m * 0.45);
 	ALPHA = clamp(COLOR.a * (0.55 + n * 4.0), 0.0, 0.92);
 }
 """
