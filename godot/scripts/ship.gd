@@ -103,6 +103,12 @@ func _mats() -> void:
 	_flat("sh_green", Color(0.15, 1.0, 0.3), 0.3, 3.0)
 	_flat("sh_dark", Color(0.03, 0.04, 0.05), 0.2)
 	_flat("sh_glass", Color(0.35, 0.5, 0.6, 0.22), 0.05, 0.0, true)
+	var fs := Shader.new()
+	fs.code = FOAM
+	foam_mat = ShaderMaterial.new()
+	foam_mat.shader = fs
+	foam_mat.set_shader_parameter("tex", load("res://assets/fx/rain_ripples.png"))
+	city.mats["sh_foam"] = foam_mat
 
 
 # ---------------- drawing helpers ----------------
@@ -816,156 +822,31 @@ func _rib(p: Vector3, yaw: float) -> void:
 # ---------------- the sea, the islets, the launches ----------------
 const WATER := """
 shader_type spatial;
-render_mode cull_disabled;
+render_mode cull_back;
 uniform sampler2D ripples : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
-uniform vec3 deep : source_color = vec3(0.014, 0.03, 0.038);
-uniform vec3 sky : source_color = vec3(0.11, 0.15, 0.19);
+uniform vec3 deep : source_color = vec3(0.012, 0.035, 0.06);
+uniform vec3 sky : source_color = vec3(0.16, 0.24, 0.38);
 uniform float drift = 0.0;
-uniform float tm = 0.0;
-uniform sampler2D frames : filter_linear, repeat_enable;     // 20 frames one under another, 0.5 + v / 0.08
-uniform vec4 boats[6];        // x, z, heading x, heading z
-uniform float boat_w[6];      // half width of each boat's wake where it starts (0: none)
 varying vec3 wp;
-varying float crest;
-varying float thrown;
-
-// the swell at a place: frames of a simulated sea, laid over the water twice at two sizes; returns the
-// displacement (sideways, up, sideways) in metres
-vec3 swell(vec2 p, float size, float t) {
-	float f = fract(t / 4.0) * 20.0;
-	float k = floor(f);
-	vec2 uv = p / size;
-	float v = clamp(fract(uv.y), 0.5 / 128.0, 1.0 - 0.5 / 128.0);
-	vec3 a = textureLod(frames, vec2(uv.x, (k + v) / 20.0), 0.0).rgb;
-	vec3 b = textureLod(frames, vec2(uv.x, (mod(k + 1.0, 20.0) + v) / 20.0), 0.0).rgb;
-	return (mix(a, b, f - k) - 0.5) * 0.08 * size;
-}
-
-float hull_w(float x) {
-	return 7.5 * (1.0 - pow(smoothstep(20.0, 47.5, x), 1.6)) * (1.0 - 0.2 * smoothstep(-40.0, -46.0, x));
-}
-
-// the water the ship herself throws up (q: a place by the ship, who lies along x with her bow at +47): the wave
-// piled against her stem and rolling off down both sides in a V, the wash slapping along her plating in pulses
-// that run aft, the boil under her stern
-float wash(vec2 q, float t) {
-	float az = abs(q.y);
-	float al = 46.5 - q.x;
-	float mid = 0.6 + al * 0.36;
-	float wd = 1.1 + al * 0.05;
-	float h = exp(-pow((az - mid) / wd, 2.0)) * 1.05 * exp(-max(al, 0.0) / 20.0) * smoothstep(-1.5, 1.0, al);
-	float d = az - hull_w(q.x);
-	float along = step(-46.5, q.x) * step(q.x, 47.5);
-	h += along * exp(-max(d, 0.0) / 1.3) * step(-0.6, d) * (0.2 + 0.24 * max(0.0, sin(q.x * 0.42 + t * 2.6)) + 0.14 * sin(q.x * 1.1 + t * 4.1));
-	float as_ = -44.5 - q.x;
-	h += smoothstep(0.0, 2.0, as_) * exp(-max(as_, 0.0) / 9.0) * (1.0 - smoothstep(3.0, 6.5, az)) * (0.22 + 0.2 * sin(q.x * 1.3 + t * 5.0) * sin(q.y * 1.7 + t * 3.1));
-	return h;
-}
-
-vec3 sea(vec2 p, float t, float longf, float shortf) {
-	return swell(p, 260.0, t * 0.42) * longf * 0.2 + swell(p.yx + vec2(31.0, 7.0), 70.0, t * 0.8).zyx * shortf * 0.22;
-}
-
 void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	float dist = length(wp.xz - CAMERA_POSITION_WORLD.xz);
-	// (the sea lies quieter in the ship's lee, close under her sides)
-	vec2 off = max(abs(wp.xz) - vec2(48.0, 7.5), vec2(0.0));
-	float lee = mix(0.2, 1.0, smoothstep(0.0, 30.0, length(off)));
-	vec2 q = wp.xz;
+	float far = smoothstep(30.0, 140.0, length(wp.xz - CAMERA_POSITION_WORLD.xz));
 	wp.x += drift;
-	float longf = (1.0 - smoothstep(250.0, 700.0, dist)) * lee;
-	float shortf = (1.0 - smoothstep(60.0, 220.0, dist)) * lee;
-	vec3 w = sea(wp.xz, tm, longf, shortf);
-	thrown = wash(q, tm);
-	w.y += thrown;
-	// the slope, from the heights a step away each way
-	float e = 0.9;
-	float hx = sea(wp.xz + vec2(e, 0.0), tm, longf, shortf).y + wash(q + vec2(e, 0.0), tm);
-	float hz = sea(wp.xz + vec2(0.0, e), tm, longf, shortf).y + wash(q + vec2(0.0, e), tm);
-	vec2 sl = vec2(hx - w.y, hz - w.y) / e;
-	VERTEX += vec3(w.x, w.y, w.z) * vec3(0.6, 1.0, 0.6);
-	NORMAL = normalize(vec3(-sl.x, 1.0, -sl.y));
-	TANGENT = normalize(vec3(1.0, sl.x, 0.0));
-	BINORMAL = normalize(vec3(0.0, sl.y, 1.0));
-	crest = w.y - thrown;
+	VERTEX.y += (sin(wp.x * 0.13 + TIME * 0.8) * 0.07 + sin(wp.z * 0.09 + wp.x * 0.04 + TIME * 0.6) * 0.09) * (0.5 + far);
 }
-
-float band(float x, float a, float b) {
-	return smoothstep(a, a + (b - a) * 0.35, x) * (1.0 - smoothstep(a + (b - a) * 0.65, b, x));
-}
-
 void fragment() {
-	float dist = length(wp.xz - vec2(drift, 0.0) - CAMERA_POSITION_WORLD.xz);
 	vec3 a = texture(ripples, wp.xz * 0.05 + vec2(TIME * 0.013, TIME * 0.02)).rgb;
 	vec3 b = texture(ripples, wp.xz * 0.09 + vec2(-TIME * 0.026, TIME * 0.012)).rgb;
 	vec3 c = texture(ripples, wp.xz * 0.011 + vec2(TIME * 0.004, -TIME * 0.003)).rgb;
 	NORMAL_MAP = normalize(a + b + c - 1.5) * 0.5 + 0.5;
-	NORMAL_MAP_DEPTH = mix(1.0, 0.3, smoothstep(30.0, 260.0, dist));
+	NORMAL_MAP_DEPTH = mix(1.1, 0.3, smoothstep(30.0, 260.0, length(wp.xz - CAMERA_POSITION_WORLD.xz)));
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
-	// (darker in the troughs, a little paler on the backs of the waves: it is this that shows the swell)
-	vec3 col = mix(deep, sky, fres * 0.85) * (0.85 + clamp(crest, -0.7, 0.7) * 0.3);
-
-	// foam, worked out where it lies (so it rides the swell): the wash along the ship's sides, the wave off her
-	// bows, her wake, and the wake of each boat
-	vec2 p = wp.xz - vec2(drift, 0.0);           // (the ship's own place: she lies along x, her bow at +47)
-	float az = abs(p.y);
-	float hw = hull_w(p.x);
-	// the wash: it surges out from the plating and falls back, in pulses running aft
-	float surge = 1.6 + 1.3 * sin(p.x * 0.42 + tm * 2.6) + 0.7 * sin(p.x * 1.1 + tm * 4.1);
-	float m = (1.0 - smoothstep(0.0, max(surge, 0.5) + 1.2, az - hw)) * step(-46.5, p.x) * step(p.x, 47.5);
-	float al = 46.0 - p.x;                       // the wave off the bows: a V opening aft
-	float mid = 0.8 + al * 0.36;
-	m = max(m, band(az, mid - 1.0 - al * 0.03, mid + 1.6 + al * 0.07) * smoothstep(-1.0, 2.0, al) * (1.0 - smoothstep(20.0, 95.0, al)));
-	float as_ = -44.0 - p.x;                     // the wake astern: broad, churned, dying away
-	m = max(m, (1.0 - smoothstep(4.5 + as_ * 0.07, 7.0 + as_ * 0.11, az)) * smoothstep(-2.0, 3.0, as_) * (1.0 - smoothstep(30.0, 230.0, as_)) * 0.9);
-	for (int i = 0; i < 6; i++) {
-		if (boat_w[i] <= 0.0) {
-			continue;
-		}
-		vec2 r = p - boats[i].xy;
-		float back = -dot(r, boats[i].zw);
-		float lat = abs(r.x * boats[i].w - r.y * boats[i].z);
-		float len = boat_w[i] * 22.0;
-		m = max(m, (1.0 - smoothstep(boat_w[i] * 0.5 + back * 0.1, boat_w[i] + back * 0.16, lat)) * smoothstep(-boat_w[i] * 2.5, 0.0, back) * (1.0 - smoothstep(len * 0.15, len, back)));
-	}
-	m = max(m, smoothstep(0.14, 0.55, thrown) * 0.95);  // (what she throws up is broken water on top)
-	vec2 fp = wp.xz;
-	float n1 = texture(ripples, fp * vec2(0.035, 0.09) + vec2(0.0, TIME * 0.02)).r;
-	float n2 = texture(ripples, fp * 0.21 + vec2(TIME * 0.03, 0.0)).g;
-	float lace = smoothstep(0.5, 0.72, n1 * 0.55 + n2 * 0.45 + (m - 0.5) * 0.42);
-	float foam = clamp(m * lace + smoothstep(0.85, 1.0, m) * 0.12, 0.0, 1.0);
-	// a little white where the tops of the bigger waves break
-	foam = max(foam, smoothstep(0.55, 0.95, crest) * smoothstep(0.55, 0.68, n2) * 0.25);
-	col = mix(col, vec3(0.36, 0.41, 0.45), foam * 0.72);
-	ALBEDO = col;
-	EMISSION = vec3(0.2, 0.27, 0.36) * foam * 0.5;      // (broken water catches what light there is)
-	ROUGHNESS = mix(0.22, 0.8, foam);
-	SPECULAR = mix(0.85, 0.3, foam);
+	ALBEDO = mix(deep, sky, fres * 0.85);
+	ROUGHNESS = 0.24;
+	SPECULAR = 0.85;
 	METALLIC = 0.0;
 }
 """
-
-
-## The height of the sea at a place (as the water's shader has it), for boats to ride.
-var swell_img: Image
-func _swell_h(p: Vector2, size: float, tt: float, comp: int) -> float:
-	var f: float = fposmod(tt / 4.0, 1.0) * 20.0
-	var k := int(f)
-	var u: int = posmod(int(floor(p.x / size * 128.0)), 128)
-	var v: int = posmod(int(floor(p.y / size * 128.0)), 128)
-	var a: Color = swell_img.get_pixel(u, k * 128 + v)
-	var b: Color = swell_img.get_pixel(u, ((k + 1) % 20) * 128 + v)
-	return (lerp(a[comp], b[comp], f - k) - 0.5) * 0.08 * size
-
-
-func sea_h(x: float, z: float) -> float:
-	if swell_img == null:
-		return 0.0
-	var p := Vector2(x + run, z)
-	var off := Vector2(max(abs(x) - 48.0, 0.0), max(abs(z) - 7.5, 0.0))
-	var lee: float = lerp(0.2, 1.0, smoothstep(0.0, 30.0, off.length()))
-	return (_swell_h(p, 260.0, t * 0.42, 1) * 0.2 + _swell_h(Vector2(p.y + 31.0, p.x + 7.0), 70.0, t * 0.8, 1) * 0.22) * lee
 
 
 func _sea() -> void:
@@ -975,99 +856,72 @@ func _sea() -> void:
 	wm.shader = sh
 	wm.set_shader_parameter("ripples", load("res://assets/fx/rain_ripples.png"))
 	sea_mat = wm
-	# the simulated sea's frames (assets/ship/swell.png: twenty frames one under another, 8 bits a value)
-	var sw: Texture2D = load("res://assets/ship/swell.png")
-	swell_img = sw.get_image()
-	if swell_img.is_compressed():
-		swell_img.decompress()
-	wm.set_shader_parameter("frames", sw)
-	# a sheet of water finely cut near the eye (to rise and fall in the swell) and coarsely far out
-	var n := 140
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for j in n + 1:
-		for i in n + 1:
-			var u := float(i) / n * 2.0 - 1.0
-			var v := float(j) / n * 2.0 - 1.0
-			st.set_normal(Vector3.UP)
-			st.set_uv(Vector2(u, v))
-			st.add_vertex(Vector3(u * 70.0 + sign(u) * pow(abs(u), 4.0) * 830.0, 0, v * 70.0 + sign(v) * pow(abs(v), 4.0) * 830.0))
-	for j in n:
-		for i in n:
-			var k := j * (n + 1) + i
-			for q in [k, k + 1, k + n + 1, k + 1, k + n + 2, k + n + 1]:
-				st.add_index(q)
 	water = MeshInstance3D.new()
-	water.mesh = st.commit()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(1800, 1800)
+	pm.subdivide_width = 150
+	pm.subdivide_depth = 150
+	water.mesh = pm
 	water.material_override = wm
 	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	water.extra_cull_margin = 4.0
 	add_child(water)
-	# spray: thrown up where the stem cuts the sea, boiling up under her stern
-	var sm := StandardMaterial3D.new()
-	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	sm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
-	sm.billboard_keep_scale = true          # (without this every drop is drawn a metre across)
-	sm.albedo_texture = main.fx.soft_tex
-	sm.vertex_color_use_as_albedo = true
-	sm.albedo_color = Color(0.5, 0.58, 0.68, 0.22)
-	var qm := QuadMesh.new()
-	qm.size = Vector2(1.0, 1.0)
-	qm.material = sm
-	# [where, the way it is thrown, how many, how fast, how big, how solid, the box it comes from]
-	var jets := []
+	# foam: along the hull, the wave thrown off the bows, the wake astern
+	var xs := _xs()
 	for sg in [-1.0, 1.0]:
-		# at the stem: fine drops flung up and out, and a thin mist hanging over them
-		jets.append([Vector3(44.6, 0.5, sg * 1.1), Vector3(-0.55, 0.85, sg * 0.85), 170, 8.5, 0.75, 0.34, Vector3(1.6, 0.3, 0.7), 1.0])
-		jets.append([Vector3(44.2, 0.5, sg * 1.3), Vector3(-0.6, 0.6, sg * 0.8), 14, 4.5, 3.0, 0.09, Vector3(1.6, 0.25, 0.7), 1.4])
-		# down her shoulders, where the bow wave rolls off
-		jets.append([Vector3(34.0, 0.35, sg * 5.6), Vector3(-0.75, 0.6, sg * 0.6), 110, 6.0, 0.65, 0.3, Vector3(7.0, 0.2, 1.4), 0.9])
-		# all along her sides: drops off the wash slapping the plating
-		jets.append([Vector3(-8.0, 0.3, sg * 7.75), Vector3(-0.75, 0.7, sg * 0.4), 190, 5.0, 0.55, 0.28, Vector3(34.0, 0.15, 0.3), 0.8])
-	# under her stern: the screw's water boiling up
-	jets.append([Vector3(-46.5, 0.2, 0.0), Vector3(-1.0, 0.45, 0.0), 90, 5.5, 0.7, 0.3, Vector3(1.0, 0.2, 4.5), 0.9])
-	for e in jets:
-		var ps := CPUParticles3D.new()
-		var solid: float = e[5]
-		var pm := sm.duplicate() as StandardMaterial3D
-		# (drops: small, the colour of moonlit water, not white; the mist: wide and barely there)
-		pm.albedo_color = Color(0.5, 0.62, 0.78, solid) if solid > 0.2 else Color(0.4, 0.5, 0.64, solid)
-		var q := QuadMesh.new()
-		q.size = Vector2(1.0, 1.0)
-		q.material = pm
-		ps.mesh = q
-		ps.amount = e[2] if main.ultra else int(e[2] * 0.5)      # (half as many drops on the ordinary app)
-		ps.lifetime = e[7]
-		ps.randomness = 0.7
-		ps.explosiveness = 0.0
-		ps.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-		ps.emission_box_extents = e[6]
-		ps.direction = (e[1] as Vector3).normalized()
-		ps.spread = 22.0
-		ps.initial_velocity_min = e[3] * 0.45
-		ps.initial_velocity_max = e[3]
-		ps.gravity = Vector3(-1.5, -9.8, 0)
-		ps.scale_amount_min = e[4] * 0.45
-		ps.scale_amount_max = e[4]
-		var sc := Curve.new()
-		sc.add_point(Vector2(0, 0.45))
-		sc.add_point(Vector2(1, 1.5 if solid < 0.2 else 0.8))
-		ps.scale_amount_curve = sc
-		var gr := Gradient.new()
-		gr.set_color(0, Color(1, 1, 1, 0.0))
-		gr.add_point(0.12, Color(1, 1, 1, 1.0))
-		gr.set_color(2, Color(1, 1, 1, 0.0))
-		ps.color_ramp = gr
-		ps.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		ps.visibility_aabb = AABB(Vector3(-60, -2, -20), Vector3(120, 12, 40))
-		add_child(ps)
-		ps.position = e[0]
+		var side := []
+		for x in xs:
+			var q: Vector3 = _ring(x, 0.0)[1]
+			side.append([Vector3(q.x, 0, sg * (q.z + 0.9)), 1.3, 0.85])
+		foam(side)
+		var bow := []
+		for i in 9:
+			var f := i / 8.0
+			bow.append([Vector3(lerp(44.5, -30.0, f), 0, sg * lerp(0.8, 30.0, pow(f, 0.8))), lerp(0.8, 7.0, f), lerp(1.0, 0.0, pow(f, 0.7))])
+		foam(bow)
+	var wake := []
+	for i in 12:
+		var f := i / 11.0
+		wake.append([Vector3(lerp(-43.0, -260.0, f), 0, 0), lerp(6.0, 26.0, f), lerp(1.0, 0.0, pow(f, 0.6))])
+	foam(wake)
+	city.commit(false)
 
 
-## (Foam is drawn by the water itself now; these are kept so the places that asked for it need not change.)
-func foam(_line: Array) -> void:
-	pass
+const FOAM := """
+shader_type spatial;
+render_mode unshaded, blend_mix, cull_disabled, depth_draw_never;
+uniform sampler2D tex : filter_linear_mipmap, repeat_enable;
+uniform float drift = 0.0;
+varying vec3 wp;
+void vertex() {
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+void fragment() {
+	vec2 p = wp.xz + vec2(drift, 0.0);
+	float n = texture(tex, p * 0.05).r + texture(tex, p * 0.13 + vec2(0.3, TIME * 0.02)).g - 1.0;
+	float m = texture(tex, p * 0.31 + vec2(0.0, TIME * 0.05)).r;
+	ALBEDO = vec3(0.5, 0.58, 0.68) * (0.75 + m * 0.5);
+	ALPHA = clamp(COLOR.a * (0.55 + n * 4.0), 0.0, 0.92);
+}
+"""
+
+
+## A band of foam lying on the water along a line: [[centre, half width, strength], ..]; strongest down its middle.
+func foam(line: Array) -> void:
+	var st: SurfaceTool = city._st("sh_foam")
+	for i in line.size() - 1:
+		var a: Vector3 = line[i][0]
+		var b: Vector3 = line[i + 1][0]
+		var d := (b - a).normalized()
+		var sd := Vector3(-d.z, 0, d.x)
+		for sg in [-1.0, 1.0]:
+			var q := [a, b, b + sd * (sg * line[i + 1][1]), a + sd * (sg * line[i][1])]
+			var al := [line[i][2], line[i + 1][2], 0.0, 0.0]
+			for k in ([0, 1, 2, 0, 2, 3] if sg < 0.0 else [0, 2, 1, 0, 3, 2]):
+				st.set_color(Color(1, 1, 1, al[k]))
+				st.set_normal(Vector3.UP)
+				st.set_uv(Vector2(q[k].x, q[k].z))
+				st.add_vertex(q[k] + Vector3(0, 0.3, 0))
 
 
 func _islets() -> void:
@@ -1124,7 +978,6 @@ func _launch() -> Node3D:
 	root.add_child(sl)
 	sl.position = Vector3(FISHER_CABIN, roof + 0.35, 0)
 	root.set_meta("light", sl)
-	root.set_meta("lamp_parts", [sl])
 	bar("sh_black", Vector3(FISHER_CABIN, roof, 0), Vector3(FISHER_CABIN, roof + 0.3, 0), 0.06, 6)
 	city.box("sh_black", Vector3(FISHER_CABIN, roof + 0.36, 0), Vector3(0.4, 0.36, 0.36))
 	var lm: MeshInstance3D = city.commit(false)
@@ -1164,8 +1017,13 @@ void fragment() {
 	return root
 
 
-func _boat_foam(_root: Node3D, _line: Array) -> void:
-	pass
+## Foam on a boat's own node (it goes where the boat goes).
+func _boat_foam(root: Node3D, line: Array) -> void:
+	foam(line)
+	var mi: MeshInstance3D = city.commit(false)
+	main.remove_child(mi)
+	root.add_child(mi)
+	mi.position.y = -0.05
 
 
 func _launches() -> void:
@@ -1185,8 +1043,8 @@ func _move_launches(_dt: float) -> void:
 		# keeping station off her side, ranging up and dropping back
 		var p := Vector3(sin(t * 0.07 + a) * 34.0, 0.0, l[2] + sin(t * 0.11 + a) * 5.0)
 		var v := Vector3(cos(t * 0.07 + a) * 34.0 * 0.07 + SPEED, 0, cos(t * 0.11 + a) * 5.0 * 0.11)
-		n.position = p + Vector3(0, 0.05 + sea_h(p.x, p.z) * 0.8, 0)
-		n.rotation = Vector3(sin(t * 1.9 + a) * 0.04, atan2(-v.z, v.x), 0.05 + (sea_h(p.x + 3.0, p.z) - sea_h(p.x - 3.0, p.z)) * 0.14)
+		n.position = p + Vector3(0, 0.1 + sin(t * 2.3 + a * 7.0) * 0.08, 0)
+		n.rotation = Vector3(sin(t * 1.9 + a) * 0.04, atan2(-v.z, v.x), 0.05 + sin(t * 2.6 + a * 3.0) * 0.025)
 		# the light sweeps the ship's deck end to end and back
 		var sl: SpotLight3D = l[3]
 		var aim := Vector3(sin(t * 0.21 + a * 2.0) * 40.0, D + 1.0, sin(t * 0.33 + a) * 5.0)
@@ -1444,7 +1302,7 @@ func _move_skiffs(dt: float) -> void:
 		s["last"] = p
 		var sp: float = v.length()
 		var hop: float = abs(sin(t * 6.0 + a * 9.0)) * 0.12 * clamp(sp / 12.0, 0.3, 1.2)
-		n.position = p + Vector3(0, 0.1 + hop + sea_h(p.x, p.z) * 0.9, 0)
+		n.position = p + Vector3(0, 0.1 + hop, 0)
 		var yaw := atan2(-v.z, v.x)
 		var lean: float = clamp(angle_difference(n.rotation.y, yaw) * 4.0, -0.4, 0.4)
 		n.rotation = Vector3(lerp(n.rotation.x, -lean, min(1.0, dt * 4.0)), lerp_angle(n.rotation.y, yaw, min(1.0, dt * 6.0)), 0.03 + clamp(sp / 20.0, 0.0, 1.0) * 0.07 + hop * 0.3)
@@ -1626,23 +1484,7 @@ func _process(dt: float) -> void:
 	_move_skiffs(dt)
 	if sea_mat != null:
 		sea_mat.set_shader_parameter("drift", run)
-		sea_mat.set_shader_parameter("tm", t)
-		var bs := []
-		var bw := []
-		for l in launches:
-			var n: Node3D = l[0]
-			var f := n.global_transform.basis.x
-			bs.append(Vector4(n.position.x - 2.0, n.position.z, f.x, f.z))
-			bw.append(2.2)
-		for sk in skiffs:
-			var n: Node3D = sk["n"]
-			var f := n.global_transform.basis.x
-			bs.append(Vector4(n.position.x, n.position.z, f.x, f.z))
-			bw.append(1.5 if sk["st"] != "away" and not sk["body"].get_meta("gone", false) else 0.0)
-		bs.append(Vector4(boat_at.x - 2.0, boat_at.z, 1, 0))
-		bw.append(0.9)
-		sea_mat.set_shader_parameter("boats", bs)
-		sea_mat.set_shader_parameter("boat_w", bw)
+		foam_mat.set_shader_parameter("drift", run)
 	for il in isles:
 		var x: float = wrapf(il[1] - run, -620.0, 620.0)
 		var mi: MeshInstance3D = il[0]
@@ -1651,7 +1493,7 @@ func _process(dt: float) -> void:
 	var cam := get_viewport().get_camera_3d()
 	if cam != null and water != null:
 		var c := cam.global_position
-		water.position = Vector3(c.x, 0.0, c.z)
+		water.position = Vector3(snappedf(c.x, 12.0), 0.0, snappedf(c.z, 12.0))
 
 
 # ---------------- the night over the bay ----------------

@@ -105,8 +105,6 @@ func _ready() -> void:
 	ui.set_anchors_preset(Control.PRESET_FULL_RECT)
 	if mission and loader:
 		await mission.muster()
-	if test_mode == "":
-		_runlog_check(layer)
 	if test_mode != "":
 		start_game()
 		var tpath := "res://scripts/%s.gd" % test_mode
@@ -1796,67 +1794,7 @@ class Loader extends CanvasLayer:
 			c.draw_string(font, bp + Vector2(0, (34.0 + j * 20.0) * k), line, HORIZONTAL_ALIGNMENT_LEFT, -1, ls, g if idx == li else dim)
 
 
-# ---------------- a note of how the last game ended ----------------
-## While a mission is played a few lines are kept on the phone (every few seconds): which mission, how far in, how
-## fast the game was drawing and how much memory it held. They are marked closed when the game is left properly
-## (back to the menu, the app put away). If they are still open at the next start, the game stopped by itself: what
-## they say is shown at the top of the screen, for the player to pass on.
-const RUNLOG := "user://last_run.cfg"
-
-
-func _runlog_check(layer: CanvasLayer) -> void:
-	var cf := ConfigFile.new()
-	if cf.load(RUNLOG) == OK and bool(cf.get_value("run", "alive", false)):
-		var secs := int(cf.get_value("run", "t", 0.0))
-		var txt := "LAST GAME STOPPED BY ITSELF: mission %d, %d:%02d in, %d FPS, %d MB, %s (version %d)" % [int(cf.get_value("run", "mission", 0)),
-			secs / 60, secs % 60, int(cf.get_value("run", "fps", 0)), int(cf.get_value("run", "mb", 0)), str(cf.get_value("run", "doing", "")),
-			int(cf.get_value("run", "version", 0))]
-		var lb := Label.new()
-		lb.text = txt
-		lb.add_theme_color_override("font_color", Color(1.0, 0.75, 0.3))
-		lb.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-		lb.add_theme_constant_override("outline_size", 6)
-		lb.add_theme_font_size_override("font_size", 22)
-		lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		lb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		lb.set_anchors_preset(Control.PRESET_TOP_WIDE)
-		lb.offset_top = 8.0
-		layer.add_child(lb)
-		get_tree().create_timer(15.0).timeout.connect(lb.queue_free)
-	_runlog_write(false)
-	if mission:
-		var tm := Timer.new()
-		tm.wait_time = 4.0
-		tm.autostart = true
-		add_child(tm)
-		tm.timeout.connect(func(): _runlog_write(true))
-
-
-func _runlog_write(alive: bool) -> void:
-	var cf := ConfigFile.new()
-	cf.set_value("run", "alive", alive)
-	cf.set_value("run", "version", version)
-	if mission:
-		cf.set_value("run", "mission", mission.n)
-		cf.set_value("run", "t", mission.t)
-		var doing := "alarm" if mission.alarm else "quiet"
-		if player and player.global_position.y < -0.5:
-			doing += ", in the water"
-		cf.set_value("run", "doing", doing)
-	cf.set_value("run", "fps", Performance.get_monitor(Performance.TIME_FPS))
-	cf.set_value("run", "mb", OS.get_static_memory_usage() / 1048576)
-	cf.save(RUNLOG)
-
-
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		_runlog_write(false)
-	elif what == NOTIFICATION_APPLICATION_RESUMED and mission and test_mode == "":
-		_runlog_write(true)
-
-
 func go_level(l: String) -> void:
-	_runlog_write(false)
 	Engine.set_meta("level", l)
 	get_tree().paused = false
 	get_tree().reload_current_scene()

@@ -243,7 +243,7 @@ func _build_model() -> void:
 	sc.rotation.y = PI
 	_skin(sc, Color(1, 1, 1))
 	head_bone = skel.find_bone("mixamorigHead")
-	# clips added later (stairs, a knife thrust, a throw lying down): see tools/charbuild/anim_take.gd
+	# clips added later (a knife thrust, a throw lying down): see tools/charbuild/anim_take.gd
 	var extra: AnimationLibrary = load("res://assets/anims/extra.res")
 	var own: AnimationLibrary = ap.get_animation_library("")
 	for n in extra.get_animation_list():
@@ -257,10 +257,6 @@ func _build_model() -> void:
 			ap.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	_calibrate_and_attach()
 	_build_tree()
-	# feet put on the steps under them (see leg_plant.gd)
-	var lp: SkeletonModifier3D = load("res://scripts/leg_plant.gd").new()
-	skel.add_child(lp)
-	lp.setup(self, skel)
 
 
 ## A shorter copy of a clip for a powerful hit: starts at `from` and the hips travel only k of the way (the
@@ -834,31 +830,16 @@ func place_blobs(blobs: Array, sk: Skeleton3D, ground_y: float, dead := false) -
 
 ## A wall (or anything solid) right in front of the gun: the rifle is pointed down out of it, both arms turned
 ## down at the shoulder, eased in and out. Used for him and for every soldier. Returns the new amount (0..1).
-func wall_tuck(who: CharacterBody3D, sk: Skeleton3D, face_yaw: float, k: float, dt: float, reach := 1.05, tip: Node3D = null) -> float:
+func wall_tuck(who: CharacterBody3D, sk: Skeleton3D, face_yaw: float, k: float, dt: float, reach := 1.05) -> float:
 	var from := who.global_position + Vector3(0, 1.4, 0) + who.global_transform.basis.x * 0.15
 	var fwd := Vector3(-sin(face_yaw), 0, -cos(face_yaw))
 	var q := PhysicsRayQueryParameters3D.create(from, from + fwd * reach)
 	q.collision_mask = 1
 	q.exclude = [who.get_rid()]
-	var space := who.get_world_3d().direct_space_state
-	var hit := space.intersect_ray(q)
+	var hit := who.get_world_3d().direct_space_state.intersect_ray(q)
 	var want := 0.0
 	if hit:
 		want = clamp((reach - from.distance_to(hit["position"])) / (reach * 0.55), 0.0, 1.0)
-	# and the gun as it really is held (lower, or across): from the chest to its muzzle; anything in between
-	# (a rail, a low wall, a container's edge) and the arms come up and back by as much
-	if tip != null and is_instance_valid(tip) and tip.is_visible_in_tree():
-		var chest := who.global_position + Vector3(0, 1.25, 0)
-		var m := tip.global_position
-		var d := m - chest
-		var len_ := d.length()
-		if len_ > 0.2:
-			var q2 := PhysicsRayQueryParameters3D.create(chest, m + d / len_ * 0.08)
-			q2.collision_mask = 1
-			q2.exclude = [who.get_rid()]
-			var h2 := space.intersect_ray(q2)
-			if h2:
-				want = max(want, clamp((len_ + 0.08 - chest.distance_to(h2["position"])) / (len_ * 0.55), 0.0, 1.0))
 	k = lerp(k, want, min(1.0, dt * 10.0))
 	if k > 0.01:
 		var side: Vector3 = (sk.global_transform.basis.orthonormalized().inverse() * who.global_transform.basis.x).normalized()
@@ -1936,7 +1917,7 @@ func _physics_process(dt: float) -> void:
 	else:
 		blobs[0].visible = true
 		place_blobs(blobs, skel, global_position.y if is_on_floor() else _ground_below(), false)
-	wall_k = wall_tuck(self, skel, yaw + SHOW_TWIST * show_k, wall_k, dt, 1.05, muzzles.get(weapons[wi]["gun"])) if not dead and not holstered and climb_t < 0.0 and not cover else lerp(wall_k, 0.0, min(1.0, dt * 10.0))
+	wall_k = wall_tuck(self, skel, yaw + SHOW_TWIST * show_k, wall_k, dt) if not dead and not holstered and climb_t < 0.0 and not cover else lerp(wall_k, 0.0, min(1.0, dt * 10.0))
 	place_left_target(skel, ik_tgt, weapons[wi]["gun"], {}, pump_slide())
 	_update_camera(dt)
 	_footsteps(dt)

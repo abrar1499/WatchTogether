@@ -7,13 +7,9 @@ extends SceneTree
 ## travel is put in the soldier's units (centimetres), and a clip that walks away from where it began is held in
 ## place (the game moves the body itself): [file, clip name, loops, hold in place sideways/forward, and upward].
 const CLIPS := [
-	["Walking_Up_The_Stairs", "stairsUp", true, true, true],
-	["Ascending_Stairs", "stairsSlow", true, true, true],
-	["Running_Up_Stairs", "stairsRun", true, true, true],
 	["Stabbing", "stab", false, false, false],
 	["Stabbing_1", "stab2", false, false, false],
 	["Throw_Grenade", "proneNade", false, false, false],
-	["Strafe_1", "strafe1", true, true, false],
 ]
 
 

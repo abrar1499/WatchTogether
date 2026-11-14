@@ -158,10 +158,6 @@ func setup(m: Node, pos: Vector3, face: float, beat_pos: Vector3, kind := "gasma
 	add_child(rig["root"])
 	skel = rig["skel"]
 	muzzle = rig["muzzles"][gun]
-	# his feet put on what is under them, and kept out of walls (see leg_plant.gd)
-	var lp: SkeletonModifier3D = load("res://scripts/leg_plant.gd").new()
-	skel.add_child(lp)
-	lp.setup(self, skel)
 	head_b = skel.find_bone("mixamorigHead")
 	hips_b = skel.find_bone("mixamorigHips")
 	player.start_rig(rig, gun)
@@ -558,7 +554,7 @@ func _physics_process(dt: float) -> void:
 	if blobs.is_empty():
 		blobs = player.make_blobs(self)
 	player.place_blobs(blobs, skel, global_position.y, false)
-	wall_k = player.wall_tuck(self, skel, yaw, wall_k, dt, 1.05, muzzle) if not (down or perch) else 0.0
+	wall_k = player.wall_tuck(self, skel, yaw, wall_k, dt) if not (down or perch) else 0.0
 	if limping:
 		var dip: float = max(0.0, sin(limp_ph)) * 0.06 / skel.global_transform.basis.get_scale().x
 		skel.set_bone_pose_position(hips_b, skel.get_bone_pose_position(hips_b) + Vector3(0, -dip, 0))
