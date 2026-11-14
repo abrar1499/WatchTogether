@@ -815,32 +815,37 @@ const WATER := """
 shader_type spatial;
 render_mode cull_back;
 uniform sampler2D ripples : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
-uniform vec3 deep : source_color = vec3(0.012, 0.034, 0.056);
-uniform vec3 sky : source_color = vec3(0.1, 0.145, 0.21);
+uniform vec3 deep : source_color = vec3(0.012, 0.035, 0.06);
+uniform vec3 sky : source_color = vec3(0.15, 0.225, 0.36);
 uniform float drift = 0.0;
+uniform float tm = 0.0;
 uniform vec4 boats[6];        // x, z, heading x, heading z
 uniform float boat_w[6];      // half width of each boat's wake where it starts (0: none)
 varying vec3 wp;
 varying float crest;
 
-// the swell: a few trains of waves crossing; returns height, and the slope in xz
-vec3 swell(vec2 p, float t) {
-	vec3 o = vec3(0.0);
-	vec2 d; float k; float a; float ph;
-	d = normalize(vec2(-1.0, 0.35)); k = 0.30; a = 0.16; ph = dot(d, p) * k + t * 1.5;
-	o += vec3(a * sin(ph), a * k * cos(ph) * d);
-	d = normalize(vec2(-0.6, -0.8)); k = 0.52; a = 0.085; ph = dot(d, p) * k + t * 1.9;
-	o += vec3(a * sin(ph), a * k * cos(ph) * d);
-	d = normalize(vec2(0.3, 1.0)); k = 0.95; a = 0.04; ph = dot(d, p) * k + t * 2.6;
-	o += vec3(a * sin(ph), a * k * cos(ph) * d);
-	return o;
+// one train of waves with sharpened crests: adds its height and its slope (x, z)
+vec3 train(vec2 p, vec2 d, float k, float a, float sp, float t) {
+	float ph = dot(d, p) * k + t * sp;
+	float s = sin(ph) * 0.5 + 0.5;
+	float h = a * (2.0 * pow(s, 1.5) - 1.0);
+	float dh = a * 1.5 * sqrt(s) * cos(ph) * k;
+	return vec3(h, dh * d);
 }
 
 void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	float far = 1.0 - smoothstep(60.0, 260.0, length(wp.xz - CAMERA_POSITION_WORLD.xz));
+	float dist = length(wp.xz - CAMERA_POSITION_WORLD.xz);
+	// (the sea lies quieter in the ship's lee, close under her sides)
+	vec2 off = max(abs(wp.xz) - vec2(48.0, 7.5), vec2(0.0));
+	float lee = mix(0.3, 1.0, smoothstep(0.0, 28.0, length(off)));
 	wp.x += drift;
-	vec3 w = swell(wp.xz, TIME) * far;
+	float longf = (1.0 - smoothstep(180.0, 520.0, dist)) * lee;
+	float shortf = (1.0 - smoothstep(50.0, 170.0, dist)) * lee;
+	vec3 w = train(wp.xz, normalize(vec2(-1.0, 0.3)), 0.2, 0.48, 1.25, tm) * longf;
+	w += train(wp.xz, normalize(vec2(-0.7, -0.75)), 0.34, 0.24, 1.6, tm) * longf;
+	w += train(wp.xz, normalize(vec2(0.25, 1.0)), 0.62, 0.11, 2.1, tm) * shortf;
+	w += train(wp.xz, normalize(vec2(-1.0, -0.2)), 1.35, 0.045, 3.0, tm) * shortf;
 	VERTEX.y += w.x;
 	NORMAL = normalize(vec3(-w.y, 1.0, -w.z));
 	TANGENT = normalize(vec3(1.0, w.y, 0.0));
@@ -855,19 +860,22 @@ float band(float x, float a, float b) {
 void fragment() {
 	float dist = length(wp.xz - vec2(drift, 0.0) - CAMERA_POSITION_WORLD.xz);
 	vec3 a = texture(ripples, wp.xz * 0.05 + vec2(TIME * 0.013, TIME * 0.02)).rgb;
-	vec3 b = texture(ripples, wp.xz * 0.11 + vec2(-TIME * 0.026, TIME * 0.012)).rgb;
+	vec3 b = texture(ripples, wp.xz * 0.09 + vec2(-TIME * 0.026, TIME * 0.012)).rgb;
 	vec3 c = texture(ripples, wp.xz * 0.011 + vec2(TIME * 0.004, -TIME * 0.003)).rgb;
 	NORMAL_MAP = normalize(a + b + c - 1.5) * 0.5 + 0.5;
-	NORMAL_MAP_DEPTH = mix(0.9, 0.3, smoothstep(30.0, 260.0, dist));
+	NORMAL_MAP_DEPTH = mix(1.0, 0.3, smoothstep(30.0, 260.0, dist));
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
-	vec3 col = mix(deep, sky, fres * 0.9);
+	// (darker in the troughs, a little paler on the backs of the waves: it is this that shows the swell)
+	vec3 col = mix(deep, sky, fres * 0.85) * (0.82 + clamp(crest, -0.6, 0.6) * 0.45);
 
-	// foam, worked out where it lies (so it rides the swell): along the ship's sides, the wave off her bows,
-	// her wake, and the wake of each boat
+	// foam, worked out where it lies (so it rides the swell): the wash along the ship's sides, the wave off her
+	// bows, her wake, and the wake of each boat
 	vec2 p = wp.xz - vec2(drift, 0.0);           // (the ship's own place: she lies along x, her bow at +47)
 	float az = abs(p.y);
 	float hw = 7.5 * (1.0 - pow(smoothstep(20.0, 47.5, p.x), 1.6)) * (1.0 - 0.2 * smoothstep(-40.0, -46.0, p.x));
-	float m = (1.0 - smoothstep(0.0, 2.2, az - hw)) * step(-46.5, p.x) * step(p.x, 47.5) * 0.75;
+	// the wash: it surges out from the plating and falls back, in pulses running aft
+	float surge = 1.6 + 1.3 * sin(p.x * 0.42 + tm * 2.6) + 0.7 * sin(p.x * 1.1 + tm * 4.1);
+	float m = (1.0 - smoothstep(0.0, max(surge, 0.5) + 1.2, az - hw)) * step(-46.5, p.x) * step(p.x, 47.5);
 	float al = 46.0 - p.x;                       // the wave off the bows: a V opening aft
 	float mid = 0.8 + al * 0.36;
 	m = max(m, band(az, mid - 1.0 - al * 0.03, mid + 1.6 + al * 0.07) * smoothstep(-1.0, 2.0, al) * (1.0 - smoothstep(20.0, 95.0, al)));
@@ -886,17 +894,29 @@ void fragment() {
 	vec2 fp = wp.xz;
 	float n1 = texture(ripples, fp * vec2(0.035, 0.09) + vec2(0.0, TIME * 0.02)).r;
 	float n2 = texture(ripples, fp * 0.21 + vec2(TIME * 0.03, 0.0)).g;
-	float lace = smoothstep(0.5, 0.7, n1 * 0.55 + n2 * 0.45 + (m - 0.5) * 0.42);
-	float foam = clamp(m * lace + smoothstep(0.85, 1.0, m) * 0.15, 0.0, 1.0);
-	// a little white on the tops of the swell
-	foam = max(foam, smoothstep(0.2, 0.3, crest) * smoothstep(0.55, 0.7, n2) * 0.35);
-	col = mix(col, vec3(0.4, 0.46, 0.53), foam * 0.8);
+	float lace = smoothstep(0.5, 0.72, n1 * 0.55 + n2 * 0.45 + (m - 0.5) * 0.42);
+	float foam = clamp(m * lace + smoothstep(0.85, 1.0, m) * 0.12, 0.0, 1.0);
+	// a little white where the tops of the bigger waves break
+	foam = max(foam, smoothstep(0.42, 0.62, crest) * smoothstep(0.56, 0.7, n2) * 0.3);
+	col = mix(col, vec3(0.34, 0.42, 0.52), foam * 0.6);
 	ALBEDO = col;
-	ROUGHNESS = mix(0.2, 0.85, foam);
-	SPECULAR = mix(0.8, 0.3, foam);
+	ROUGHNESS = mix(0.22, 0.8, foam);
+	SPECULAR = mix(0.85, 0.3, foam);
 	METALLIC = 0.0;
 }
 """
+
+
+## The height of the sea at a place (as the water's shader has it), for boats to ride.
+func sea_h(x: float, z: float) -> float:
+	var p := Vector2(x + run, z)
+	var off := Vector2(max(abs(x) - 48.0, 0.0), max(abs(z) - 7.5, 0.0))
+	var lee: float = lerp(0.3, 1.0, smoothstep(0.0, 28.0, off.length()))
+	var h := 0.0
+	for w in [[Vector2(-1.0, 0.3), 0.2, 0.48, 1.25], [Vector2(-0.7, -0.75), 0.34, 0.24, 1.6], [Vector2(0.25, 1.0), 0.62, 0.11, 2.1]]:
+		var s: float = sin((w[0] as Vector2).normalized().dot(p) * w[1] + t * w[3]) * 0.5 + 0.5
+		h += w[2] * (2.0 * pow(s, 1.5) - 1.0)
+	return h * lee
 
 
 func _sea() -> void:
@@ -928,6 +948,43 @@ func _sea() -> void:
 	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	water.extra_cull_margin = 4.0
 	add_child(water)
+	# spray: thrown up where the stem cuts the sea, boiling up under her stern
+	var sm := StandardMaterial3D.new()
+	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	sm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	sm.albedo_texture = main.fx.soft_tex
+	sm.vertex_color_use_as_albedo = true
+	sm.albedo_color = Color(0.5, 0.58, 0.68, 0.22)
+	var qm := QuadMesh.new()
+	qm.size = Vector2(1.0, 1.0)
+	qm.material = sm
+	for e in [[Vector3(44.6, 0.4, 0.9), Vector3(-0.45, 1.0, 0.75), 46, 7.0, 1.6], [Vector3(44.6, 0.4, -0.9), Vector3(-0.45, 1.0, -0.75), 46, 7.0, 1.6],
+			[Vector3(-45.5, 0.2, 0.0), Vector3(-1.0, 0.5, 0.0), 40, 4.0, 2.2],
+			[Vector3(10.0, 0.3, 7.6), Vector3(-0.5, 1.0, 0.5), 26, 3.2, 1.2], [Vector3(10.0, 0.3, -7.6), Vector3(-0.5, 1.0, -0.5), 26, 3.2, 1.2],
+			[Vector3(-22.0, 0.3, 7.6), Vector3(-0.5, 1.0, 0.5), 26, 3.2, 1.2], [Vector3(-22.0, 0.3, -7.6), Vector3(-0.5, 1.0, -0.5), 26, 3.2, 1.2]]:
+		var ps := CPUParticles3D.new()
+		ps.mesh = qm
+		ps.amount = e[2]
+		ps.lifetime = 1.3
+		ps.randomness = 0.6
+		ps.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+		ps.emission_box_extents = Vector3(1.2, 0.2, 0.5) if abs(e[0].z) < 5.0 else Vector3(16.0, 0.15, 0.3)
+		ps.direction = (e[1] as Vector3).normalized()
+		ps.spread = 24.0
+		ps.initial_velocity_min = e[3] * 0.5
+		ps.initial_velocity_max = e[3]
+		ps.gravity = Vector3(-4.0, -9.0, 0)
+		ps.scale_amount_min = e[4] * 0.5
+		ps.scale_amount_max = e[4]
+		var gr := Gradient.new()
+		gr.set_color(0, Color(1, 1, 1, 0.0))
+		gr.add_point(0.2, Color(1, 1, 1, 1.0))
+		gr.set_color(2, Color(1, 1, 1, 0.0))
+		ps.color_ramp = gr
+		ps.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(ps)
+		ps.position = e[0]
 
 
 ## (Foam is drawn by the water itself now; these are kept so the places that asked for it need not change.)
@@ -1048,8 +1105,8 @@ func _move_launches(_dt: float) -> void:
 		# keeping station off her side, ranging up and dropping back
 		var p := Vector3(sin(t * 0.07 + a) * 34.0, 0.0, l[2] + sin(t * 0.11 + a) * 5.0)
 		var v := Vector3(cos(t * 0.07 + a) * 34.0 * 0.07 + SPEED, 0, cos(t * 0.11 + a) * 5.0 * 0.11)
-		n.position = p + Vector3(0, 0.1 + sin(t * 2.3 + a * 7.0) * 0.08, 0)
-		n.rotation = Vector3(sin(t * 1.9 + a) * 0.04, atan2(-v.z, v.x), 0.05 + sin(t * 2.6 + a * 3.0) * 0.025)
+		n.position = p + Vector3(0, 0.05 + sea_h(p.x, p.z) * 0.8, 0)
+		n.rotation = Vector3(sin(t * 1.9 + a) * 0.04, atan2(-v.z, v.x), 0.05 + (sea_h(p.x + 3.0, p.z) - sea_h(p.x - 3.0, p.z)) * 0.14)
 		# the light sweeps the ship's deck end to end and back
 		var sl: SpotLight3D = l[3]
 		var aim := Vector3(sin(t * 0.21 + a * 2.0) * 40.0, D + 1.0, sin(t * 0.33 + a) * 5.0)
@@ -1253,7 +1310,7 @@ func _move_skiffs(dt: float) -> void:
 		s["last"] = p
 		var sp: float = v.length()
 		var hop: float = abs(sin(t * 6.0 + a * 9.0)) * 0.12 * clamp(sp / 12.0, 0.3, 1.2)
-		n.position = p + Vector3(0, 0.1 + hop, 0)
+		n.position = p + Vector3(0, 0.1 + hop + sea_h(p.x, p.z) * 0.9, 0)
 		var yaw := atan2(-v.z, v.x)
 		var lean: float = clamp(angle_difference(n.rotation.y, yaw) * 4.0, -0.4, 0.4)
 		n.rotation = Vector3(lerp(n.rotation.x, -lean, min(1.0, dt * 4.0)), lerp_angle(n.rotation.y, yaw, min(1.0, dt * 6.0)), 0.03 + clamp(sp / 20.0, 0.0, 1.0) * 0.07 + hop * 0.3)
@@ -1396,6 +1453,7 @@ func _process(dt: float) -> void:
 	_move_skiffs(dt)
 	if sea_mat != null:
 		sea_mat.set_shader_parameter("drift", run)
+		sea_mat.set_shader_parameter("tm", t)
 		var bs := []
 		var bw := []
 		for l in launches:
