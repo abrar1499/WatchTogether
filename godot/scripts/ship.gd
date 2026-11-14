@@ -1263,6 +1263,22 @@ func _rider(parent: Node3D, kind: String, at: Vector3, armed: bool) -> Dictionar
 			_point_bone(sk, sk.find_bone("mixamorig%sArm" % sd), Vector3(sgn * 0.3, -0.55, LEG_FWD).normalized())
 			_point_bone(sk, sk.find_bone("mixamorig%sForeArm" % sd), Vector3(-sgn * 0.12, -0.12, LEG_FWD).normalized())
 	r["hold"] = hold
+	r["hp"] = RIDER_HP
+	r["dead"] = false
+	# what rounds meet: his body sitting in the boat
+	var hb := StaticBody3D.new()
+	hb.set_meta("kind", "rider")
+	hb.set_meta("surf", "flesh")
+	hb.set_meta("hp", 1.0)
+	hb.set_meta("rider", r)
+	var cs := CollisionShape3D.new()
+	var cap := CapsuleShape3D.new()
+	cap.radius = 0.3
+	cap.height = 1.2
+	cs.shape = cap
+	cs.position = Vector3(0, 1.15, 0)
+	hb.add_child(cs)
+	hold.add_child(hb)
 	return r
 
 
@@ -1290,12 +1306,13 @@ func _skiff(i: int) -> void:
 	var body := StaticBody3D.new()
 	body.set_meta("surf", "metal")
 	body.set_meta("kind", "machine")
-	body.set_meta("hp", 170.0)
+	body.set_meta("hp", BOAT_HP)
+	body.set_meta("pierce", "sheet")
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = Vector3(5.6, 1.9, 1.9)
+	bs.size = Vector3(5.6, 0.95, 1.9)       # (the hull: the men in it are hit on their own)
 	cs.shape = bs
-	cs.position = Vector3(0, 0.8, 0)
+	cs.position = Vector3(0, 0.15, 0)
 	body.add_child(cs)
 	root.add_child(body)
 	main.machines.append(body)
@@ -1312,8 +1329,43 @@ func _make_riders() -> void:
 	var kinds := ["olive", "blue", "gasmask"]
 	for i in skiffs.size():
 		var root: Node3D = skiffs[i]["n"]
-		_rider(root, kinds[i % 3], Vector3(0.3, RIDE_Y, 0), false)
+		skiffs[i]["drv"] = _rider(root, kinds[i % 3], Vector3(0.3, RIDE_Y, 0), false)
 		skiffs[i]["gun"] = _rider(root, kinds[(i + 1) % 3], Vector3(-1.2, RIDE_Y + 0.14, 0), true)
+		for r in [skiffs[i]["drv"], skiffs[i]["gun"]]:
+			r["skiff"] = skiffs[i]
+
+
+## A man in a boat hit by a round: he bleeds, and enough of them kill him. The gunner dead, nobody fires from that
+## boat; the driver dead, it falls away astern and is out of the fight.
+const RIDER_HP := 100.0
+const BOAT_HP := 650.0           # (the boat itself takes a good many rounds, or a grenade, or a rocket)
+func rider_hit(box: StaticBody3D, dmg: float, p: Vector3, n: Vector3) -> void:
+	var r: Dictionary = box.get_meta("rider")
+	if r["dead"]:
+		return
+	main.fx.blood(p, n)
+	r["hp"] -= dmg
+	var killed: bool = r["hp"] <= 0.0
+	main.ui.hit_marker(killed)
+	if not killed:
+		return
+	r["dead"] = true
+	var hold: Node3D = r["hold"]
+	# slumped over the side
+	hold.rotation = Vector3(0.0, hold.rotation.y, 0.0) + Vector3(randf_range(-0.2, 0.2), 0.0, 0.0)
+	r["root"].rotation.x = 0.9
+	r["root"].position.y = -0.25
+	main.snd.death(p, "enemy")
+	var s: Dictionary = r["skiff"]
+	if is_same(r, s["drv"]) and s["st"] != "away":
+		s["st"] = "out"
+
+
+func _revive(r: Dictionary) -> void:
+	r["hp"] = RIDER_HP
+	r["dead"] = false
+	r["root"].rotation.x = 0.0
+	r["root"].position.y = 0.0
 
 
 var RIDE_Y := -0.5
@@ -1330,7 +1382,9 @@ func _wave() -> void:
 			if not (c is CollisionShape3D):
 				c.queue_free()            # (what was left burning on it the last time)
 		body.set_meta("gone", false)
-		body.set_meta("hp", 170.0)
+		body.set_meta("hp", BOAT_HP)
+		for r in [s["drv"], s["gun"]]:
+			_revive(r)
 		s["st"] = "in"
 		s["side"] = 1.0 if (wave_n + sent) % 2 == 0 else -1.0
 		s["a"] = PI + sent * 1.3
@@ -1397,6 +1451,8 @@ func _move_skiffs(dt: float) -> void:
 			continue
 		# the man behind turns to keep his rifle on the player, and fires when he has seen him
 		var g: Dictionary = s["gun"]
+		if g["dead"] or s["drv"]["dead"]:
+			continue
 		var hold: Node3D = g["hold"]
 		var chest: Vector3 = pl.global_position + Vector3(0, 0.3 if pl.prone else 1.1, 0)
 		var loc: Vector3 = n.global_transform.affine_inverse() * chest

@@ -932,9 +932,12 @@ func _shoot_ray(from: Vector3, dir: Vector3, dmg: float, shooter: Node, power :=
 func damage_prop(col: Node, dmg: float, p: Vector3, n: Vector3) -> void:
 	if not is_instance_valid(col) or col.get_meta("gone", false):
 		return
+	var kind: String = col.get_meta("kind", "")
+	if kind == "rider":
+		mission.ship.rider_hit(col, dmg, p, n)
+		return
 	var hp: float = float(col.get_meta("hp")) - dmg
 	col.set_meta("hp", hp)
-	var kind: String = col.get_meta("kind", "")
 	if kind == "door":
 		fx.chips(p, n, "wood", 5)
 		_door_hole(col, p)

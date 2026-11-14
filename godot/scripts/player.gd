@@ -257,6 +257,10 @@ func _build_model() -> void:
 			ap.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	_calibrate_and_attach()
 	_build_tree()
+	# feet put on the steps under them (see leg_plant.gd)
+	var lp: SkeletonModifier3D = load("res://scripts/leg_plant.gd").new()
+	skel.add_child(lp)
+	lp.setup(self, skel)
 
 
 ## A shorter copy of a clip for a powerful hit: starts at `from` and the hips travel only k of the way (the
