@@ -103,12 +103,6 @@ func _mats() -> void:
 	_flat("sh_green", Color(0.15, 1.0, 0.3), 0.3, 3.0)
 	_flat("sh_dark", Color(0.03, 0.04, 0.05), 0.2)
 	_flat("sh_glass", Color(0.35, 0.5, 0.6, 0.22), 0.05, 0.0, true)
-	var fs := Shader.new()
-	fs.code = FOAM
-	foam_mat = ShaderMaterial.new()
-	foam_mat.shader = fs
-	foam_mat.set_shader_parameter("tex", load("res://assets/fx/rain_ripples.png"))
-	city.mats["sh_foam"] = foam_mat
 
 
 # ---------------- drawing helpers ----------------
@@ -821,26 +815,85 @@ const WATER := """
 shader_type spatial;
 render_mode cull_back;
 uniform sampler2D ripples : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
-uniform vec3 deep : source_color = vec3(0.012, 0.035, 0.06);
-uniform vec3 sky : source_color = vec3(0.16, 0.24, 0.38);
+uniform vec3 deep : source_color = vec3(0.012, 0.034, 0.056);
+uniform vec3 sky : source_color = vec3(0.1, 0.145, 0.21);
 uniform float drift = 0.0;
+uniform vec4 boats[6];        // x, z, heading x, heading z
+uniform float boat_w[6];      // half width of each boat's wake where it starts (0: none)
 varying vec3 wp;
+varying float crest;
+
+// the swell: a few trains of waves crossing; returns height, and the slope in xz
+vec3 swell(vec2 p, float t) {
+	vec3 o = vec3(0.0);
+	vec2 d; float k; float a; float ph;
+	d = normalize(vec2(-1.0, 0.35)); k = 0.30; a = 0.16; ph = dot(d, p) * k + t * 1.5;
+	o += vec3(a * sin(ph), a * k * cos(ph) * d);
+	d = normalize(vec2(-0.6, -0.8)); k = 0.52; a = 0.085; ph = dot(d, p) * k + t * 1.9;
+	o += vec3(a * sin(ph), a * k * cos(ph) * d);
+	d = normalize(vec2(0.3, 1.0)); k = 0.95; a = 0.04; ph = dot(d, p) * k + t * 2.6;
+	o += vec3(a * sin(ph), a * k * cos(ph) * d);
+	return o;
+}
+
 void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	float far = smoothstep(30.0, 140.0, length(wp.xz - CAMERA_POSITION_WORLD.xz));
+	float far = 1.0 - smoothstep(60.0, 260.0, length(wp.xz - CAMERA_POSITION_WORLD.xz));
 	wp.x += drift;
-	VERTEX.y += (sin(wp.x * 0.13 + TIME * 0.8) * 0.07 + sin(wp.z * 0.09 + wp.x * 0.04 + TIME * 0.6) * 0.09) * (0.5 + far);
+	vec3 w = swell(wp.xz, TIME) * far;
+	VERTEX.y += w.x;
+	NORMAL = normalize(vec3(-w.y, 1.0, -w.z));
+	TANGENT = normalize(vec3(1.0, w.y, 0.0));
+	BINORMAL = normalize(vec3(0.0, w.z, 1.0));
+	crest = w.x;
 }
+
+float band(float x, float a, float b) {
+	return smoothstep(a, a + (b - a) * 0.35, x) * (1.0 - smoothstep(a + (b - a) * 0.65, b, x));
+}
+
 void fragment() {
+	float dist = length(wp.xz - vec2(drift, 0.0) - CAMERA_POSITION_WORLD.xz);
 	vec3 a = texture(ripples, wp.xz * 0.05 + vec2(TIME * 0.013, TIME * 0.02)).rgb;
-	vec3 b = texture(ripples, wp.xz * 0.09 + vec2(-TIME * 0.026, TIME * 0.012)).rgb;
+	vec3 b = texture(ripples, wp.xz * 0.11 + vec2(-TIME * 0.026, TIME * 0.012)).rgb;
 	vec3 c = texture(ripples, wp.xz * 0.011 + vec2(TIME * 0.004, -TIME * 0.003)).rgb;
 	NORMAL_MAP = normalize(a + b + c - 1.5) * 0.5 + 0.5;
-	NORMAL_MAP_DEPTH = mix(1.1, 0.3, smoothstep(30.0, 260.0, length(wp.xz - CAMERA_POSITION_WORLD.xz)));
+	NORMAL_MAP_DEPTH = mix(0.9, 0.3, smoothstep(30.0, 260.0, dist));
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
-	ALBEDO = mix(deep, sky, fres * 0.85);
-	ROUGHNESS = 0.24;
-	SPECULAR = 0.85;
+	vec3 col = mix(deep, sky, fres * 0.9);
+
+	// foam, worked out where it lies (so it rides the swell): along the ship's sides, the wave off her bows,
+	// her wake, and the wake of each boat
+	vec2 p = wp.xz - vec2(drift, 0.0);           // (the ship's own place: she lies along x, her bow at +47)
+	float az = abs(p.y);
+	float hw = 7.5 * (1.0 - pow(smoothstep(20.0, 47.5, p.x), 1.6)) * (1.0 - 0.2 * smoothstep(-40.0, -46.0, p.x));
+	float m = (1.0 - smoothstep(0.0, 2.2, az - hw)) * step(-46.5, p.x) * step(p.x, 47.5) * 0.75;
+	float al = 46.0 - p.x;                       // the wave off the bows: a V opening aft
+	float mid = 0.8 + al * 0.36;
+	m = max(m, band(az, mid - 1.0 - al * 0.03, mid + 1.6 + al * 0.07) * smoothstep(-1.0, 2.0, al) * (1.0 - smoothstep(20.0, 95.0, al)));
+	float as_ = -44.0 - p.x;                     // the wake astern: broad, churned, dying away
+	m = max(m, (1.0 - smoothstep(4.5 + as_ * 0.07, 7.0 + as_ * 0.11, az)) * smoothstep(-2.0, 3.0, as_) * (1.0 - smoothstep(30.0, 230.0, as_)) * 0.9);
+	for (int i = 0; i < 6; i++) {
+		if (boat_w[i] <= 0.0) {
+			continue;
+		}
+		vec2 r = p - boats[i].xy;
+		float back = -dot(r, boats[i].zw);
+		float lat = abs(r.x * boats[i].w - r.y * boats[i].z);
+		float len = boat_w[i] * 22.0;
+		m = max(m, (1.0 - smoothstep(boat_w[i] * 0.5 + back * 0.1, boat_w[i] + back * 0.16, lat)) * smoothstep(-boat_w[i] * 2.5, 0.0, back) * (1.0 - smoothstep(len * 0.15, len, back)));
+	}
+	vec2 fp = wp.xz;
+	float n1 = texture(ripples, fp * vec2(0.035, 0.09) + vec2(0.0, TIME * 0.02)).r;
+	float n2 = texture(ripples, fp * 0.21 + vec2(TIME * 0.03, 0.0)).g;
+	float lace = smoothstep(0.5, 0.7, n1 * 0.55 + n2 * 0.45 + (m - 0.5) * 0.42);
+	float foam = clamp(m * lace + smoothstep(0.85, 1.0, m) * 0.15, 0.0, 1.0);
+	// a little white on the tops of the swell
+	foam = max(foam, smoothstep(0.2, 0.3, crest) * smoothstep(0.55, 0.7, n2) * 0.35);
+	col = mix(col, vec3(0.4, 0.46, 0.53), foam * 0.8);
+	ALBEDO = col;
+	ROUGHNESS = mix(0.2, 0.85, foam);
+	SPECULAR = mix(0.8, 0.3, foam);
 	METALLIC = 0.0;
 }
 """
@@ -853,72 +906,33 @@ func _sea() -> void:
 	wm.shader = sh
 	wm.set_shader_parameter("ripples", load("res://assets/fx/rain_ripples.png"))
 	sea_mat = wm
+	# a sheet of water finely cut near the eye (to rise and fall in the swell) and coarsely far out
+	var n := 140
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for j in n + 1:
+		for i in n + 1:
+			var u := float(i) / n * 2.0 - 1.0
+			var v := float(j) / n * 2.0 - 1.0
+			st.set_normal(Vector3.UP)
+			st.set_uv(Vector2(u, v))
+			st.add_vertex(Vector3(u * 70.0 + sign(u) * pow(abs(u), 4.0) * 830.0, 0, v * 70.0 + sign(v) * pow(abs(v), 4.0) * 830.0))
+	for j in n:
+		for i in n:
+			var k := j * (n + 1) + i
+			for q in [k, k + 1, k + n + 1, k + 1, k + n + 2, k + n + 1]:
+				st.add_index(q)
 	water = MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(1800, 1800)
-	pm.subdivide_width = 150
-	pm.subdivide_depth = 150
-	water.mesh = pm
+	water.mesh = st.commit()
 	water.material_override = wm
 	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	water.extra_cull_margin = 4.0
 	add_child(water)
-	# foam: along the hull, the wave thrown off the bows, the wake astern
-	var xs := _xs()
-	for sg in [-1.0, 1.0]:
-		var side := []
-		for x in xs:
-			var q: Vector3 = _ring(x, 0.0)[1]
-			side.append([Vector3(q.x, 0, sg * (q.z + 0.9)), 1.3, 0.85])
-		foam(side)
-		var bow := []
-		for i in 9:
-			var f := i / 8.0
-			bow.append([Vector3(lerp(44.5, -30.0, f), 0, sg * lerp(0.8, 30.0, pow(f, 0.8))), lerp(0.8, 7.0, f), lerp(1.0, 0.0, pow(f, 0.7))])
-		foam(bow)
-	var wake := []
-	for i in 12:
-		var f := i / 11.0
-		wake.append([Vector3(lerp(-43.0, -260.0, f), 0, 0), lerp(6.0, 26.0, f), lerp(1.0, 0.0, pow(f, 0.6))])
-	foam(wake)
-	city.commit(false)
 
 
-const FOAM := """
-shader_type spatial;
-render_mode unshaded, blend_mix, cull_disabled, depth_draw_never;
-uniform sampler2D tex : filter_linear_mipmap, repeat_enable;
-uniform float drift = 0.0;
-varying vec3 wp;
-void vertex() {
-	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-}
-void fragment() {
-	vec2 p = wp.xz + vec2(drift, 0.0);
-	float n = texture(tex, p * 0.05).r + texture(tex, p * 0.13 + vec2(0.3, TIME * 0.02)).g - 1.0;
-	float m = texture(tex, p * 0.31 + vec2(0.0, TIME * 0.05)).r;
-	ALBEDO = vec3(0.5, 0.58, 0.68) * (0.75 + m * 0.5);
-	ALPHA = clamp(COLOR.a * (0.55 + n * 4.0), 0.0, 0.92);
-}
-"""
-
-
-## A band of foam lying on the water along a line: [[centre, half width, strength], ..]; strongest down its middle.
-func foam(line: Array) -> void:
-	var st: SurfaceTool = city._st("sh_foam")
-	for i in line.size() - 1:
-		var a: Vector3 = line[i][0]
-		var b: Vector3 = line[i + 1][0]
-		var d := (b - a).normalized()
-		var sd := Vector3(-d.z, 0, d.x)
-		for sg in [-1.0, 1.0]:
-			var q := [a, b, b + sd * (sg * line[i + 1][1]), a + sd * (sg * line[i][1])]
-			var al := [line[i][2], line[i + 1][2], 0.0, 0.0]
-			for k in ([0, 1, 2, 0, 2, 3] if sg < 0.0 else [0, 2, 1, 0, 3, 2]):
-				st.set_color(Color(1, 1, 1, al[k]))
-				st.set_normal(Vector3.UP)
-				st.set_uv(Vector2(q[k].x, q[k].z))
-				st.add_vertex(q[k] + Vector3(0, 0.3, 0))
+## (Foam is drawn by the water itself now; these are kept so the places that asked for it need not change.)
+func foam(_line: Array) -> void:
+	pass
 
 
 func _islets() -> void:
@@ -1013,13 +1027,8 @@ void fragment() {
 	return root
 
 
-## Foam on a boat's own node (it goes where the boat goes).
-func _boat_foam(root: Node3D, line: Array) -> void:
-	foam(line)
-	var mi: MeshInstance3D = city.commit(false)
-	main.remove_child(mi)
-	root.add_child(mi)
-	mi.position.y = -0.05
+func _boat_foam(_root: Node3D, _line: Array) -> void:
+	pass
 
 
 func _launches() -> void:
@@ -1387,7 +1396,22 @@ func _process(dt: float) -> void:
 	_move_skiffs(dt)
 	if sea_mat != null:
 		sea_mat.set_shader_parameter("drift", run)
-		foam_mat.set_shader_parameter("drift", run)
+		var bs := []
+		var bw := []
+		for l in launches:
+			var n: Node3D = l[0]
+			var f := n.global_transform.basis.x
+			bs.append(Vector4(n.position.x - 2.0, n.position.z, f.x, f.z))
+			bw.append(2.2)
+		for sk in skiffs:
+			var n: Node3D = sk["n"]
+			var f := n.global_transform.basis.x
+			bs.append(Vector4(n.position.x, n.position.z, f.x, f.z))
+			bw.append(1.5 if sk["st"] != "away" and not sk["body"].get_meta("gone", false) else 0.0)
+		bs.append(Vector4(boat_at.x - 2.0, boat_at.z, 1, 0))
+		bw.append(0.9)
+		sea_mat.set_shader_parameter("boats", bs)
+		sea_mat.set_shader_parameter("boat_w", bw)
 	for il in isles:
 		var x: float = wrapf(il[1] - run, -620.0, 620.0)
 		var mi: MeshInstance3D = il[0]
@@ -1396,7 +1420,7 @@ func _process(dt: float) -> void:
 	var cam := get_viewport().get_camera_3d()
 	if cam != null and water != null:
 		var c := cam.global_position
-		water.position = Vector3(snappedf(c.x, 12.0), 0.0, snappedf(c.z, 12.0))
+		water.position = Vector3(c.x, 0.0, c.z)
 
 
 # ---------------- the night over the bay ----------------
