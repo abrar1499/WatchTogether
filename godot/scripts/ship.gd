@@ -824,6 +824,7 @@ uniform vec4 boats[6];        // x, z, heading x, heading z
 uniform float boat_w[6];      // half width of each boat's wake where it starts (0: none)
 varying vec3 wp;
 varying float crest;
+varying float thrown;
 
 // the swell at a place: frames of a simulated sea, laid over the water twice at two sizes; returns the
 // displacement (sideways, up, sideways) in metres
@@ -836,6 +837,27 @@ vec3 swell(vec2 p, float size, float t) {
 	return mix(a, b, f - k) * size;
 }
 
+float hull_w(float x) {
+	return 7.5 * (1.0 - pow(smoothstep(20.0, 47.5, x), 1.6)) * (1.0 - 0.2 * smoothstep(-40.0, -46.0, x));
+}
+
+// the water the ship herself throws up (q: a place by the ship, who lies along x with her bow at +47): the wave
+// piled against her stem and rolling off down both sides in a V, the wash slapping along her plating in pulses
+// that run aft, the boil under her stern
+float wash(vec2 q, float t) {
+	float az = abs(q.y);
+	float al = 46.5 - q.x;
+	float mid = 0.6 + al * 0.36;
+	float wd = 1.1 + al * 0.05;
+	float h = exp(-pow((az - mid) / wd, 2.0)) * 1.05 * exp(-max(al, 0.0) / 20.0) * smoothstep(-1.5, 1.0, al);
+	float d = az - hull_w(q.x);
+	float along = step(-46.5, q.x) * step(q.x, 47.5);
+	h += along * exp(-max(d, 0.0) / 1.3) * step(-0.6, d) * (0.2 + 0.24 * max(0.0, sin(q.x * 0.42 + t * 2.6)) + 0.14 * sin(q.x * 1.1 + t * 4.1));
+	float as_ = -44.5 - q.x;
+	h += smoothstep(0.0, 2.0, as_) * exp(-max(as_, 0.0) / 9.0) * (1.0 - smoothstep(3.0, 6.5, az)) * (0.22 + 0.2 * sin(q.x * 1.3 + t * 5.0) * sin(q.y * 1.7 + t * 3.1));
+	return h;
+}
+
 vec3 sea(vec2 p, float t, float longf, float shortf) {
 	return swell(p, 190.0, t * 0.55) * longf * 0.75 + swell(p.yx + vec2(31.0, 7.0), 62.0, t).zyx * shortf * 0.85;
 }
@@ -846,20 +868,23 @@ void vertex() {
 	// (the sea lies quieter in the ship's lee, close under her sides)
 	vec2 off = max(abs(wp.xz) - vec2(48.0, 7.5), vec2(0.0));
 	float lee = mix(0.2, 1.0, smoothstep(0.0, 30.0, length(off)));
+	vec2 q = wp.xz;
 	wp.x += drift;
 	float longf = (1.0 - smoothstep(250.0, 700.0, dist)) * lee;
 	float shortf = (1.0 - smoothstep(60.0, 220.0, dist)) * lee;
 	vec3 w = sea(wp.xz, tm, longf, shortf);
+	thrown = wash(q, tm);
+	w.y += thrown;
 	// the slope, from the heights a step away each way
 	float e = 0.9;
-	float hx = sea(wp.xz + vec2(e, 0.0), tm, longf, shortf).y;
-	float hz = sea(wp.xz + vec2(0.0, e), tm, longf, shortf).y;
+	float hx = sea(wp.xz + vec2(e, 0.0), tm, longf, shortf).y + wash(q + vec2(e, 0.0), tm);
+	float hz = sea(wp.xz + vec2(0.0, e), tm, longf, shortf).y + wash(q + vec2(0.0, e), tm);
 	vec2 sl = vec2(hx - w.y, hz - w.y) / e;
 	VERTEX += vec3(w.x, w.y, w.z) * vec3(0.6, 1.0, 0.6);
 	NORMAL = normalize(vec3(-sl.x, 1.0, -sl.y));
 	TANGENT = normalize(vec3(1.0, sl.x, 0.0));
 	BINORMAL = normalize(vec3(0.0, sl.y, 1.0));
-	crest = w.y;
+	crest = w.y - thrown;
 }
 
 float band(float x, float a, float b) {
@@ -881,7 +906,7 @@ void fragment() {
 	// bows, her wake, and the wake of each boat
 	vec2 p = wp.xz - vec2(drift, 0.0);           // (the ship's own place: she lies along x, her bow at +47)
 	float az = abs(p.y);
-	float hw = 7.5 * (1.0 - pow(smoothstep(20.0, 47.5, p.x), 1.6)) * (1.0 - 0.2 * smoothstep(-40.0, -46.0, p.x));
+	float hw = hull_w(p.x);
 	// the wash: it surges out from the plating and falls back, in pulses running aft
 	float surge = 1.6 + 1.3 * sin(p.x * 0.42 + tm * 2.6) + 0.7 * sin(p.x * 1.1 + tm * 4.1);
 	float m = (1.0 - smoothstep(0.0, max(surge, 0.5) + 1.2, az - hw)) * step(-46.5, p.x) * step(p.x, 47.5);
@@ -900,6 +925,7 @@ void fragment() {
 		float len = boat_w[i] * 22.0;
 		m = max(m, (1.0 - smoothstep(boat_w[i] * 0.5 + back * 0.1, boat_w[i] + back * 0.16, lat)) * smoothstep(-boat_w[i] * 2.5, 0.0, back) * (1.0 - smoothstep(len * 0.15, len, back)));
 	}
+	m = max(m, smoothstep(0.12, 0.5, thrown));       // (what she throws up is white on top)
 	vec2 fp = wp.xz;
 	float n1 = texture(ripples, fp * vec2(0.035, 0.09) + vec2(0.0, TIME * 0.02)).r;
 	float n2 = texture(ripples, fp * 0.21 + vec2(TIME * 0.03, 0.0)).g;
@@ -984,30 +1010,81 @@ func _sea() -> void:
 	var qm := QuadMesh.new()
 	qm.size = Vector2(1.0, 1.0)
 	qm.material = sm
-	for e in [[Vector3(44.6, 0.4, 0.9), Vector3(-0.45, 1.0, 0.75), 46, 7.0, 1.6], [Vector3(44.6, 0.4, -0.9), Vector3(-0.45, 1.0, -0.75), 46, 7.0, 1.6],
-			[Vector3(-45.5, 0.2, 0.0), Vector3(-1.0, 0.5, 0.0), 40, 4.0, 2.2],
-			[Vector3(10.0, 0.3, 7.6), Vector3(-0.5, 1.0, 0.5), 26, 3.2, 1.2], [Vector3(10.0, 0.3, -7.6), Vector3(-0.5, 1.0, -0.5), 26, 3.2, 1.2],
-			[Vector3(-22.0, 0.3, 7.6), Vector3(-0.5, 1.0, 0.5), 26, 3.2, 1.2], [Vector3(-22.0, 0.3, -7.6), Vector3(-0.5, 1.0, -0.5), 26, 3.2, 1.2]]:
+	# a picture of thrown water for the sheets: a scatter of fine drops, thick in the middle, thinning outward
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	var simg := Image.create(96, 96, false, Image.FORMAT_RGBA8)
+	simg.fill(Color(1, 1, 1, 0))
+	# (a few ragged clumps of drops, not one round cloud)
+	var clumps := []
+	for i in 7:
+		clumps.append(Vector2(48.0 + rng.randf_range(-26.0, 26.0), 48.0 + rng.randf_range(-26.0, 26.0)))
+	for i in 150:
+		var cl: Vector2 = clumps[i % 7]
+		var a := rng.randf() * TAU
+		var rr: float = pow(rng.randf(), 1.4) * 17.0
+		var c := cl + Vector2(cos(a), sin(a)) * rr
+		var rad: float = rng.randf_range(1.0, 4.2) * (1.15 - rr / 22.0)
+		var str_: float = rng.randf_range(0.4, 1.0)
+		for y in range(int(c.y - rad - 1), int(c.y + rad + 2)):
+			for x in range(int(c.x - rad - 1), int(c.x + rad + 2)):
+				if x < 1 or y < 1 or x > 94 or y > 94:
+					continue
+				var k: float = smoothstep(0.0, 0.5, 1.0 - Vector2(x, y).distance_to(c) / rad) * str_
+				var old := simg.get_pixel(x, y).a
+				simg.set_pixel(x, y, Color(1, 1, 1, max(old, k)))
+	simg.generate_mipmaps()
+	var spray_tex := ImageTexture.create_from_image(simg)
+	# [where, the way it is thrown, how many, how fast, how big, how solid, the box it comes from]
+	var jets := []
+	for sg in [-1.0, 1.0]:
+		# at the stem: a sheet of white water thrown up and out, and the drops flung from it
+		jets.append([Vector3(44.2, 0.4, sg * 1.3), Vector3(-0.6, 0.65, sg * 0.8), 60, 6.5, 2.6, 0.6, Vector3(1.6, 0.25, 0.7), 1.2])
+		jets.append([Vector3(44.6, 0.5, sg * 1.1), Vector3(-0.55, 0.85, sg * 0.85), 90, 8.0, 0.09, 0.9, Vector3(1.4, 0.3, 0.6), 1.0])
+		# down her shoulders, where the bow wave rolls off
+		jets.append([Vector3(34.0, 0.3, sg * 5.6), Vector3(-0.75, 0.55, sg * 0.6), 44, 5.0, 2.2, 0.5, Vector3(7.0, 0.2, 1.4), 1.1])
+		# all along her sides: the wash slapping the plating
+		jets.append([Vector3(-8.0, 0.25, sg * 7.8), Vector3(-0.8, 0.5, sg * 0.35), 90, 4.2, 1.15, 0.3, Vector3(34.0, 0.15, 0.35), 0.9])
+		jets.append([Vector3(-8.0, 0.3, sg * 7.75), Vector3(-0.75, 0.7, sg * 0.4), 110, 5.0, 0.07, 0.85, Vector3(34.0, 0.15, 0.3), 0.8])
+	# under her stern: the screw's water boiling up
+	jets.append([Vector3(-46.5, 0.2, 0.0), Vector3(-1.0, 0.35, 0.0), 50, 5.0, 2.6, 0.5, Vector3(1.0, 0.2, 4.5), 1.4])
+	for e in jets:
 		var ps := CPUParticles3D.new()
-		ps.mesh = qm
+		var solid: float = e[5]
+		var pm := sm.duplicate() as StandardMaterial3D
+		pm.albedo_color = Color(0.62, 0.7, 0.8, solid) if solid > 0.6 else Color(0.5, 0.58, 0.68, solid)
+		if solid <= 0.6:
+			pm.albedo_texture = spray_tex
+			ps.angle_min = 0.0
+			ps.angle_max = 360.0
+		var q := QuadMesh.new()
+		q.size = Vector2(1.0, 1.0)
+		q.material = pm
+		ps.mesh = q
 		ps.amount = e[2]
-		ps.lifetime = 1.3
-		ps.randomness = 0.6
+		ps.lifetime = e[7]
+		ps.randomness = 0.7
+		ps.explosiveness = 0.0
 		ps.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-		ps.emission_box_extents = Vector3(1.2, 0.2, 0.5) if abs(e[0].z) < 5.0 else Vector3(16.0, 0.15, 0.3)
+		ps.emission_box_extents = e[6]
 		ps.direction = (e[1] as Vector3).normalized()
-		ps.spread = 24.0
-		ps.initial_velocity_min = e[3] * 0.5
+		ps.spread = 22.0
+		ps.initial_velocity_min = e[3] * 0.45
 		ps.initial_velocity_max = e[3]
-		ps.gravity = Vector3(-4.0, -9.0, 0)
-		ps.scale_amount_min = e[4] * 0.5
+		ps.gravity = Vector3(-1.5, -9.8, 0)
+		ps.scale_amount_min = e[4] * 0.45
 		ps.scale_amount_max = e[4]
+		var sc := Curve.new()
+		sc.add_point(Vector2(0, 0.45))
+		sc.add_point(Vector2(1, 1.5 if solid < 0.6 else 0.7))
+		ps.scale_amount_curve = sc
 		var gr := Gradient.new()
 		gr.set_color(0, Color(1, 1, 1, 0.0))
-		gr.add_point(0.2, Color(1, 1, 1, 1.0))
+		gr.add_point(0.12, Color(1, 1, 1, 1.0))
 		gr.set_color(2, Color(1, 1, 1, 0.0))
 		ps.color_ramp = gr
 		ps.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		ps.visibility_aabb = AABB(Vector3(-60, -2, -20), Vector3(120, 12, 40))
 		add_child(ps)
 		ps.position = e[0]
 
