@@ -164,7 +164,7 @@ func bar(key: String, a: Vector3, b: Vector3, r: float, seg := 6, col := Color(1
 		var d1 := u * cos(a1) + v * sin(a1)
 		var q := [a + d0 * r, a + d1 * r, b + d1 * r2, b + d0 * r2]
 		var ns := [d0, d1, d1, d0]
-		for k in [0, 1, 2, 0, 2, 3]:
+		for k in [0, 2, 1, 0, 3, 2]:          # (clockwise from outside: the side Godot draws)
 			st.set_color(col)
 			st.set_normal(ns[k])
 			st.set_uv(Vector2(float(i) / seg, 0))
@@ -172,7 +172,7 @@ func bar(key: String, a: Vector3, b: Vector3, r: float, seg := 6, col := Color(1
 		if r > 0.08:
 			for e in [[a, -ax, r, false], [b, ax, r2, true]]:
 				var c: Vector3 = e[0]
-				var tri := [c, c + d0 * e[2], c + d1 * e[2]] if e[3] else [c, c + d1 * e[2], c + d0 * e[2]]
+				var tri := [c, c + d1 * e[2], c + d0 * e[2]] if e[3] else [c, c + d0 * e[2], c + d1 * e[2]]
 				for p in tri:
 					st.set_color(col)
 					st.set_normal(e[1])
@@ -947,6 +947,11 @@ func _islets() -> void:
 			var off := Vector3.ZERO if k == 0 else Vector3(rng.randf_range(-0.6, 0.6) * s[1].x, 0, rng.randf_range(-0.6, 0.6) * s[1].z)
 			mi.position = s[0] + off
 			mi.scale = sc * Vector3(1, rng.randf_range(0.8, 1.3), 1)
+			# (kept off the ship's lane as the land goes by: no rock through her hull, nor through the boats
+			# that run beside her)
+			var clear: float = 0.65 * sc.z + 60.0
+			if abs(mi.position.z) < clear:
+				mi.position.z = clear * (1.0 if s[0].z >= 0.0 else -1.0)
 			isles.append([mi, mi.position.x, mi.scale])
 			mi.rotation.y = rng.randf() * TAU
 
