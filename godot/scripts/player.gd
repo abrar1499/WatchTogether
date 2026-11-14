@@ -2187,7 +2187,18 @@ func _fire() -> void:
 		var d := (d0 + Vector3(randf_range(-sp, sp), randf_range(-sp, sp), randf_range(-sp, sp))).normalized()
 		if cone > 0.0:
 			d = (d + Vector3(randf_range(-cone, cone), randf_range(-cone, cone) * 0.8, randf_range(-cone, cone))).normalized()
-		var end: Vector3 = world.shoot_ray(from, d, float(w["dmg"]), self, float(w.get("power", 1.0)))
+		# the round leaves the gun, not the eye: find what the crosshair is on, then fire at it from his chest
+		# (so a gun pressed against a wall or a rail puts its round into the wall, not where the eye can see past it)
+		var q := PhysicsRayQueryParameters3D.create(from, from + d * 400.0)
+		q.exclude = [get_rid()]
+		q.collision_mask = 1 | 8
+		var h := get_world_3d().direct_space_state.intersect_ray(q)
+		var aim_at: Vector3 = h.position if not h.is_empty() else from + d * 400.0
+		var chest := global_position + Vector3(0, 0.75 if crouch else (0.3 if prone else 1.3), 0)
+		var shot_from := chest
+		if (aim_at - chest).length() < 0.6:
+			shot_from = from
+		var end: Vector3 = world.shoot_ray(shot_from, (aim_at - shot_from).normalized(), float(w["dmg"]), self, float(w.get("power", 1.0)))
 		if n == 1:
 			if int(w["mag"]) % 2 == 0 or not w["auto"]:
 				fx.tracer(mp, end, true)
@@ -2613,7 +2624,7 @@ func _cover_step(dt: float) -> void:
 			var gap := {}
 			for sg in [-1, 1]:
 				gap[sg] = 99.0
-				for st in [0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.1, 2.4, 2.7, 3.0]:
+				for st in [0.25, 0.5, 0.75, 1.0]:
 					var q2: Vector3 = base + tan * (sg * st) + Vector3(0, 0.55, 0)
 					if (ray.call(q2, q2 - n * 1.7) as Dictionary).is_empty():
 						gap[sg] = st
