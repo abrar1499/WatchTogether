@@ -2314,6 +2314,8 @@ func _process(dt: float) -> void:
 
 # ---------------- updates ----------------
 func _check_update() -> void:
+	if not OS.has_feature("android"):
+		return   # the updater fetches the Android app; the PC build is updated by hand
 	var http := HTTPRequest.new()
 	add_child(http)
 	http.request_completed.connect(func(result, code, _h, body):
