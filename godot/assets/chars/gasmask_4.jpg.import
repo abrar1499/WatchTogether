@@ -3,24 +3,28 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b1eq6nhp6pxs3"
-path="res://.godot/imported/gasmask_4.jpg-15737d4be35e6ce5d1ebee8043ebe145.ctex"
+path.s3tc="res://.godot/imported/gasmask_4.jpg-15737d4be35e6ce5d1ebee8043ebe145.s3tc.ctex"
+path.etc2="res://.godot/imported/gasmask_4.jpg-15737d4be35e6ce5d1ebee8043ebe145.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
-"md5": "ba26ef0c008a36735d6fd5264e87adb8"
+"md5": "55e58810d85af518348390e71098f348"
 }
 
 [deps]
 
 source_file="res://assets/chars/gasmask_4.jpg"
-dest_files=["res://.godot/imported/gasmask_4.jpg-15737d4be35e6ce5d1ebee8043ebe145.ctex"]
+dest_files=["res://.godot/imported/gasmask_4.jpg-15737d4be35e6ce5d1ebee8043ebe145.s3tc.ctex", "res://.godot/imported/gasmask_4.jpg-15737d4be35e6ce5d1ebee8043ebe145.etc2.ctex"]
 
 [params]
 
 compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
+compress/uastc_level=0
+compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
@@ -28,6 +32,10 @@ mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
+process/channel_remap/red=0
+process/channel_remap/green=1
+process/channel_remap/blue=2
+process/channel_remap/alpha=3
 process/fix_alpha_border=true
 process/premult_alpha=false
 process/normal_map_invert_y=false

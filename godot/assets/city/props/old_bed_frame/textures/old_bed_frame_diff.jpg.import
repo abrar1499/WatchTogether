@@ -3,21 +3,25 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c4f86upn5t1b2"
-path="res://.godot/imported/old_bed_frame_diff.jpg-9612811a0a7cb621a6f02fd829015924.ctex"
+path.s3tc="res://.godot/imported/old_bed_frame_diff.jpg-9612811a0a7cb621a6f02fd829015924.s3tc.ctex"
+path.etc2="res://.godot/imported/old_bed_frame_diff.jpg-9612811a0a7cb621a6f02fd829015924.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/city/props/old_bed_frame/textures/old_bed_frame_diff.jpg"
-dest_files=["res://.godot/imported/old_bed_frame_diff.jpg-9612811a0a7cb621a6f02fd829015924.ctex"]
+dest_files=["res://.godot/imported/old_bed_frame_diff.jpg-9612811a0a7cb621a6f02fd829015924.s3tc.ctex", "res://.godot/imported/old_bed_frame_diff.jpg-9612811a0a7cb621a6f02fd829015924.etc2.ctex"]
 
 [params]
 
 compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
+compress/uastc_level=0
+compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
@@ -25,6 +29,10 @@ mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
+process/channel_remap/red=0
+process/channel_remap/green=1
+process/channel_remap/blue=2
+process/channel_remap/alpha=3
 process/fix_alpha_border=true
 process/premult_alpha=false
 process/normal_map_invert_y=false

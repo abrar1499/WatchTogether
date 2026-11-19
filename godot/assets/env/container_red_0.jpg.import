@@ -3,24 +3,28 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://6a4ygrlcb2uo"
-path="res://.godot/imported/container_red_0.jpg-1e356ded2ba9fc743327731cea6be8e6.ctex"
+path.s3tc="res://.godot/imported/container_red_0.jpg-1e356ded2ba9fc743327731cea6be8e6.s3tc.ctex"
+path.etc2="res://.godot/imported/container_red_0.jpg-1e356ded2ba9fc743327731cea6be8e6.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
-"md5": "cdc94ef7f5a3c8cc84bbb7fd437d2c13"
+"md5": "46e4f6360d1da0229eb0e68c6a7e8688"
 }
 
 [deps]
 
 source_file="res://assets/env/container_red_0.jpg"
-dest_files=["res://.godot/imported/container_red_0.jpg-1e356ded2ba9fc743327731cea6be8e6.ctex"]
+dest_files=["res://.godot/imported/container_red_0.jpg-1e356ded2ba9fc743327731cea6be8e6.s3tc.ctex", "res://.godot/imported/container_red_0.jpg-1e356ded2ba9fc743327731cea6be8e6.etc2.ctex"]
 
 [params]
 
 compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
+compress/uastc_level=0
+compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
@@ -28,6 +32,10 @@ mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
+process/channel_remap/red=0
+process/channel_remap/green=1
+process/channel_remap/blue=2
+process/channel_remap/alpha=3
 process/fix_alpha_border=true
 process/premult_alpha=false
 process/normal_map_invert_y=false

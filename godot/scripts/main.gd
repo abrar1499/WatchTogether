@@ -237,6 +237,7 @@ func _build_environment() -> void:
 	we.environment = env
 	add_child(we)
 	world_env = env
+	world_env_node = we
 	sun = DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-32, -135, 0)
 	sun.light_color = Color(1.0, 0.98, 0.95)
@@ -249,6 +250,8 @@ func _build_environment() -> void:
 
 
 var world_env: Environment
+var world_env_node: WorldEnvironment
+const ULTRA_EXPOSURE := 1.3
 var sun: DirectionalLight3D
 
 
@@ -1619,7 +1622,7 @@ func apply_snow() -> void:
 	world_env.fog_enabled = true
 	world_env.fog_light_color = Color(0.8, 0.84, 0.9)
 	world_env.fog_density = 0.007
-	world_env.fog_sky_affect = 0.2 if hd else 0.6
+	world_env.fog_sky_affect = 0.2 if hd else 0.0   # (OpenGL: since Godot 4.4 fog greys the sky there too; 4.3 left it clear)
 	world_env.adjustment_enabled = true
 	world_env.adjustment_saturation = 0.82
 	world_env.adjustment_contrast = 1.04
@@ -2284,6 +2287,11 @@ var ultra := false               # the HD app: every setting at its highest
 ## casting them, a soft glow round lamps, flashes and fire. The other scripts ask Engine.get_meta("ultra") for
 ## theirs: buildings in detail twice as far, twice the rain, twice as many real lamps.
 func _ultra() -> void:
+	# (Godot 4.5's Vulkan renderer draws the same scene about an eighth darker than 4.3's did: brought back up)
+	if RenderingServer.get_rendering_device() != null:
+		var ca := CameraAttributesPractical.new()
+		ca.exposure_multiplier = ULTRA_EXPOSURE
+		world_env_node.camera_attributes = ca
 	# (2x multisampling here, set for the HD app in project.godot: 4x crashed the Vulkan renderer in the two town
 	# missions when tried)
 	get_viewport().screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
